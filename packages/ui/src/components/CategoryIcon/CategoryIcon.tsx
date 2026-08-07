@@ -297,46 +297,10 @@ const ICONS: Record<string, ReactNode> = {
   ),
 };
 
-type CategoryTone = "neutral" | "petrol" | "negative";
-
-// TIMELINE.md §5.2a: "renda → --lr-petrol-100/--lr-petrol-700; saúde →
-// --lr-negative-100/--lr-terracota-600". Only these two categories carry
-// meaning-bearing color; every other slug (including the fallback) stays
-// neutral, matching the reference's own base .hmc-tx__icon rule.
-const CATEGORY_TONE: Record<string, CategoryTone> = {
-  "hm-cat-renda": "petrol",
-  "hm-cat-saude": "negative",
-};
-
-const TONE_CLASSES: Record<CategoryTone, string> = {
-  neutral:
-    "bg-[var(--lr-surface-sunken)] text-[var(--lr-text-secondary)] dark:bg-white/10",
-  petrol:
-    "bg-[var(--lr-petrol-100)] text-[var(--lr-positive-on-tint)] dark:bg-[var(--lr-petrol-700)]/20 dark:text-[var(--lr-petrol-300)]",
-  // Uses --lr-negative-on-tint/--lr-negative (Badge's own "clay"/"alert"
-  // pair) rather than the spec's literal --lr-terracota-600: that raw
-  // primitive has no [data-theme="dark"] override and was never verified
-  // against this exact bg-[var(--lr-negative)]/20 dark tint, whereas
-  // --lr-negative-on-tint is already the codebase's AA-checked choice for
-  // "this brick-red on its own -100 tint" (Badge.tsx's CATEGORY_STYLES.clay
-  // uses the identical pair for the same visual color). Judgment call —
-  // flagged in the plan's report.
-  negative:
-    "bg-[var(--lr-negative-100)] text-[var(--lr-negative-on-tint)] dark:bg-[var(--lr-negative)]/20 dark:text-[var(--lr-negative)]",
-};
-
 export function CategoryIcon({ slug, className }: CategoryIconProps) {
   const icon = ICONS[slug] ?? ICONS["hm-cat-sem-categoria"];
-  const tone = CATEGORY_TONE[slug] ?? "neutral";
   return (
-    <span
-      aria-hidden="true"
-      className={[
-        "flex h-8 w-8 flex-none items-center justify-center rounded-[var(--lr-r-sm)] [&>svg]:h-[18px] [&>svg]:w-[18px]",
-        TONE_CLASSES[tone],
-        className ?? "",
-      ].join(" ")}
-    >
+    <span aria-hidden="true" className={className || "h-5 w-5 flex-none"}>
       {icon}
     </span>
   );

@@ -31,7 +31,7 @@ export const AllIcons: Story = {
     <div className="flex flex-wrap gap-8 p-6">
       {SLUGS.map((slug) => (
         <div key={slug} className="flex flex-col items-center gap-2">
-          <CategoryIcon slug={slug} />
+          <CategoryIcon slug={slug} className="h-8 w-8" />
           <span className="text-xs text-[var(--lr-text-secondary)]">
             {slug}
           </span>
