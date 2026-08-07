@@ -1,7 +1,9 @@
 // apps/web/src/components/AppLayout.tsx
-// Sidebar shell for authenticated routes (248px sticky, night-900). Tailwind
+// Sidebar shell for authenticated routes (248px sticky). Tailwind
 // arbitrary-value utilities, matching how the rest of packages/ui already
-// consumes the CSS-variable tokens.
+// consumes the CSS-variable tokens — except the sidebar background itself,
+// which is pinned to #090F1A (not --lr-night-900) to exactly match
+// logo.png's baked-in background so the image blends in seamlessly.
 import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import packageJson from "../../package.json";
@@ -96,7 +98,7 @@ export function AppLayout() {
 
   return (
     <div className="flex min-h-screen bg-[var(--lr-bg)]">
-      <aside className="sticky top-0 flex h-screen w-[248px] flex-none flex-col bg-[var(--lr-night-900)] px-4 py-6 text-[var(--lr-ivory-100)]">
+      <aside className="sticky top-0 flex h-screen w-[248px] flex-none flex-col bg-[#090F1A] px-4 py-6 text-[var(--lr-ivory-100)]">
         <div className="px-2 pt-2 pb-7">
           <img src="/logo.png" alt="Lurem" className="w-[168px]" />
         </div>
