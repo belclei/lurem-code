@@ -24,7 +24,13 @@ const meta: Meta<typeof Badge> = {
 export default meta;
 type Story = StoryObj<typeof Badge>;
 
-const STATUSES: BadgeStatus[] = ["active", "inactive", "pending", "alert", "estimate"];
+const STATUSES: BadgeStatus[] = [
+  "active",
+  "inactive",
+  "pending",
+  "alert",
+  "estimate",
+];
 const CATEGORY_COLORS: { color: BadgeCategoryColor; label: string }[] = [
   { color: "blue", label: "Moradia" },
   { color: "sage", label: "Mercado" },

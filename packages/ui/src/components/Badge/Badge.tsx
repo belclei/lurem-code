@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
 
-export type BadgeStatus = "active" | "inactive" | "pending" | "alert" | "estimate";
+export type BadgeStatus =
+  | "active"
+  | "inactive"
+  | "pending"
+  | "alert"
+  | "estimate";
 export type BadgeCategoryColor = "ink" | "blue" | "sage" | "sand" | "clay";
 
 interface BadgeCommonProps {
