@@ -72,6 +72,25 @@ const KIND_SIGN: Record<TransactionKind, string> = {
   transfer: "",
 };
 
+// §5b's meta line needs to know whether `date` (the scheduled transaction's
+// own date) is today, in America/Sao_Paulo — the same civil-day comparison
+// apps/web/src/routes/TimelinePage.tsx's own todayYmd()/isToday() helpers
+// already use, reimplemented locally since packages/ui can't import from
+// apps/web. `now` is injectable so this stays a pure, testable function
+// (see TransactionRow.test.ts) instead of reaching for `new Date()` inline.
+export function scheduledMetaText(
+  dateIso: string,
+  now: Date = new Date(),
+): string {
+  const ymd = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+  });
+  const isToday = ymd.format(new Date(dateIso)) === ymd.format(now);
+  return isToday
+    ? "Previsto para hoje · não entra no saldo"
+    : `Previsto para ${formatDate(dateIso)} · não entra no saldo`;
+}
+
 function RowHeader(props: TransactionRowProps) {
   return (
     <div className="flex items-center gap-3">
@@ -107,10 +126,17 @@ function RowHeader(props: TransactionRowProps) {
               {props.installment.installmentTotal}
             </Badge>
           ) : null}
+          {props.variant === "scheduled" ? (
+            <Badge kind="status" status="estimate">
+              Agendada
+            </Badge>
+          ) : null}
         </div>
         <Body muted className="text-[.8125rem]">
           {props.categoryLabel ? `${props.categoryLabel} · ` : ""}
-          {formatDate(props.date)}
+          {props.variant === "scheduled"
+            ? scheduledMetaText(props.date)
+            : formatDate(props.date)}
           {props.variant === "transfer" ? ` · ${props.transferToLabel}` : ""}
         </Body>
       </div>
