@@ -15,5 +15,6 @@ coverage/
 .DS_Store
 .superpowers/
 .worktrees/
+.claude/worktrees/
 .playwright-mcp/
 graphify-out/
