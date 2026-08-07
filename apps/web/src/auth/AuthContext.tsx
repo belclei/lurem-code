@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import {
@@ -46,30 +47,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Boot-time silent session restore: try the refresh cookie once before
   // ever showing /login, so a returning user isn't asked to log in again
   // just because the SPA reloaded and lost its in-memory access token.
+  //
+  // bootStarted guards against firing the network call twice — without it,
+  // StrictMode's dev-only mount→cleanup→mount double-invoke fires this
+  // effect's fetch(/v1/auth/refresh) twice with the same refresh-token
+  // cookie. The server's single-use rotation treats the loser of that race
+  // as token reuse and revokes the whole family, including the winner's
+  // brand-new token — logging the user out on every single page load.
+  // isMounted (checked at resolve time, not a per-invocation closure bool)
+  // reflects whether the LATEST mount is still active, so the surviving
+  // boot() call's result isn't discarded because of the first mount's
+  // now-stale cleanup.
+  const bootStarted = useRef(false);
+  const isMounted = useRef(true);
+
   useEffect(() => {
-    let cancelled = false;
+    isMounted.current = true;
 
     async function boot() {
       const token = await refreshAccessToken();
-      if (cancelled) return;
+      if (!isMounted.current) return;
       if (token) {
         setAccessTokenState(token);
         try {
           const me = await fetchMe();
-          if (!cancelled) setUser(me);
+          if (isMounted.current) setUser(me);
         } catch {
-          if (!cancelled) {
+          if (isMounted.current) {
             setAccessTokenState(null);
             setUser(null);
           }
         }
       }
-      if (!cancelled) setIsBooting(false);
+      if (isMounted.current) setIsBooting(false);
     }
 
-    void boot();
+    if (!bootStarted.current) {
+      bootStarted.current = true;
+      void boot();
+    }
+
     return () => {
-      cancelled = true;
+      isMounted.current = false;
     };
   }, []);
 
