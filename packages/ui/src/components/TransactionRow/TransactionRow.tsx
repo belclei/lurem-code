@@ -252,18 +252,30 @@ export function TransactionRow(props: TransactionRowProps) {
         </div>
       ) : null}
       {props.variant === "scheduled" ? (
-        <div className="mt-3 flex gap-2 border-t border-[var(--lr-border)] pt-3">
-          <Button variant="primary" size="sm" onClick={props.onConfirm}>
-            Confirmar
+        <div className="mt-3 flex justify-end gap-2 border-t border-[var(--lr-border)] pt-3">
+          {/* TIMELINE.md §5b wants `hmc-btn--sm hmc-btn--ghost-danger` for
+              Apagar — Button has no ghost+danger combination (variants are
+              primary/secondary/tertiary/danger/link, see Button.tsx). `danger`
+              (solid) is the closest available match: it's the only variant
+              that keeps the red destructive signal, which matters more for an
+              irreversible delete than matching the reference's lower visual
+              weight exactly. Judgment call — flagged in the plan's report. */}
+          <Button
+            variant="danger"
+            size="sm"
+            className="mr-auto"
+            onClick={props.onDelete}
+          >
+            Apagar
+          </Button>
+          <Button variant="tertiary" size="sm" onClick={props.onSkip}>
+            Pular
           </Button>
           <Button variant="secondary" size="sm" onClick={props.onEdit}>
             Editar
           </Button>
-          <Button variant="secondary" size="sm" onClick={props.onSkip}>
-            Pular
-          </Button>
-          <Button variant="danger" size="sm" onClick={props.onDelete}>
-            Apagar
+          <Button variant="primary" size="sm" onClick={props.onConfirm}>
+            Confirmar
           </Button>
         </div>
       ) : null}
