@@ -4,6 +4,7 @@ export * from "./components/shared/AffixMenu";
 export * from "./components/shared/Spinner";
 export * from "./components/shared/formatMoney";
 export * from "./components/shared/formatDate";
+export * from "./components/shared/InstitutionMark";
 export * from "./components/Select/Select";
 export * from "./components/Alert/Alert";
 export * from "./components/Card/Card";
