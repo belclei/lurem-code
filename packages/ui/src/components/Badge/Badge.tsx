@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type BadgeStatus = "active" | "inactive" | "pending" | "alert";
+export type BadgeStatus = "active" | "inactive" | "pending" | "alert" | "estimate";
 export type BadgeCategoryColor = "ink" | "blue" | "sage" | "sand" | "clay";
 
 interface BadgeCommonProps {
@@ -91,6 +91,22 @@ const STATUS_STYLES: Record<
     text: "text-[var(--lr-negative-on-tint)] dark:text-[var(--lr-negative)]",
     dot: "bg-[var(--lr-negative-on-tint)] dark:bg-[var(--lr-negative)]",
     label: "Alerta",
+  },
+  // `--lr-estimate` already resolves per-theme via its own [data-theme="dark"]
+  // override in lurem-tokens.css (#5a6a96 light / #8794a8 dark) — the color
+  // itself changes per theme through the CSS custom property, so text/dot
+  // need no separate `dark:` Tailwind class the way pending/alert/etc. do.
+  // `bg`/`border` match STATUS_STYLES.inactive's neutral-surface treatment
+  // (not a tinted color fill) since "agendada" needs to read as muted/
+  // provisional, not as a fourth colored status alongside active/pending/alert
+  // — the dashed border is what carries the "estimate, not confirmed" signal
+  // (TIMELINE.md §9.2), same rule Mono's own `tone="estimate"` already follows.
+  estimate: {
+    bg: "bg-[var(--lr-surface-sunken)] dark:bg-white/10",
+    text: "text-[var(--lr-estimate)]",
+    dot: "bg-[var(--lr-estimate)]",
+    label: "Agendada",
+    border: "border border-dashed border-[var(--lr-border)]",
   },
 };
 
@@ -235,4 +251,5 @@ export const BADGE_STATUS_LABEL: Record<BadgeStatus, string> = {
   inactive: STATUS_STYLES.inactive.label,
   pending: STATUS_STYLES.pending.label,
   alert: STATUS_STYLES.alert.label,
+  estimate: STATUS_STYLES.estimate.label,
 };
