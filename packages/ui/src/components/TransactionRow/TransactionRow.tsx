@@ -68,7 +68,7 @@ const KIND_TONE: Record<TransactionKind, "in" | "out" | "default"> = {
 
 const KIND_SIGN: Record<TransactionKind, string> = {
   income: "+",
-  expense: "-",
+  expense: "−", // U+2212 MINUS SIGN, not the ASCII hyphen "-" — TIMELINE.md §9.5
   transfer: "",
 };
 
@@ -114,7 +114,13 @@ function RowHeader(props: TransactionRowProps) {
           {props.variant === "transfer" ? ` · ${props.transferToLabel}` : ""}
         </Body>
       </div>
-      <Mono variant="number" tone={KIND_TONE[props.kind]} className="flex-none">
+      <Mono
+        variant="number"
+        tone={
+          props.variant === "scheduled" ? "estimate" : KIND_TONE[props.kind]
+        }
+        className="flex-none"
+      >
         {KIND_SIGN[props.kind]}
         {formatMoney(props.amountCents)}
       </Mono>
