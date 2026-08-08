@@ -16,6 +16,7 @@ import {
   Dialog,
   EmptyState,
   Input,
+  InstitutionMark,
   Mono,
   ProfileIncompleteAlert,
   Segmented,
@@ -58,6 +59,7 @@ import type {
   TxKind,
 } from "../auth/types";
 import { reaisToCentsOrZero, reaisToCentsPositive } from "../lib/money";
+import type { DashboardInsights } from "./DashboardView";
 
 interface CategoryDto {
   id: string;
@@ -878,6 +880,17 @@ export function TimelinePage() {
     queryFn: () => apiFetchJson<CardDto[]>("/cards"),
     enabled: hasSession,
   });
+  // "Disponível hoje" and "Patrimônio total" (§6, aside) both used to
+  // render the same ad-hoc netBalanceCents-minus-invoices value — they're
+  // distinct figures (IMPLEMENTACAO.md §3.2/§3.5) already computed
+  // correctly by the canonical @lurem/core formulas and already exposed by
+  // GET /v1/insights/dashboard (used today by DashboardPage.tsx). No API
+  // change: this just calls an endpoint that already exists.
+  const insightsQuery = useQuery({
+    queryKey: ["insights", "dashboard"],
+    queryFn: () => apiFetchJson<DashboardInsights>("/insights/dashboard"),
+    enabled: hasSession,
+  });
 
   // US-4.1 — while any of the 3 items is missing, the Timeline shows
   // activation cards for just the missing ones instead of the feed (never a
@@ -1027,9 +1040,6 @@ export function TimelinePage() {
     (sum, c) => sum + c.usedCents,
     0,
   );
-  // §6.12 item 6's "patrimônio total" — no investments in the MVP schema yet
-  // (PRODUCT.md), so ativos-passivos is just contas menos faturas em aberto.
-  const netWorthCents = netBalanceCents - totalInvoicesCents;
 
   if (isBooting) {
     return <p className="p-6 text-[var(--lr-text-secondary)]">Carregando…</p>;
@@ -1510,7 +1520,7 @@ export function TimelinePage() {
             <p className="lr-label mb-1">Saldo líquido</p>
             <Mono
               variant="number"
-              className="text-lg font-semibold text-[var(--lr-text)]"
+              className="text-[2rem] tracking-[-0.02em] text-[var(--lr-text)]"
             >
               {formatMoney(netBalanceCents)}
             </Mono>
@@ -1518,11 +1528,18 @@ export function TimelinePage() {
             {(accountsQuery.data ?? []).length > 0 ? (
               <div className="mt-4 flex flex-col gap-2 border-t border-[var(--lr-border)] pt-3">
                 {(accountsQuery.data ?? []).map((a) => (
-                  <div
-                    key={a.id}
-                    className="flex items-center justify-between gap-2"
-                  >
-                    <Body as="span" muted className="truncate text-[.8125rem]">
+                  <div key={a.id} className="flex items-center gap-2.5">
+                    <InstitutionMark
+                      logoUrl={a.logoUrl}
+                      name={a.type === "cash" ? "Carteira" : a.institutionName}
+                      tone={a.type === "cash" ? "gold" : "petrol"}
+                      size="sm"
+                    />
+                    <Body
+                      as="span"
+                      muted
+                      className="min-w-0 flex-1 truncate text-[.8125rem]"
+                    >
                       {a.name || a.institutionName}
                     </Body>
                     <Mono
@@ -1551,13 +1568,21 @@ export function TimelinePage() {
               <Body as="span" muted>
                 Patrimônio total
               </Body>
-              <Mono
-                variant="number"
-                tone={netWorthCents < 0 ? "out" : "default"}
-                className="text-[.9375rem]"
-              >
-                {formatMoney(netWorthCents)}
-              </Mono>
+              {insightsQuery.data ? (
+                <Mono
+                  variant="number"
+                  tone={
+                    insightsQuery.data.patrimonioTotal.valueCents < 0
+                      ? "out"
+                      : "default"
+                  }
+                  className="text-[.9375rem]"
+                >
+                  {formatMoney(insightsQuery.data.patrimonioTotal.valueCents)}
+                </Mono>
+              ) : (
+                <Skeleton className="h-4 w-20 rounded-[var(--lr-r-sm)]" />
+              )}
             </div>
             {openInvoices.length > 0 ? (
               <ul className="mt-3 flex flex-col gap-1 border-t border-[var(--lr-border)] pt-3">
@@ -1586,12 +1611,16 @@ export function TimelinePage() {
             <div className="flex items-end justify-between gap-2">
               <div>
                 <p className="lr-label mb-1 text-[.625rem]">DISPONÍVEL HOJE</p>
-                <Mono
-                  variant="number"
-                  className="text-xl font-semibold text-[var(--lr-text)]"
-                >
-                  {formatMoney(netWorthCents)}
-                </Mono>
+                {insightsQuery.data ? (
+                  <Mono
+                    variant="number"
+                    className="text-[1.5rem] text-[var(--lr-text)]"
+                  >
+                    {formatMoney(insightsQuery.data.disponivelHoje.valueCents)}
+                  </Mono>
+                ) : (
+                  <Skeleton className="h-7 w-28 rounded-[var(--lr-r-sm)]" />
+                )}
               </div>
               {/* REBRAND (Task 1.3): blue-700 -> graphite-700 for this plain
                   text link. Same open blue->graphite product question as
