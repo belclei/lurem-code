@@ -99,7 +99,7 @@ export function AppLayout() {
   return (
     <div className="flex min-h-screen bg-[var(--lr-bg)]">
       <aside className="sticky top-0 flex h-screen w-[248px] flex-none flex-col bg-[#090F1A] px-4 py-6 text-[var(--lr-ivory-100)]">
-        <div className="px-2 pt-2 pb-7">
+        <div className="px-2 pt-2 pb-7 w-full flex items-center justify-center">
           <img src="/logo.png" alt="Lurem" className="w-[168px]" />
         </div>
 
