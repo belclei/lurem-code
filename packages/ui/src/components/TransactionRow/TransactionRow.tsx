@@ -95,10 +95,7 @@ function RowHeader(props: TransactionRowProps) {
   return (
     <div className="flex items-center gap-3">
       {props.categoryIcon ? (
-        <span
-          aria-hidden="true"
-          className="h-5 w-5 flex-none text-[var(--lr-text-secondary)]"
-        >
+        <span aria-hidden="true" className="flex-none">
           {props.categoryIcon}
         </span>
       ) : null}
