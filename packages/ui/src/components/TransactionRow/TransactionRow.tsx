@@ -148,21 +148,44 @@ function RowHeader(props: TransactionRowProps) {
           {formatMoney(props.amountCents)}
         </Mono>
         {props.variant === "installment" ? (
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            className={[
-              "h-3.5 w-3.5 flex-none text-[var(--lr-text-secondary)] transition-transform duration-150",
-              props.expanded ? "rotate-180" : "",
-            ].join(" ")}
+          // A real <button>, not the whole Card, is the interactive element
+          // here: the card also contains "Ver todas as parcelas"/"Editar"
+          // <button>s below, and a role="button" ancestor (which is what
+          // Card becomes whenever it's given an onClick) must never contain
+          // interactive descendants — nested interactive controls are a
+          // WAI-ARIA authoring-practices violation. See TransactionRow's own
+          // `clickable` computation, which now excludes this variant.
+          <button
+            type="button"
+            aria-label={
+              props.expanded ? "Recolher parcelamento" : "Expandir parcelamento"
+            }
+            onClick={(event) => {
+              // Purely defensive: the outer Card no longer has an onClick
+              // for this variant, so there's nothing to bubble into — but
+              // this mirrors the stopPropagation already used by the
+              // "Ver todas as parcelas"/"Editar" buttons below.
+              event.stopPropagation();
+              props.onClick?.();
+            }}
+            className="flex-none rounded-[var(--lr-r-full)] p-1 text-[var(--lr-text-secondary)] hover:bg-[var(--lr-surface-sunken)]"
           >
-            <path
-              fillRule="evenodd"
-              d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-              clipRule="evenodd"
-            />
-          </svg>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className={[
+                "h-3.5 w-3.5 transition-transform duration-150",
+                props.expanded ? "rotate-180" : "",
+              ].join(" ")}
+            >
+              <path
+                fillRule="evenodd"
+                d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
         ) : null}
       </div>
     </div>
@@ -247,7 +270,15 @@ function InstallmentDetails({
  * business state itself (§6.6, BACKLOG US-2.3).
  */
 export function TransactionRow(props: TransactionRowProps) {
-  const clickable = props.variant !== "scheduled" && Boolean(props.onClick);
+  // "scheduled" never gets a card-level onClick (its type declares
+  // `onClick?: never`); "installment" now exposes its own toggle only via
+  // the chevron <button> in RowHeader (see there) so the whole row — which
+  // also contains "Ver todas as parcelas"/"Editar" <button>s — doesn't
+  // become a role="button" ancestor with interactive descendants.
+  const clickable =
+    props.variant !== "scheduled" &&
+    props.variant !== "installment" &&
+    Boolean(props.onClick);
 
   return (
     <Card

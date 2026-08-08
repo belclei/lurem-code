@@ -1034,6 +1034,7 @@ export function TimelinePage() {
     onSuccess: () => {
       invalidateTimeline();
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["insights"] });
     },
   });
   const skipMutation = useMutation({
@@ -1047,6 +1048,7 @@ export function TimelinePage() {
     onSuccess: () => {
       invalidateTimeline();
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["insights"] });
     },
   });
   const scheduledHandlers: ScheduledHandlers = {
@@ -1298,13 +1300,18 @@ export function TimelinePage() {
             onCreated={() => {
               queryClient.invalidateQueries({ queryKey: ["timeline"] });
               queryClient.invalidateQueries({ queryKey: ["accounts"] });
+              queryClient.invalidateQueries({ queryKey: ["insights"] });
             }}
           />
           <EditTransactionDialog
+            key={editingTx?.id ?? "closed"}
             tx={editingTx}
             onClose={() => setEditingTx(null)}
             onSaved={() => {
               queryClient.invalidateQueries({ queryKey: ["timeline"] });
+              queryClient.invalidateQueries({ queryKey: ["accounts"] });
+              queryClient.invalidateQueries({ queryKey: ["cards"] });
+              queryClient.invalidateQueries({ queryKey: ["insights"] });
             }}
           />
 
@@ -1385,9 +1392,10 @@ export function TimelinePage() {
               <WalletDialog
                 open={walletDialogOpen}
                 onClose={() => setWalletDialogOpen(false)}
-                onCreated={() =>
-                  queryClient.invalidateQueries({ queryKey: ["accounts"] })
-                }
+                onCreated={() => {
+                  queryClient.invalidateQueries({ queryKey: ["accounts"] });
+                  queryClient.invalidateQueries({ queryKey: ["insights"] });
+                }}
               />
             </div>
           ) : (
