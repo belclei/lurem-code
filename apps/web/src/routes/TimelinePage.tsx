@@ -977,7 +977,7 @@ export function TimelinePage() {
   const { greeting, dateLabel } = greetingAndDate();
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
+    <div className="mx-auto max-w-[1180px] px-12 pt-10 pb-24">
       {!user.hasCompleteProfile ? (
         <div className="mb-6">
           <ProfileIncompleteAlert
@@ -994,24 +994,40 @@ export function TimelinePage() {
 
       <div className="grid gap-8 lg:grid-cols-[1fr_280px]">
         <div>
-          <div className="mb-6 flex items-start justify-between gap-4">
+          <div className="mb-7 flex items-end justify-between gap-6">
             <div>
-              <Body as="p" muted className="text-[.8125rem]">
-                {dateLabel}
-              </Body>
-              <h1 className="mt-1 text-xl font-bold text-[var(--lr-text)]">
+              <p className="lr-label mb-2">{dateLabel}</p>
+              <h1 className="mb-1.5 text-[2rem] font-normal tracking-[-0.02em] text-[var(--lr-text)]">
                 {greeting}, {user.name}.
               </h1>
-              <Body muted className="mt-1">
+              <Body muted>
                 A narrativa do seu dinheiro — causa e efeito, dia a dia.
               </Body>
             </div>
             {/* Hidden during ativação (§6.11): sem conta/cartão cadastrado, os
                 selects de destino do NewTransactionDialog ficam vazios e o
                 usuário nunca consegue submeter o formulário — um beco sem
-                saída em vez de um "+ Transação" utilizável. */}
+                saída em vez de um botão utilizável. "Importar" (§2) fica de fora:
+                o pipeline de importação/revisão ainda não existe no app (design
+                doc de conformância, decisão de escopo #1). */}
             {pendingActivation.length === 0 ? (
-              <Button onClick={() => setTxDialogOpen(true)}>+ Transação</Button>
+              <Button
+                variant="secondary"
+                icon={
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                }
+                onClick={() => setTxDialogOpen(true)}
+              >
+                Nova transação
+              </Button>
             ) : null}
           </div>
           <NewTransactionDialog
