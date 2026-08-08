@@ -137,16 +137,34 @@ function RowHeader(props: TransactionRowProps) {
           {props.variant === "transfer" ? ` · ${props.transferToLabel}` : ""}
         </Body>
       </div>
-      <Mono
-        variant="number"
-        tone={
-          props.variant === "scheduled" ? "estimate" : KIND_TONE[props.kind]
-        }
-        className="flex-none"
-      >
-        {KIND_SIGN[props.kind]}
-        {formatMoney(props.amountCents)}
-      </Mono>
+      <div className="flex flex-none items-center gap-1.5">
+        <Mono
+          variant="number"
+          tone={
+            props.variant === "scheduled" ? "estimate" : KIND_TONE[props.kind]
+          }
+        >
+          {KIND_SIGN[props.kind]}
+          {formatMoney(props.amountCents)}
+        </Mono>
+        {props.variant === "installment" ? (
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className={[
+              "h-3.5 w-3.5 flex-none text-[var(--lr-text-secondary)] transition-transform duration-150",
+              props.expanded ? "rotate-180" : "",
+            ].join(" ")}
+          >
+            <path
+              fillRule="evenodd"
+              d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+              clipRule="evenodd"
+            />
+          </svg>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -160,36 +178,43 @@ function InstallmentDetails({
   );
 
   return (
-    <div className="mt-3 flex flex-col gap-2 border-t border-[var(--lr-border)] pt-3 text-[.8125rem]">
-      <div className="flex justify-between">
-        <Body as="span" muted>
-          Compra original ({formatDate(installment.originalDate)})
-        </Body>
-        <Mono variant="number">
-          {formatMoney(installment.originalAmountCents)}
-        </Mono>
+    <div className="mt-3 border-t border-[var(--lr-border)] pt-3">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-3.5 text-[.875rem]">
+        <div>
+          <p className="lr-label mb-1">Compra original</p>
+          <Mono variant="number">
+            {formatMoney(installment.originalAmountCents)}
+          </Mono>
+          {/* Not in TIMELINE.md §5c's literal "label + valor" cell
+              description, but dropping the purchase date entirely (the
+              old layout showed it inline) would silently remove visible
+              information — kept as a smaller secondary line instead.
+              Judgment call — flagged in the plan's report. */}
+          <Body muted className="mt-0.5 text-[.75rem]">
+            {formatDate(installment.originalDate)}
+          </Body>
+        </div>
+        <div>
+          <p className="lr-label mb-1">Plano</p>
+          <Body as="span">
+            {installment.installmentTotal}x
+            {installment.hasInterest ? " com juros" : " sem juros"}
+          </Body>
+        </div>
+        <div>
+          <p className="lr-label mb-1">Já pago</p>
+          <Mono variant="number" tone="in">
+            {formatMoney(installment.paidAmountCents)}
+          </Mono>
+        </div>
+        <div>
+          <p className="lr-label mb-1">A pagar</p>
+          <Mono variant="number" tone="out">
+            {formatMoney(installment.remainingAmountCents)}
+          </Mono>
+        </div>
       </div>
-      <Body as="span" muted>
-        Plano: {installment.installmentTotal}x
-        {installment.hasInterest ? " com juros" : " sem juros"}
-      </Body>
-      <div className="flex justify-between">
-        <Body as="span" muted>
-          Já pago ({installment.paidCount}x)
-        </Body>
-        <Mono variant="number" tone="in">
-          {formatMoney(installment.paidAmountCents)}
-        </Mono>
-      </div>
-      <div className="flex justify-between">
-        <Body as="span" muted>
-          A pagar ({installment.remainingCount}x)
-        </Body>
-        <Mono variant="number" tone="out">
-          {formatMoney(installment.remainingAmountCents)}
-        </Mono>
-      </div>
-      <div className="flex gap-1" aria-hidden="true">
+      <div className="mt-3.5 flex gap-1" aria-hidden="true">
         {segments.map((paid, i) => (
           <span
             // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length progress segments, no identity beyond position
@@ -203,10 +228,14 @@ function InstallmentDetails({
           />
         ))}
       </div>
-      <Body as="span" muted>
-        Próxima parcela: {formatDate(installment.nextInstallmentDate)} ·
-        Quitação: {formatDate(installment.payoffDate)}
-      </Body>
+      <div className="mt-3 flex items-center justify-between text-[.75rem]">
+        <Body as="span" muted>
+          Próxima: {formatDate(installment.nextInstallmentDate)}
+        </Body>
+        <Body as="span" muted>
+          Quitação: {formatDate(installment.payoffDate)}
+        </Body>
+      </div>
     </div>
   );
 }
@@ -231,18 +260,32 @@ export function TransactionRow(props: TransactionRowProps) {
         <InstallmentDetails installment={props.installment} />
       ) : null}
       {props.variant === "installment" ? (
-        <div className="mt-2 flex gap-3">
+        <div className="mt-3 flex gap-2 border-t border-[var(--lr-border)] pt-3">
           {props.onViewAllInstallments ? (
             <Button
-              variant="link"
+              variant="tertiary"
               size="sm"
-              onClick={props.onViewAllInstallments}
+              onClick={(event) => {
+                // Task 19 wires the whole card's own onClick to the same
+                // toggle — without this, clicking this button would ALSO
+                // bubble up and re-fire the card's onClick (both handlers run
+                // on a plain DOM click), double-toggling expand/collapse.
+                event.stopPropagation();
+                props.onViewAllInstallments?.();
+              }}
             >
               Ver todas as parcelas
             </Button>
           ) : null}
           {props.onEdit ? (
-            <Button variant="link" size="sm" onClick={props.onEdit}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={(event) => {
+                event.stopPropagation();
+                props.onEdit?.();
+              }}
+            >
               Editar
             </Button>
           ) : null}
