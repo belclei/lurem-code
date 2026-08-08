@@ -259,7 +259,8 @@ export function TransactionRow(props: TransactionRowProps) {
       {props.variant === "installment" && props.expanded ? (
         <InstallmentDetails installment={props.installment} />
       ) : null}
-      {props.variant === "installment" ? (
+      {props.variant === "installment" &&
+      (props.onViewAllInstallments || props.onEdit) ? (
         <div className="mt-3 flex gap-2 border-t border-[var(--lr-border)] pt-3">
           {props.onViewAllInstallments ? (
             <Button
