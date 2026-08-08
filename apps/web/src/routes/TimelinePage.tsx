@@ -738,25 +738,36 @@ function transactionRowProps(
   tx: TransactionDto,
   scheduled: ScheduledHandlers,
   categoriesById: Map<string, CategoryDto>,
+  accountsById: Map<string, AccountDto>,
+  cardsById: Map<string, CardDto>,
   expandedInstallments: Set<string>,
   onToggleInstallment: (id: string) => void,
+  onEditTransaction: (tx: TransactionDto) => void,
 ) {
   const category = tx.categoryId
     ? categoriesById.get(tx.categoryId)
     : undefined;
+  // TIMELINE.md §5.2a's meta is "instituição · categoria" (hour dropped
+  // per the design doc's own scope decision #3, not both fields) — this
+  // was only ever computing the installment "Parcela N/M" string,
+  // leaving every other row's meta as just the bare date. Real gap,
+  // fixed here alongside this task's other transactionRowProps changes.
+  const institutionName = tx.accountId
+    ? accountsById.get(tx.accountId)?.institutionName
+    : tx.creditCardId
+      ? cardsById.get(tx.creditCardId)?.institutionName
+      : undefined;
+  const metaParts = [institutionName, category?.name].filter(
+    (part): part is string => Boolean(part),
+  );
   const common = {
     description: tx.description,
     date: tx.transactionDate,
     kind: tx.kind,
     amountCents: tx.amountCents,
     source: tx.source,
-    categoryIcon: category ? (
-      <CategoryIcon slug={category.icon} className="h-5 w-5 flex-none" />
-    ) : undefined,
-    categoryLabel:
-      tx.installmentTotal && tx.installmentNumber
-        ? `Parcela ${tx.installmentNumber}/${tx.installmentTotal}`
-        : undefined,
+    categoryIcon: category ? <CategoryIcon slug={category.icon} /> : undefined,
+    categoryLabel: metaParts.length > 0 ? metaParts.join(" · ") : undefined,
   };
   if (tx.isScheduled) {
     return (
@@ -766,9 +777,7 @@ function transactionRowProps(
         variant="scheduled"
         onConfirm={() => scheduled.onConfirm(tx.id)}
         onSkip={() => scheduled.onSkip(tx.id)}
-        // Same as TransactionsPage (US-3.9) — inline editing from a row
-        // isn't built anywhere yet, not a Timeline-specific gap.
-        onEdit={() => {}}
+        onEdit={() => onEditTransaction(tx)}
         onDelete={() => scheduled.onDelete(tx.id)}
       />
     );
@@ -795,7 +804,9 @@ function transactionRowProps(
         variant="installment"
         installment={tx.installmentDetails}
         expanded={expandedInstallments.has(tx.id)}
+        onClick={() => onToggleInstallment(tx.id)}
         onViewAllInstallments={() => onToggleInstallment(tx.id)}
+        onEdit={() => onEditTransaction(tx)}
       />
     );
   }
@@ -983,6 +994,9 @@ export function TimelinePage() {
   const [expandedInstallments, setExpandedInstallments] = useState<Set<string>>(
     new Set(),
   );
+  // Task 18/19 (§5b/§5c) — the transaction currently open in
+  // EditTransactionDialog; null means closed.
+  const [editingTx, setEditingTx] = useState<TransactionDto | null>(null);
   const queryClient = useQueryClient();
 
   function toggleInstallment(id: string) {
@@ -1284,6 +1298,13 @@ export function TimelinePage() {
             onCreated={() => {
               queryClient.invalidateQueries({ queryKey: ["timeline"] });
               queryClient.invalidateQueries({ queryKey: ["accounts"] });
+            }}
+          />
+          <EditTransactionDialog
+            tx={editingTx}
+            onClose={() => setEditingTx(null)}
+            onSaved={() => {
+              queryClient.invalidateQueries({ queryKey: ["timeline"] });
             }}
           />
 
@@ -1676,8 +1697,11 @@ export function TimelinePage() {
                             tx,
                             scheduledHandlers,
                             categoriesById,
+                            accountsById,
+                            cardsById,
                             expandedInstallments,
                             toggleInstallment,
+                            (t) => setEditingTx(t),
                           );
                         })}
                       </div>
