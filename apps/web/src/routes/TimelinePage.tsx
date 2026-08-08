@@ -296,7 +296,25 @@ function dayOfWeek(dateYmd: string): string {
   const month = Number(dateYmd.slice(5, 7));
   const day = Number(dateYmd.slice(8, 10));
   const date = new Date(year, month - 1, day);
-  return date.toLocaleDateString("pt-BR", { weekday: "long" }).toUpperCase();
+  const long = date.toLocaleDateString("pt-BR", { weekday: "long" });
+  // "terça-feira" → "Terça" (TIMELINE.md §5.1's own example). Intl's
+  // pt-BR "long" weekday always appends "-feira" except sábado/domingo,
+  // which have none — splitting on "-" and keeping the first segment
+  // handles both uniformly instead of a 7-entry lookup table.
+  const firstWord = long.split("-")[0] as string;
+  return firstWord.charAt(0).toUpperCase() + firstWord.slice(1);
+}
+
+/** "21 de julho" (day + full month, no year) — TIMELINE.md §5.1's day
+ * header. `formatDate` (packages/ui) is scoped to dd/mm/aaaa only; this
+ * is Timeline-specific long-form display, same page-local pattern as
+ * `dayOfWeek`/`shortDate` above. */
+function longDayMonth(dateYmd: string): string {
+  const year = Number(dateYmd.slice(0, 4));
+  const month = Number(dateYmd.slice(5, 7));
+  const day = Number(dateYmd.slice(8, 10));
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString("pt-BR", { day: "numeric", month: "long" });
 }
 
 // §3's accounts popover row: "ponto colorido da instituição" — neither
@@ -1407,11 +1425,16 @@ export function TimelinePage() {
                       }
                     >
                       <div className="mb-3 flex items-center justify-between gap-2">
-                        <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-[var(--lr-text-secondary)]">
+                        <h2 className="flex items-center gap-2 text-[.8125rem] font-bold text-[var(--lr-text)]">
                           {today ? "HOJE · " : ""}
-                          {day.date}
+                          {longDayMonth(day.date)}
                           {today ? (
-                            <Badge kind="status" status="active">
+                            // Badge has no literal "warning" status (TIMELINE.md §5.1 wants
+                            // hmc-badge--warning) — "pending" is Badge's own gold/warning-toned
+                            // entry (see Badge.tsx STATUS_STYLES.pending), the closest existing
+                            // match without adding a 6th BadgeStatus for one call site.
+                            // Judgment call — flagged in the plan's report.
+                            <Badge kind="status" status="pending">
                               {dow}
                             </Badge>
                           ) : null}
