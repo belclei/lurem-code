@@ -708,6 +708,7 @@ function resolveTransferParty(
     return {
       name: account?.name || account?.institutionName || "Conta",
       institution: account?.institutionName ?? "",
+      logoUrl: account?.logoUrl,
       balanceAfterCents: account?.balanceCents ?? 0,
     };
   }
@@ -716,6 +717,7 @@ function resolveTransferParty(
     return {
       name: card?.name || card?.institutionName || "Cartão",
       institution: card?.institutionName ?? "",
+      logoUrl: card?.logoUrl,
       balanceAfterCents: card ? -card.usedCents : 0,
     };
   }
