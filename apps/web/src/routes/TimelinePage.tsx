@@ -1138,68 +1138,78 @@ export function TimelinePage() {
 
           {pendingActivation.length > 0 ? (
             <div>
-              <p className="mb-4 text-sm text-[var(--lr-text-secondary)]">
-                {activationDoneCount} de 3 concluídos
+              <p className="mb-4 text-[.9375rem] text-[var(--lr-text-secondary)]">
+                Sua história ainda vai começar. Cadastre suas contas e cartões —
+                na ordem que quiser — e tudo aparece aqui em ordem, com o saldo
+                de cada dia.
               </p>
-              <div className="flex flex-col gap-3">
-                {hasWallet ? (
-                  <Alert
-                    variant="success"
-                    title="Carteira registrada"
-                    description="Seu dinheiro físico já faz parte da Timeline."
-                  />
-                ) : (
-                  <Alert
-                    variant="warning"
-                    title="Carteira"
-                    description="Quanto de dinheiro físico você tem hoje?"
-                    actions={[
-                      {
-                        label: "Adicionar",
-                        onClick: () => setWalletDialogOpen(true),
-                      },
-                    ]}
-                  />
-                )}
-                {hasBankAccount ? (
-                  <Alert
-                    variant="success"
-                    title="Contas registradas"
-                    description="Suas contas já aparecem na Timeline."
-                  />
-                ) : (
-                  <Alert
-                    variant="info"
-                    title="Contas"
-                    description="Adicione as contas de banco onde seu dinheiro vive — corrente ou poupança."
-                    actions={[
-                      {
-                        label: "Adicionar contas",
-                        onClick: () => navigate({ to: "/accounts" }),
-                      },
-                    ]}
-                  />
-                )}
-                {hasCard ? (
-                  <Alert
-                    variant="success"
-                    title="Cartões registrados"
-                    description="Seus cartões já aparecem na Timeline."
-                  />
-                ) : (
-                  <Alert
-                    variant="info"
-                    title="Cartões"
-                    description="Adicione seus cartões de crédito — limite, fechamento e vencimento."
-                    actions={[
-                      {
-                        label: "Adicionar cartões",
-                        onClick: () => navigate({ to: "/accounts" }),
-                      },
-                    ]}
-                  />
-                )}
-              </div>
+              <section>
+                <h2 className="mb-1 text-[.8125rem] font-bold text-[var(--lr-text)]">
+                  PRIMEIROS PASSOS
+                </h2>
+                <p className="mb-4 text-sm text-[var(--lr-text-secondary)]">
+                  {activationDoneCount} de 3 concluídos
+                </p>
+                <div className="flex flex-col gap-2">
+                  {hasWallet ? (
+                    <Alert
+                      variant="success"
+                      title="Carteira registrada"
+                      description="Seu dinheiro físico já faz parte da Timeline."
+                    />
+                  ) : (
+                    <Alert
+                      variant="warning"
+                      title="Carteira"
+                      description="Quanto de dinheiro físico você tem hoje?"
+                      actions={[
+                        {
+                          label: "Adicionar",
+                          onClick: () => setWalletDialogOpen(true),
+                        },
+                      ]}
+                    />
+                  )}
+                  {hasBankAccount ? (
+                    <Alert
+                      variant="success"
+                      title="Contas registradas"
+                      description="Suas contas já aparecem na Timeline."
+                    />
+                  ) : (
+                    <Alert
+                      variant="info"
+                      title="Contas"
+                      description="Adicione as contas de banco onde seu dinheiro vive — corrente ou poupança."
+                      actions={[
+                        {
+                          label: "Adicionar contas",
+                          onClick: () => navigate({ to: "/accounts" }),
+                        },
+                      ]}
+                    />
+                  )}
+                  {hasCard ? (
+                    <Alert
+                      variant="success"
+                      title="Cartões registrados"
+                      description="Seus cartões já aparecem na Timeline."
+                    />
+                  ) : (
+                    <Alert
+                      variant="info"
+                      title="Cartões"
+                      description="Adicione seus cartões de crédito — limite, fechamento e vencimento."
+                      actions={[
+                        {
+                          label: "Adicionar cartões",
+                          onClick: () => navigate({ to: "/accounts" }),
+                        },
+                      ]}
+                    />
+                  )}
+                </div>
+              </section>
               <WalletDialog
                 open={walletDialogOpen}
                 onClose={() => setWalletDialogOpen(false)}
@@ -1541,125 +1551,148 @@ export function TimelinePage() {
         </div>
 
         <aside className="flex flex-col gap-4 lg:sticky lg:top-10">
-          <Card>
-            <p className="lr-label mb-1">Saldo líquido</p>
-            <Mono
-              variant="number"
-              className="text-[2rem] tracking-[-0.02em] text-[var(--lr-text)]"
-            >
-              {formatMoney(netBalanceCents)}
-            </Mono>
-            {/* §6.12 item 6 — quebra por conta/instituição sob o total. */}
-            {(accountsQuery.data ?? []).length > 0 ? (
-              <div className="mt-4 flex flex-col gap-2 border-t border-[var(--lr-border)] pt-3">
-                {(accountsQuery.data ?? []).map((a) => (
-                  <div key={a.id} className="flex items-center gap-2.5">
-                    <InstitutionMark
-                      logoUrl={a.logoUrl}
-                      name={a.type === "cash" ? "Carteira" : a.institutionName}
-                      tone={a.type === "cash" ? "gold" : "petrol"}
-                      size="sm"
-                    />
-                    <Body
-                      as="span"
-                      muted
-                      className="min-w-0 flex-1 truncate text-[.8125rem]"
-                    >
-                      {a.name || a.institutionName}
-                    </Body>
-                    <Mono
-                      variant="number"
-                      className="flex-none text-[.8125rem]"
-                    >
-                      {formatMoney(a.balanceCents)}
-                    </Mono>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </Card>
-
-          <Card>
-            <div className="flex items-baseline justify-between">
-              <Body as="span" muted>
-                Faturas em aberto
+          {pendingActivation.length > 0 ? (
+            <Card dashed className="text-center">
+              <Body muted className="text-[.875rem]">
+                Seus números aparecem aqui assim que carteira, contas e cartões
+                estiverem cadastrados.
               </Body>
-              <Mono variant="number" tone="out" className="text-[.9375rem]">
-                {totalInvoicesCents > 0 ? "− " : ""}
-                {formatMoney(totalInvoicesCents)}
-              </Mono>
-            </div>
-            <div className="mt-3 flex items-baseline justify-between border-t border-[var(--lr-border)] pt-3">
-              <Body as="span" muted>
-                Patrimônio total
-              </Body>
-              {insightsQuery.data ? (
+            </Card>
+          ) : (
+            <>
+              <Card>
+                <p className="lr-label mb-1">Saldo líquido</p>
                 <Mono
                   variant="number"
-                  tone={
-                    insightsQuery.data.patrimonioTotal.valueCents < 0
-                      ? "out"
-                      : "default"
-                  }
-                  className="text-[.9375rem]"
+                  className="text-[2rem] tracking-[-0.02em] text-[var(--lr-text)]"
                 >
-                  {formatMoney(insightsQuery.data.patrimonioTotal.valueCents)}
+                  {formatMoney(netBalanceCents)}
                 </Mono>
-              ) : (
-                <Skeleton className="h-4 w-20 rounded-[var(--lr-r-sm)]" />
-              )}
-            </div>
-            {openInvoices.length > 0 ? (
-              <ul className="mt-3 flex flex-col gap-1 border-t border-[var(--lr-border)] pt-3">
-                {openInvoices.map((c) => (
-                  <li
-                    key={c.id}
-                    className="flex items-center justify-between gap-2"
-                  >
-                    <Body as="span" muted className="truncate text-[.8125rem]">
-                      {c.name || c.institutionName}
-                    </Body>
+                {/* §6.12 item 6 — quebra por conta/instituição sob o total. */}
+                {(accountsQuery.data ?? []).length > 0 ? (
+                  <div className="mt-4 flex flex-col gap-2 border-t border-[var(--lr-border)] pt-3">
+                    {(accountsQuery.data ?? []).map((a) => (
+                      <div key={a.id} className="flex items-center gap-2.5">
+                        <InstitutionMark
+                          logoUrl={a.logoUrl}
+                          name={
+                            a.type === "cash" ? "Carteira" : a.institutionName
+                          }
+                          tone={a.type === "cash" ? "gold" : "petrol"}
+                          size="sm"
+                        />
+                        <Body
+                          as="span"
+                          muted
+                          className="min-w-0 flex-1 truncate text-[.8125rem]"
+                        >
+                          {a.name || a.institutionName}
+                        </Body>
+                        <Mono
+                          variant="number"
+                          className="flex-none text-[.8125rem]"
+                        >
+                          {formatMoney(a.balanceCents)}
+                        </Mono>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </Card>
+
+              <Card>
+                <div className="flex items-baseline justify-between">
+                  <Body as="span" muted>
+                    Faturas em aberto
+                  </Body>
+                  <Mono variant="number" tone="out" className="text-[.9375rem]">
+                    {totalInvoicesCents > 0 ? "− " : ""}
+                    {formatMoney(totalInvoicesCents)}
+                  </Mono>
+                </div>
+                <div className="mt-3 flex items-baseline justify-between border-t border-[var(--lr-border)] pt-3">
+                  <Body as="span" muted>
+                    Patrimônio total
+                  </Body>
+                  {insightsQuery.data ? (
                     <Mono
                       variant="number"
-                      tone="out"
-                      className="flex-none text-[.8125rem]"
+                      tone={
+                        insightsQuery.data.patrimonioTotal.valueCents < 0
+                          ? "out"
+                          : "default"
+                      }
+                      className="text-[.9375rem]"
                     >
-                      − {formatMoney(c.usedCents)}
+                      {formatMoney(
+                        insightsQuery.data.patrimonioTotal.valueCents,
+                      )}
                     </Mono>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </Card>
+                  ) : (
+                    <Skeleton className="h-4 w-20 rounded-[var(--lr-r-sm)]" />
+                  )}
+                </div>
+                {openInvoices.length > 0 ? (
+                  <ul className="mt-3 flex flex-col gap-1 border-t border-[var(--lr-border)] pt-3">
+                    {openInvoices.map((c) => (
+                      <li
+                        key={c.id}
+                        className="flex items-center justify-between gap-2"
+                      >
+                        <Body
+                          as="span"
+                          muted
+                          className="truncate text-[.8125rem]"
+                        >
+                          {c.name || c.institutionName}
+                        </Body>
+                        <Mono
+                          variant="number"
+                          tone="out"
+                          className="flex-none text-[.8125rem]"
+                        >
+                          − {formatMoney(c.usedCents)}
+                        </Mono>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </Card>
 
-          <Card sunken>
-            <div className="flex items-end justify-between gap-2">
-              <div>
-                <p className="lr-label mb-1 text-[.625rem]">DISPONÍVEL HOJE</p>
-                {insightsQuery.data ? (
-                  <Mono
-                    variant="number"
-                    className="text-[1.5rem] text-[var(--lr-text)]"
+              <Card sunken>
+                <div className="flex items-end justify-between gap-2">
+                  <div>
+                    <p className="lr-label mb-1 text-[.625rem]">
+                      DISPONÍVEL HOJE
+                    </p>
+                    {insightsQuery.data ? (
+                      <Mono
+                        variant="number"
+                        className="text-[1.5rem] text-[var(--lr-text)]"
+                      >
+                        {formatMoney(
+                          insightsQuery.data.disponivelHoje.valueCents,
+                        )}
+                      </Mono>
+                    ) : (
+                      <Skeleton className="h-7 w-28 rounded-[var(--lr-r-sm)]" />
+                    )}
+                  </div>
+                  {/* REBRAND (Task 1.3): blue-700 -> graphite-700 for this plain
+                      text link. Same open blue->graphite product question as
+                      Alert's info variant / Button's link variant / Badge's blue
+                      category color — not a settled design decision, flagging
+                      for product sign-off (see task-1.3 report). */}
+                  <Link
+                    to="/dashboard"
+                    className="inline-flex text-xs text-[var(--lr-graphite-700)] hover:underline"
                   >
-                    {formatMoney(insightsQuery.data.disponivelHoje.valueCents)}
-                  </Mono>
-                ) : (
-                  <Skeleton className="h-7 w-28 rounded-[var(--lr-r-sm)]" />
-                )}
-              </div>
-              {/* REBRAND (Task 1.3): blue-700 -> graphite-700 for this plain
-                  text link. Same open blue->graphite product question as
-                  Alert's info variant / Button's link variant / Badge's blue
-                  category color — not a settled design decision, flagging
-                  for product sign-off (see task-1.3 report). */}
-              <Link
-                to="/dashboard"
-                className="inline-flex text-xs text-[var(--lr-graphite-700)] hover:underline"
-              >
-                Ver análise →
-              </Link>
-            </div>
-          </Card>
+                    Ver análise →
+                  </Link>
+                </div>
+              </Card>
+            </>
+          )}
         </aside>
       </div>
     </div>
