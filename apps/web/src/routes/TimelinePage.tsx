@@ -1057,7 +1057,7 @@ export function TimelinePage() {
         </div>
       ) : null}
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_280px]">
+      <div className="grid items-start gap-8 lg:grid-cols-[1fr_320px]">
         <div>
           <div className="mb-7 flex items-end justify-between gap-6">
             <div>
@@ -1505,7 +1505,7 @@ export function TimelinePage() {
           )}
         </div>
 
-        <aside className="flex flex-col gap-4">
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-10">
           <Card>
             <p className="lr-label mb-1">Saldo líquido</p>
             <Mono
