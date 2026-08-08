@@ -16,12 +16,15 @@
 :root {
   /* ---- Paleta bruta ---- */
   --lr-night-900: #0d1420;
-  --lr-night-800: #282e39;
-  --lr-night-700: #434852;
+  /* Night 800/700: v1.4 — realinhados à exportação de cor mais recente
+     (mais escuros que o v1.0 original), sem impacto em contraste de
+     texto (usados como superfície/borda, não texto). */
+  --lr-night-800: #161f2e;
+  --lr-night-700: #2c3a4e;
   --lr-night-600: #5e626a;
   --lr-night-500: #797c83;
   --lr-night-400: #93979c;
-  --lr-night-300: #aeb1b5;
+  --lr-night-300: #a8b2c0; /* v1.4 — realinhado à exportação de cor mais recente */
   --lr-night-200: #c9cbcd;
   --lr-night-100: #e4e5e6;
 
@@ -79,7 +82,10 @@
   --lr-surface-sunken: var(--lr-ivory-000);
   --lr-border: var(--lr-graphite-200);
   --lr-text: var(--lr-night-900);
-  --lr-text-secondary: var(--lr-graphite-600);
+  /* v1.4 — realinhado à exportação de cor mais recente (era graphite-600);
+     graphite-700 já existe como primitiva e bate no hex exportado, sem
+     introduzir valor novo. */
+  --lr-text-secondary: var(--lr-graphite-700);
   /* --lr-label: DESIGN_SYSTEM.md não tem matiz equivalente ao antigo
      blue-700/300 (label institucional). Em vez de inventar uma cor não
      especificada, alias para text-secondary — placeholder até revisão
@@ -92,10 +98,12 @@
   /* Foco visível — contorno em tinta (contraste) + halo dourado
      (significado), mesma lógica do arquivo anterior (ink-900 + sand-500). */
   --lr-focus-ring: var(--lr-night-900);
-  /* Positivo: DESIGN_SYSTEM.md §1.4 não diferencia claro/escuro (dá só
-     "Petrol 600"), mas petrol-600 tem 2.92:1 sobre night-900 — falha
-     AA. Override em [data-theme="dark"] usa petrol-500 (5.17:1). */
-  --lr-positive: var(--lr-petrol-600);
+  /* Positivo (claro): v1.4 — realinhado à exportação de cor mais recente,
+     petrol-600 → petrol-700 (texto escuro sobre superfície clara, só
+     melhora contraste). Nunca usar petrol-700 no escuro: 2,92:1 do
+     petrol-600 já falha AA contra night-900 e petrol-700 é ainda mais
+     escuro. Override em [data-theme="dark"] mantém petrol-500 (5,17:1). */
+  --lr-positive: var(--lr-petrol-700);
   --lr-negative: var(--lr-terracota-600);
 
   /* Dinheiro — aliases semânticos. A indireção via var() já resolve o

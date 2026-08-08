@@ -275,6 +275,56 @@ const INSTITUTIONS: Array<{
     compeCode: "133",
     logoAsset: "ui-tokens/institutions/cresol.svg",
   },
+  {
+    name: "Banco Safra",
+    compeCode: "422",
+    logoAsset: "ui-tokens/institutions/safra.svg",
+  },
+  {
+    name: "Banco Pan",
+    compeCode: "623",
+    logoAsset: "ui-tokens/institutions/pan.svg",
+  },
+  {
+    name: "Banco BMG",
+    compeCode: "318",
+    logoAsset: "ui-tokens/institutions/bmg.svg",
+  },
+  {
+    name: "Banco Original",
+    compeCode: "212",
+    logoAsset: "ui-tokens/institutions/original.svg",
+  },
+  {
+    name: "Neon",
+    compeCode: "735",
+    logoAsset: "ui-tokens/institutions/neon.svg",
+  },
+  {
+    name: "Stone",
+    compeCode: "197",
+    logoAsset: "ui-tokens/institutions/stone.svg",
+  },
+  {
+    name: "BRB — Banco de Brasília",
+    compeCode: "070",
+    logoAsset: "ui-tokens/institutions/brb.svg",
+  },
+  {
+    name: "Banco Daycoval",
+    compeCode: "707",
+    logoAsset: "ui-tokens/institutions/daycoval.svg",
+  },
+  {
+    name: "Credisis",
+    compeCode: "097",
+    logoAsset: "ui-tokens/institutions/credisis.svg",
+  },
+  {
+    name: "Banco BV",
+    compeCode: "655",
+    logoAsset: "ui-tokens/institutions/bv.svg",
+  },
 ];
 
 async function seedInstitutions() {

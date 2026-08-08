@@ -1,9 +1,9 @@
 // apps/web/src/components/AppLayout.tsx
-// Sidebar shell for authenticated routes — design_handoff_lurem/README.md
-// "Shell do app" + design/Harmon.dc.html's <aside> (248px sticky, ink-900).
-// Markup/icons are a 1:1 port of that reference; Tailwind arbitrary-value
-// utilities instead of the handoff's raw inline styles, matching how the
-// rest of packages/ui already consumes the CSS-variable tokens.
+// Sidebar shell for authenticated routes (248px sticky). Tailwind
+// arbitrary-value utilities, matching how the rest of packages/ui already
+// consumes the CSS-variable tokens — except the sidebar background itself,
+// which is pinned to #090F1A (not --lr-night-900) to exactly match
+// logo.png's baked-in background so the image blends in seamlessly.
 import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import packageJson from "../../package.json";
@@ -86,42 +86,6 @@ const NAV_ITEMS: NavItemConfig[] = [
   },
 ];
 
-function LuremSymbol() {
-  return (
-    <svg viewBox="0 0 64 64" width="30" height="30" aria-hidden="true">
-      <path
-        d="M 44.62 13.98 A 22 22 0 0 1 44.62 50.02"
-        fill="none"
-        stroke="#F7F7F4"
-        strokeWidth="3.4"
-        strokeLinecap="round"
-      />
-      <path
-        d="M 19.38 50.02 A 22 22 0 0 1 19.38 13.98"
-        fill="none"
-        stroke="#F7F7F4"
-        strokeWidth="3.4"
-        strokeLinecap="round"
-      />
-      <path
-        d="M 10 32 H 24"
-        fill="none"
-        stroke="#F7F7F4"
-        strokeWidth="3.4"
-        strokeLinecap="round"
-      />
-      <path
-        d="M 40 32 H 54"
-        fill="none"
-        stroke="#F7F7F4"
-        strokeWidth="3.4"
-        strokeLinecap="round"
-      />
-      <circle cx="32" cy="32" r="4.6" fill="#E2C289" />
-    </svg>
-  );
-}
-
 export function AppLayout() {
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -134,10 +98,9 @@ export function AppLayout() {
 
   return (
     <div className="flex min-h-screen bg-[var(--lr-bg)]">
-      <aside className="sticky top-0 flex h-screen w-[248px] flex-none flex-col bg-[var(--lr-night-900)] px-4 py-6 text-[var(--lr-ivory-100)]">
-        <div className="flex items-center gap-3 px-2 pt-2 pb-7">
-          <LuremSymbol />
-          <span className="text-[1.2rem] tracking-[-0.01em]">Lurem</span>
+      <aside className="sticky top-0 flex h-screen w-[248px] flex-none flex-col bg-[#090F1A] px-4 py-6 text-[var(--lr-ivory-100)]">
+        <div className="px-2 pt-2 pb-7 w-full flex items-center justify-center">
+          <img src="/logo.png" alt="Lurem" className="w-[168px]" />
         </div>
 
         <nav className="flex flex-col gap-0.5">

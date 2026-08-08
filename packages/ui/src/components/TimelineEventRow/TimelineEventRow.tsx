@@ -77,44 +77,56 @@ function pct(
 // não julgamento" tone throughout (ARQUITETURA.md, recurring theme) — never
 // phrased as blame, even for `.rejected`/`.deleted` entries.
 const EVENT_TEXT: Record<DomainEventType, (p: DomainEventPayload) => string> = {
-  "account.created": (p) => `Conta ${p.institutionName ?? ""} criada`,
+  "account.created": (p) => `Você criou a conta ${p.institutionName ?? ""}`,
   "account.updated": (p) =>
     p.changed?.includes("overdraftLimitCents")
-      ? `Limite de cheque especial de ${p.institutionName ?? "conta"} alterado`
-      : `Conta ${p.institutionName ?? ""} atualizada`,
+      ? `Você alterou o limite de cheque especial de ${p.institutionName ?? "conta"}`
+      : `Você atualizou a conta ${p.institutionName ?? ""}`,
   "account.balance_adjusted": (p) =>
-    `Saldo de ${p.institutionName ?? "conta"} ajustado manualmente`,
+    `Você ajustou manualmente o saldo de ${p.institutionName ?? "conta"}`,
+  // over_limit_entered/cleared and invoice_closed/due are system-detected
+  // state changes, not something the user directly did — "Sua conta
+  // entrou em alerta" keeps the first-person *perspective* (possessive
+  // "sua/seu") without a false "Você entrou em alerta" subject.
   "account.over_limit_entered": (p) =>
-    `Conta ${p.institutionName ?? ""} entrou em alerta — ${formatMoney(p.balanceCents ?? 0)} além do limite`,
+    `Sua conta ${p.institutionName ?? ""} entrou em alerta — ${formatMoney(p.balanceCents ?? 0)} além do limite`,
   "account.over_limit_cleared": (p) =>
-    `Conta ${p.institutionName ?? ""} voltou para dentro do limite`,
-  "card.created": (p) => `Cartão ${p.institutionName ?? ""} adicionado`,
-  "card.updated": (p) => `Cartão ${p.institutionName ?? ""} atualizado`,
+    `Sua conta ${p.institutionName ?? ""} voltou para dentro do limite`,
+  "card.created": (p) => `Você adicionou o cartão ${p.institutionName ?? ""}`,
+  "card.updated": (p) => `Você atualizou o cartão ${p.institutionName ?? ""}`,
   "card.over_limit_entered": (p) =>
-    `Cartão ${p.institutionName ?? ""} entrou em alerta — ${pct(p.usedCents, p.limitCents)} do limite`,
+    `Seu cartão ${p.institutionName ?? ""} entrou em alerta — ${pct(p.usedCents, p.limitCents)} do limite`,
   "card.over_limit_cleared": (p) =>
-    `Cartão ${p.institutionName ?? ""} voltou para dentro do limite`,
+    `Seu cartão ${p.institutionName ?? ""} voltou para dentro do limite`,
   "card.invoice_closed": (p) =>
-    `Fatura ${p.institutionName ?? ""} fechou — ${formatMoney(p.totalCents ?? 0)}, vence em ${p.dueDate ? formatDate(p.dueDate) : "—"}`,
+    `Sua fatura ${p.institutionName ?? ""} fechou — ${formatMoney(p.totalCents ?? 0)}, vence em ${p.dueDate ? formatDate(p.dueDate) : "—"}`,
   "card.invoice_due": (p) =>
-    `Fatura ${p.institutionName ?? ""} vence hoje — ${formatMoney(p.totalCents ?? 0)}${
+    `Sua fatura ${p.institutionName ?? ""} vence hoje — ${formatMoney(p.totalCents ?? 0)}${
       p.autoDebitAccountName
         ? ` (descontada automaticamente de ${p.autoDebitAccountName})`
         : ""
     }`,
-  "transaction.created": () => "Transação registrada",
-  "transaction.updated": () => "Transação corrigida",
-  "transaction.deleted": () => "Transação removida",
-  "scheduled.confirmed": () => "Transação agendada confirmada",
-  "scheduled.skipped": () => "Ocorrência do mês pulada",
-  "scheduled.deleted": () => "Série de agendamento encerrada",
-  "recurring.created": () => "Nova recorrência cadastrada",
-  "recurring.paused": () => "Recorrência pausada",
-  "recurring.ended": () => "Recorrência encerrada",
+  "transaction.created": () => "Você registrou uma transação",
+  "transaction.updated": () => "Você corrigiu uma transação",
+  "transaction.deleted": () => "Você removeu uma transação",
+  "scheduled.confirmed": () => "Você confirmou uma transação agendada",
+  "scheduled.skipped": () => "Você pulou a ocorrência do mês",
+  "scheduled.deleted": () => "Você encerrou uma série de agendamento",
+  "recurring.created": () => "Você cadastrou uma nova recorrência",
+  "recurring.paused": () => "Você pausou uma recorrência",
+  "recurring.ended": () => "Você encerrou uma recorrência",
   "import.completed": (p) =>
-    `Fatura ${p.institutionName ?? ""} — ${p.count ?? 0} transações importadas`,
-  "invite.deleted": () => "Convite excluído",
-  "invite.resent": () => "Convite reenviado",
+    `Você importou a fatura ${p.institutionName ?? ""} — ${p.count ?? 0} transações`,
+  "invite.deleted": () => "Você excluiu um convite",
+  "invite.resent": () => "Você reenviou um convite",
+  // connection.*/share.* (8 types below) are deliberately NOT converted to
+  // "Você [verbo]" — DomainEventPayload has no actor/direction field, so
+  // this event type could represent either the current user's own action
+  // or the counterpart's action toward the user (e.g. connection.rejected
+  // could mean "you rejected their request" or "they rejected yours").
+  // The original passive phrasing was already neutral about who acted;
+  // forcing first person risks misattributing the other party's action to
+  // the viewing user. Judgment call — flagged in the plan's report.
   "connection.requested": (p) =>
     `Convite de conexão enviado a ${p.counterpartName ?? ""}`,
   "connection.accepted": (p) => `Conexão com ${p.counterpartName ?? ""} aceita`,
@@ -131,12 +143,16 @@ const EVENT_TEXT: Record<DomainEventType, (p: DomainEventPayload) => string> = {
   "share.revoked": (p) =>
     `Compartilhamento de ${p.itemLabel ?? "item"} com ${p.counterpartName ?? ""} revogado`,
   "portador.assigned": (p) =>
-    `Transação atribuída a ${p.counterpartName ?? ""}`,
+    `Você atribuiu uma transação a ${p.counterpartName ?? ""}`,
+  // accepted/rejected are the counterpart's own action, not the user's —
+  // grounded in "que você atribuiu" (which you assigned) instead of
+  // guessing a pronoun for the counterpart.
   "portador.accepted": (p) =>
-    `${p.counterpartName ?? ""} aceitou a transação atribuída`,
+    `${p.counterpartName ?? ""} aceitou a transação que você atribuiu`,
   "portador.rejected": (p) =>
-    `${p.counterpartName ?? ""} rejeitou a transação atribuída`,
-  "portador.settled": (p) => `Acerto com ${p.counterpartName ?? ""} registrado`,
+    `${p.counterpartName ?? ""} rejeitou a transação que você atribuiu`,
+  "portador.settled": (p) =>
+    `Você registrou o acerto com ${p.counterpartName ?? ""}`,
 };
 
 // Category → icon mapping (line icons, viewBox 24×24, stroke 1.8 — Alert.tsx's
@@ -237,7 +253,7 @@ export function TimelineEventRow({
         fill="none"
         stroke="currentColor"
         strokeWidth={1.8}
-        className="h-[18px] w-[18px] flex-none text-[var(--lr-text-secondary)]"
+        className="h-[15px] w-[15px] flex-none text-[var(--lr-petrol-700)] dark:text-[var(--lr-petrol-300)]"
       >
         {eventIcon(type)}
       </svg>
