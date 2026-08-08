@@ -156,18 +156,31 @@ function shortDate(date: Date): string {
   ).padStart(2, "0")}`;
 }
 
-function periodLabel(range: CalendarRange): string {
-  if (!range.from) return "Período";
-  if (!range.to) return shortDate(range.from);
-  return `${shortDate(range.from)} – ${shortDate(range.to)}`;
-}
-
 function thisMonthRange(): CalendarRange {
   const now = new Date();
   return {
     from: new Date(now.getFullYear(), now.getMonth(), 1),
     to: new Date(now.getFullYear(), now.getMonth() + 1, 0),
   };
+}
+
+/** True when `range` is exactly the current calendar month — lets the
+ * filter bar's trigger read "Este mês" (§3) instead of a raw date range
+ * when the user hasn't touched the period filter from its default. */
+function isThisMonthRange(range: CalendarRange): boolean {
+  if (!range.from || !range.to) return false;
+  const expected = thisMonthRange();
+  return (
+    toYmd(range.from) === toYmd(expected.from as Date) &&
+    toYmd(range.to) === toYmd(expected.to as Date)
+  );
+}
+
+function periodLabel(range: CalendarRange): string {
+  if (!range.from) return "Período";
+  if (isThisMonthRange(range)) return "Este mês";
+  if (!range.to) return shortDate(range.from);
+  return `${shortDate(range.from)} – ${shortDate(range.to)}`;
 }
 
 /** Header greeting (§6.12) — time-of-day salutation + full pt-BR date,
@@ -282,6 +295,56 @@ function dayOfWeek(dateYmd: string): string {
   const day = Number(dateYmd.slice(8, 10));
   const date = new Date(year, month - 1, day);
   return date.toLocaleDateString("pt-BR", { weekday: "long" }).toUpperCase();
+}
+
+// §3's accounts popover row: "ponto colorido da instituição" — neither
+// AccountDto/CardDto nor InstitutionDto carries a color field, and no
+// per-institution color table exists anywhere in the app (verified: no
+// hit for institutionColor/brandColor/hashColor). The dot is purely a
+// "these are different institutions" visual cue, not a source of truth
+// for any institution's real brand color, so a stable hash into the
+// existing brand palette is enough. Judgment call — flagged in the
+// plan's report.
+const ACCOUNT_DOT_HUES = [
+  "bg-[var(--lr-petrol-600)]",
+  "bg-[var(--lr-gold-600)]",
+  "bg-[var(--lr-terracota-600)]",
+  "bg-[var(--lr-graphite-600)]",
+];
+
+function institutionDotColor(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i += 1) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  return ACCOUNT_DOT_HUES[Math.abs(hash) % ACCOUNT_DOT_HUES.length] as string;
+}
+
+function EyeIcon({ open }: { open: boolean }) {
+  return open ? (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+    >
+      <path d="M2 12s3.7-7 10-7 10 7 10 7-3.7 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  ) : (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+    >
+      <path d="M3 3l18 18" />
+      <path d="M10.6 5.2A10.7 10.7 0 0 1 12 5c6.5 0 10 7 10 7a15.9 15.9 0 0 1-4.1 4.9M6.3 6.3A15.6 15.6 0 0 0 2 12s3.5 7 10 7a10.5 10.5 0 0 0 4.6-1" />
+      <path d="M9.5 9.7A3 3 0 0 0 12 15a3 3 0 0 0 2.3-1.1" />
+    </svg>
+  );
 }
 
 function NewTransactionDialog({
@@ -730,7 +793,9 @@ export function TimelinePage() {
   const [hiddenChipIds, setHiddenChipIds] = useState<Set<string>>(new Set());
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const [txDialogOpen, setTxDialogOpen] = useState(false);
-  const [periodRange, setPeriodRange] = useState<CalendarRange>({});
+  const [periodRange, setPeriodRange] = useState<CalendarRange>(() =>
+    thisMonthRange(),
+  );
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
   const [periodOpen, setPeriodOpen] = useState(false);
   const [eventTypesOpen, setEventTypesOpen] = useState(false);
@@ -1115,7 +1180,8 @@ export function TimelinePage() {
             </div>
           ) : (
             <>
-              <div className="mb-4 flex flex-wrap items-center gap-2 border-y border-[var(--lr-border)] py-3">
+              <div className="mb-4 flex flex-wrap items-center gap-2.5 border-y border-[var(--lr-border)] py-3">
+                <span className="lr-label">MOSTRAR</span>
                 {chips.length > 0 ? (
                   <FilterPopover
                     label="Filtrar por conta ou cartão"
@@ -1127,7 +1193,7 @@ export function TimelinePage() {
                     open={accountsOpen}
                     onOpenChange={setAccountsOpen}
                   >
-                    <div className="flex w-64 flex-col gap-2.5 rounded-[var(--lr-r-md)] border border-[var(--lr-border)] bg-[var(--lr-surface)] p-3.5 shadow-[var(--lr-e2)]">
+                    <div className="flex w-[260px] flex-col gap-0.5 rounded-[var(--lr-r-md)] border border-[var(--lr-border)] bg-[var(--lr-surface)] p-1.5 shadow-[var(--lr-e2)]">
                       {chips.map((chip) => {
                         const checked = !hiddenChipIds.has(chip.id);
                         // Same guard as the event-type filter above: an empty
@@ -1138,20 +1204,45 @@ export function TimelinePage() {
                         const isLastVisible =
                           checked && hiddenChipIds.size >= chips.length - 1;
                         return (
-                          <Checkbox
+                          <div
                             key={chip.id}
-                            label={chip.label}
-                            checked={checked}
-                            disabled={isLastVisible}
-                            onChange={() =>
-                              setHiddenChipIds((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(chip.id)) next.delete(chip.id);
-                                else next.add(chip.id);
-                                return next;
-                              })
-                            }
-                          />
+                            className="flex items-center gap-2.5 rounded-[var(--lr-r-sm)] px-2 py-1.5"
+                          >
+                            <span
+                              aria-hidden="true"
+                              className={[
+                                "h-2 w-2 flex-none rounded-full",
+                                institutionDotColor(chip.id),
+                              ].join(" ")}
+                            />
+                            <span className="min-w-0 flex-1 truncate text-[.875rem] text-[var(--lr-text)]">
+                              {chip.label}
+                            </span>
+                            <button
+                              type="button"
+                              aria-label={
+                                isLastVisible
+                                  ? `${chip.label} — última conta visível`
+                                  : `${checked ? "Ocultar" : "Mostrar"} ${chip.label}`
+                              }
+                              disabled={isLastVisible}
+                              onClick={() =>
+                                setHiddenChipIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(chip.id)) next.delete(chip.id);
+                                  else next.add(chip.id);
+                                  return next;
+                                })
+                              }
+                              className={[
+                                "flex h-7 w-7 flex-none items-center justify-center rounded-[var(--lr-r-sm)] [&>svg]:h-4 [&>svg]:w-4",
+                                "text-[var(--lr-text-secondary)] hover:bg-[var(--lr-surface-sunken)] hover:text-[var(--lr-text)]",
+                                "disabled:cursor-not-allowed disabled:opacity-40",
+                              ].join(" ")}
+                            >
+                              <EyeIcon open={checked} />
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
