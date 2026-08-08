@@ -16,6 +16,7 @@ import {
   Dialog,
   EmptyState,
   Input,
+  InstitutionMark,
   Mono,
   ProfileIncompleteAlert,
   Segmented,
@@ -58,6 +59,7 @@ import type {
   TxKind,
 } from "../auth/types";
 import { reaisToCentsOrZero, reaisToCentsPositive } from "../lib/money";
+import type { DashboardInsights } from "./DashboardView";
 
 interface CategoryDto {
   id: string;
@@ -156,18 +158,31 @@ function shortDate(date: Date): string {
   ).padStart(2, "0")}`;
 }
 
-function periodLabel(range: CalendarRange): string {
-  if (!range.from) return "Período";
-  if (!range.to) return shortDate(range.from);
-  return `${shortDate(range.from)} – ${shortDate(range.to)}`;
-}
-
 function thisMonthRange(): CalendarRange {
   const now = new Date();
   return {
     from: new Date(now.getFullYear(), now.getMonth(), 1),
     to: new Date(now.getFullYear(), now.getMonth() + 1, 0),
   };
+}
+
+/** True when `range` is exactly the current calendar month — lets the
+ * filter bar's trigger read "Este mês" (§3) instead of a raw date range
+ * when the user hasn't touched the period filter from its default. */
+function isThisMonthRange(range: CalendarRange): boolean {
+  if (!range.from || !range.to) return false;
+  const expected = thisMonthRange();
+  return (
+    toYmd(range.from) === toYmd(expected.from as Date) &&
+    toYmd(range.to) === toYmd(expected.to as Date)
+  );
+}
+
+function periodLabel(range: CalendarRange): string {
+  if (!range.from) return "Período";
+  if (isThisMonthRange(range)) return "Este mês";
+  if (!range.to) return shortDate(range.from);
+  return `${shortDate(range.from)} – ${shortDate(range.to)}`;
 }
 
 /** Header greeting (§6.12) — time-of-day salutation + full pt-BR date,
@@ -281,7 +296,75 @@ function dayOfWeek(dateYmd: string): string {
   const month = Number(dateYmd.slice(5, 7));
   const day = Number(dateYmd.slice(8, 10));
   const date = new Date(year, month - 1, day);
-  return date.toLocaleDateString("pt-BR", { weekday: "long" }).toUpperCase();
+  const long = date.toLocaleDateString("pt-BR", { weekday: "long" });
+  // "terça-feira" → "Terça" (TIMELINE.md §5.1's own example). Intl's
+  // pt-BR "long" weekday always appends "-feira" except sábado/domingo,
+  // which have none — splitting on "-" and keeping the first segment
+  // handles both uniformly instead of a 7-entry lookup table.
+  const firstWord = long.split("-")[0] as string;
+  return firstWord.charAt(0).toUpperCase() + firstWord.slice(1);
+}
+
+/** "21 de julho" (day + full month, no year) — TIMELINE.md §5.1's day
+ * header. `formatDate` (packages/ui) is scoped to dd/mm/aaaa only; this
+ * is Timeline-specific long-form display, same page-local pattern as
+ * `dayOfWeek`/`shortDate` above. */
+function longDayMonth(dateYmd: string): string {
+  const year = Number(dateYmd.slice(0, 4));
+  const month = Number(dateYmd.slice(5, 7));
+  const day = Number(dateYmd.slice(8, 10));
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString("pt-BR", { day: "numeric", month: "long" });
+}
+
+// §3's accounts popover row: "ponto colorido da instituição" — neither
+// AccountDto/CardDto nor InstitutionDto carries a color field, and no
+// per-institution color table exists anywhere in the app (verified: no
+// hit for institutionColor/brandColor/hashColor). The dot is purely a
+// "these are different institutions" visual cue, not a source of truth
+// for any institution's real brand color, so a stable hash into the
+// existing brand palette is enough. Judgment call — flagged in the
+// plan's report.
+const ACCOUNT_DOT_HUES = [
+  "bg-[var(--lr-petrol-600)]",
+  "bg-[var(--lr-gold-600)]",
+  "bg-[var(--lr-terracota-600)]",
+  "bg-[var(--lr-graphite-600)]",
+];
+
+function institutionDotColor(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i += 1) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  return ACCOUNT_DOT_HUES[Math.abs(hash) % ACCOUNT_DOT_HUES.length] as string;
+}
+
+function EyeIcon({ open }: { open: boolean }) {
+  return open ? (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+    >
+      <path d="M2 12s3.7-7 10-7 10 7 10 7-3.7 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  ) : (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+    >
+      <path d="M3 3l18 18" />
+      <path d="M10.6 5.2A10.7 10.7 0 0 1 12 5c6.5 0 10 7 10 7a15.9 15.9 0 0 1-4.1 4.9M6.3 6.3A15.6 15.6 0 0 0 2 12s3.5 7 10 7a10.5 10.5 0 0 0 4.6-1" />
+      <path d="M9.5 9.7A3 3 0 0 0 12 15a3 3 0 0 0 2.3-1.1" />
+    </svg>
+  );
 }
 
 function NewTransactionDialog({
@@ -489,6 +572,157 @@ function NewTransactionDialog({
   );
 }
 
+interface UpdateTxPayload {
+  description?: string;
+  categoryId?: string | null;
+  transactionDate?: string;
+  amountCents?: number;
+}
+
+/** Edits description/category/date/amount for an existing transaction —
+ * the 4 fields PATCH /v1/transactions/:id accepts
+ * (apps/api/src/transactions/routes.ts's UpdateTransactionBody).
+ * Kind/account/destination aren't editable here: the backend contract
+ * doesn't accept them, and building that (would it move money between
+ * accounts retroactively? re-run overdraft checks?) is a bigger product
+ * decision than this conformance pass covers. Opened from both the
+ * "scheduled" and "installment" TransactionRow variants' "Editar"
+ * button (§5b/§5c) — see this task's judgment-call note above. */
+function EditTransactionDialog({
+  tx,
+  onClose,
+  onSaved,
+}: {
+  tx: TransactionDto | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [loadedTxId, setLoadedTxId] = useState<string | null>(null);
+  const [description, setDescription] = useState("");
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState("");
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // Resets the form's local state whenever a *different* transaction is
+  // opened. The dialog is mounted once for the whole page and toggled
+  // via `tx` (not remounted), so plain useState initializers wouldn't
+  // pick up a newly-opened row's values — this is React's documented
+  // "adjust state during render" pattern for exactly that case, guarded
+  // by loadedTxId so it runs once per transaction, not every render.
+  if (tx && tx.id !== loadedTxId) {
+    setLoadedTxId(tx.id);
+    setDescription(tx.description);
+    setAmount((tx.amountCents / 100).toFixed(2).replace(".", ","));
+    setDate(tx.transactionDate.slice(0, 10));
+    setCategoryId(tx.categoryId);
+    setFormError(null);
+  }
+
+  const categoriesQuery = useQuery({
+    queryKey: ["categories"],
+    queryFn: () => apiFetchJson<CategoryDto[]>("/categories"),
+    enabled: tx !== null,
+  });
+
+  const categoryOptions = useMemo(
+    () =>
+      (categoriesQuery.data ?? [])
+        .filter((c) => !tx || tx.kind === "transfer" || c.kind === tx.kind)
+        .map((c) => ({ value: c.id, label: c.name })),
+    [categoriesQuery.data, tx],
+  );
+
+  const updateMutation = useMutation({
+    mutationFn: (payload: UpdateTxPayload) =>
+      apiFetchJson<TransactionDto>(`/transactions/${tx?.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      setFormError(null);
+      onSaved();
+      onClose();
+    },
+    onError: (err: unknown) => {
+      setFormError(
+        err instanceof ApiError
+          ? err.message
+          : "Não foi possível salvar as alterações.",
+      );
+    },
+  });
+
+  function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    setFormError(null);
+    if (!tx) return;
+    const cents = reaisToCentsPositive(amount);
+    if (!description.trim()) {
+      setFormError("Descreva a transação.");
+      return;
+    }
+    if (cents === null) {
+      setFormError("Informe um valor válido.");
+      return;
+    }
+    updateMutation.mutate({
+      description: description.trim(),
+      categoryId,
+      transactionDate: date,
+      amountCents: cents,
+    });
+  }
+
+  return (
+    <Dialog open={tx !== null} onClose={onClose} title="Editar transação">
+      <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <Input
+          label="Descrição"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input
+            label="Valor"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            money
+            affix="R$"
+            inputMode="decimal"
+            placeholder="0,00"
+          />
+          <Input
+            label="Data"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            hint="AAAA-MM-DD"
+          />
+        </div>
+        <Select
+          label="Categoria (opcional)"
+          options={categoryOptions}
+          value={categoryId}
+          onChange={setCategoryId}
+          placeholder="Sem categoria"
+        />
+        {formError ? (
+          <Alert variant="error" layout="inline" title={formError} />
+        ) : null}
+        <div className="flex justify-end gap-2.5">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" loading={updateMutation.isPending}>
+            Salvar
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
 interface Chip {
   id: string;
   label: string;
@@ -504,25 +738,36 @@ function transactionRowProps(
   tx: TransactionDto,
   scheduled: ScheduledHandlers,
   categoriesById: Map<string, CategoryDto>,
+  accountsById: Map<string, AccountDto>,
+  cardsById: Map<string, CardDto>,
   expandedInstallments: Set<string>,
   onToggleInstallment: (id: string) => void,
+  onEditTransaction: (tx: TransactionDto) => void,
 ) {
   const category = tx.categoryId
     ? categoriesById.get(tx.categoryId)
     : undefined;
+  // TIMELINE.md §5.2a's meta is "instituição · categoria" (hour dropped
+  // per the design doc's own scope decision #3, not both fields) — this
+  // was only ever computing the installment "Parcela N/M" string,
+  // leaving every other row's meta as just the bare date. Real gap,
+  // fixed here alongside this task's other transactionRowProps changes.
+  const institutionName = tx.accountId
+    ? accountsById.get(tx.accountId)?.institutionName
+    : tx.creditCardId
+      ? cardsById.get(tx.creditCardId)?.institutionName
+      : undefined;
+  const metaParts = [institutionName, category?.name].filter(
+    (part): part is string => Boolean(part),
+  );
   const common = {
     description: tx.description,
     date: tx.transactionDate,
     kind: tx.kind,
     amountCents: tx.amountCents,
     source: tx.source,
-    categoryIcon: category ? (
-      <CategoryIcon slug={category.icon} className="h-5 w-5 flex-none" />
-    ) : undefined,
-    categoryLabel:
-      tx.installmentTotal && tx.installmentNumber
-        ? `Parcela ${tx.installmentNumber}/${tx.installmentTotal}`
-        : undefined,
+    categoryIcon: category ? <CategoryIcon slug={category.icon} /> : undefined,
+    categoryLabel: metaParts.length > 0 ? metaParts.join(" · ") : undefined,
   };
   if (tx.isScheduled) {
     return (
@@ -532,9 +777,7 @@ function transactionRowProps(
         variant="scheduled"
         onConfirm={() => scheduled.onConfirm(tx.id)}
         onSkip={() => scheduled.onSkip(tx.id)}
-        // Same as TransactionsPage (US-3.9) — inline editing from a row
-        // isn't built anywhere yet, not a Timeline-specific gap.
-        onEdit={() => {}}
+        onEdit={() => onEditTransaction(tx)}
         onDelete={() => scheduled.onDelete(tx.id)}
       />
     );
@@ -561,7 +804,9 @@ function transactionRowProps(
         variant="installment"
         installment={tx.installmentDetails}
         expanded={expandedInstallments.has(tx.id)}
+        onClick={() => onToggleInstallment(tx.id)}
         onViewAllInstallments={() => onToggleInstallment(tx.id)}
+        onEdit={() => onEditTransaction(tx)}
       />
     );
   }
@@ -625,6 +870,7 @@ function resolveTransferParty(
     return {
       name: account?.name || account?.institutionName || "Conta",
       institution: account?.institutionName ?? "",
+      logoUrl: account?.logoUrl,
       balanceAfterCents: account?.balanceCents ?? 0,
     };
   }
@@ -633,6 +879,7 @@ function resolveTransferParty(
     return {
       name: card?.name || card?.institutionName || "Cartão",
       institution: card?.institutionName ?? "",
+      logoUrl: card?.logoUrl,
       balanceAfterCents: card ? -card.usedCents : 0,
     };
   }
@@ -730,7 +977,9 @@ export function TimelinePage() {
   const [hiddenChipIds, setHiddenChipIds] = useState<Set<string>>(new Set());
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const [txDialogOpen, setTxDialogOpen] = useState(false);
-  const [periodRange, setPeriodRange] = useState<CalendarRange>({});
+  const [periodRange, setPeriodRange] = useState<CalendarRange>(() =>
+    thisMonthRange(),
+  );
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
   const [periodOpen, setPeriodOpen] = useState(false);
   const [eventTypesOpen, setEventTypesOpen] = useState(false);
@@ -745,6 +994,9 @@ export function TimelinePage() {
   const [expandedInstallments, setExpandedInstallments] = useState<Set<string>>(
     new Set(),
   );
+  // Task 18/19 (§5b/§5c) — the transaction currently open in
+  // EditTransactionDialog; null means closed.
+  const [editingTx, setEditingTx] = useState<TransactionDto | null>(null);
   const queryClient = useQueryClient();
 
   function toggleInstallment(id: string) {
@@ -782,6 +1034,7 @@ export function TimelinePage() {
     onSuccess: () => {
       invalidateTimeline();
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["insights"] });
     },
   });
   const skipMutation = useMutation({
@@ -795,6 +1048,7 @@ export function TimelinePage() {
     onSuccess: () => {
       invalidateTimeline();
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["insights"] });
     },
   });
   const scheduledHandlers: ScheduledHandlers = {
@@ -811,6 +1065,17 @@ export function TimelinePage() {
   const cardsQuery = useQuery({
     queryKey: ["cards"],
     queryFn: () => apiFetchJson<CardDto[]>("/cards"),
+    enabled: hasSession,
+  });
+  // "Disponível hoje" and "Patrimônio total" (§6, aside) both used to
+  // render the same ad-hoc netBalanceCents-minus-invoices value — they're
+  // distinct figures (IMPLEMENTACAO.md §3.2/§3.5) already computed
+  // correctly by the canonical @lurem/core formulas and already exposed by
+  // GET /v1/insights/dashboard (used today by DashboardPage.tsx). No API
+  // change: this just calls an endpoint that already exists.
+  const insightsQuery = useQuery({
+    queryKey: ["insights", "dashboard"],
+    queryFn: () => apiFetchJson<DashboardInsights>("/insights/dashboard"),
     enabled: hasSession,
   });
 
@@ -962,9 +1227,6 @@ export function TimelinePage() {
     (sum, c) => sum + c.usedCents,
     0,
   );
-  // §6.12 item 6's "patrimônio total" — no investments in the MVP schema yet
-  // (PRODUCT.md), so ativos-passivos is just contas menos faturas em aberto.
-  const netWorthCents = netBalanceCents - totalInvoicesCents;
 
   if (isBooting) {
     return <p className="p-6 text-[var(--lr-text-secondary)]">Carregando…</p>;
@@ -977,7 +1239,7 @@ export function TimelinePage() {
   const { greeting, dateLabel } = greetingAndDate();
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
+    <div className="mx-auto max-w-[1180px] px-12 pt-10 pb-24">
       {!user.hasCompleteProfile ? (
         <div className="mb-6">
           <ProfileIncompleteAlert
@@ -992,26 +1254,42 @@ export function TimelinePage() {
         </div>
       ) : null}
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_280px]">
+      <div className="grid items-start gap-8 lg:grid-cols-[1fr_320px]">
         <div>
-          <div className="mb-6 flex items-start justify-between gap-4">
+          <div className="mb-7 flex items-end justify-between gap-6">
             <div>
-              <Body as="p" muted className="text-[.8125rem]">
-                {dateLabel}
-              </Body>
-              <h1 className="mt-1 text-xl font-bold text-[var(--lr-text)]">
+              <p className="lr-label mb-2">{dateLabel}</p>
+              <h1 className="mb-1.5 text-[2rem] font-normal tracking-[-0.02em] text-[var(--lr-text)]">
                 {greeting}, {user.name}.
               </h1>
-              <Body muted className="mt-1">
+              <Body muted>
                 A narrativa do seu dinheiro — causa e efeito, dia a dia.
               </Body>
             </div>
             {/* Hidden during ativação (§6.11): sem conta/cartão cadastrado, os
                 selects de destino do NewTransactionDialog ficam vazios e o
                 usuário nunca consegue submeter o formulário — um beco sem
-                saída em vez de um "+ Transação" utilizável. */}
+                saída em vez de um botão utilizável. "Importar" (§2) fica de fora:
+                o pipeline de importação/revisão ainda não existe no app (design
+                doc de conformância, decisão de escopo #1). */}
             {pendingActivation.length === 0 ? (
-              <Button onClick={() => setTxDialogOpen(true)}>+ Transação</Button>
+              <Button
+                variant="secondary"
+                icon={
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                }
+                onClick={() => setTxDialogOpen(true)}
+              >
+                Nova transação
+              </Button>
             ) : null}
           </div>
           <NewTransactionDialog
@@ -1022,84 +1300,108 @@ export function TimelinePage() {
             onCreated={() => {
               queryClient.invalidateQueries({ queryKey: ["timeline"] });
               queryClient.invalidateQueries({ queryKey: ["accounts"] });
+              queryClient.invalidateQueries({ queryKey: ["insights"] });
+            }}
+          />
+          <EditTransactionDialog
+            key={editingTx?.id ?? "closed"}
+            tx={editingTx}
+            onClose={() => setEditingTx(null)}
+            onSaved={() => {
+              queryClient.invalidateQueries({ queryKey: ["timeline"] });
+              queryClient.invalidateQueries({ queryKey: ["accounts"] });
+              queryClient.invalidateQueries({ queryKey: ["cards"] });
+              queryClient.invalidateQueries({ queryKey: ["insights"] });
             }}
           />
 
           {pendingActivation.length > 0 ? (
             <div>
-              <p className="mb-4 text-sm text-[var(--lr-text-secondary)]">
-                {activationDoneCount} de 3 concluídos
+              <p className="mb-4 text-[.9375rem] text-[var(--lr-text-secondary)]">
+                Sua história ainda vai começar. Cadastre suas contas e cartões —
+                na ordem que quiser — e tudo aparece aqui em ordem, com o saldo
+                de cada dia.
               </p>
-              <div className="flex flex-col gap-3">
-                {hasWallet ? (
-                  <Alert
-                    variant="success"
-                    title="Carteira registrada"
-                    description="Seu dinheiro físico já faz parte da Timeline."
-                  />
-                ) : (
-                  <Alert
-                    variant="warning"
-                    title="Carteira"
-                    description="Quanto de dinheiro físico você tem hoje?"
-                    actions={[
-                      {
-                        label: "Adicionar",
-                        onClick: () => setWalletDialogOpen(true),
-                      },
-                    ]}
-                  />
-                )}
-                {hasBankAccount ? (
-                  <Alert
-                    variant="success"
-                    title="Contas registradas"
-                    description="Suas contas já aparecem na Timeline."
-                  />
-                ) : (
-                  <Alert
-                    variant="info"
-                    title="Contas"
-                    description="Adicione as contas de banco onde seu dinheiro vive — corrente ou poupança."
-                    actions={[
-                      {
-                        label: "Adicionar contas",
-                        onClick: () => navigate({ to: "/accounts" }),
-                      },
-                    ]}
-                  />
-                )}
-                {hasCard ? (
-                  <Alert
-                    variant="success"
-                    title="Cartões registrados"
-                    description="Seus cartões já aparecem na Timeline."
-                  />
-                ) : (
-                  <Alert
-                    variant="info"
-                    title="Cartões"
-                    description="Adicione seus cartões de crédito — limite, fechamento e vencimento."
-                    actions={[
-                      {
-                        label: "Adicionar cartões",
-                        onClick: () => navigate({ to: "/accounts" }),
-                      },
-                    ]}
-                  />
-                )}
-              </div>
+              <section>
+                <h2 className="mb-1 text-[.8125rem] font-bold text-[var(--lr-text)]">
+                  PRIMEIROS PASSOS
+                </h2>
+                <p className="mb-4 text-sm text-[var(--lr-text-secondary)]">
+                  {activationDoneCount} de 3 concluídos
+                </p>
+                <div className="flex flex-col gap-2">
+                  {hasWallet ? (
+                    <Alert
+                      variant="success"
+                      title="Carteira registrada"
+                      description="Seu dinheiro físico já faz parte da Timeline."
+                    />
+                  ) : (
+                    <Alert
+                      variant="warning"
+                      title="Carteira"
+                      description="Quanto de dinheiro físico você tem hoje?"
+                      actions={[
+                        {
+                          label: "Adicionar",
+                          onClick: () => setWalletDialogOpen(true),
+                        },
+                      ]}
+                    />
+                  )}
+                  {hasBankAccount ? (
+                    <Alert
+                      variant="success"
+                      title="Contas registradas"
+                      description="Suas contas já aparecem na Timeline."
+                    />
+                  ) : (
+                    <Alert
+                      variant="info"
+                      title="Contas"
+                      description="Adicione as contas de banco onde seu dinheiro vive — corrente ou poupança."
+                      actions={[
+                        {
+                          label: "Adicionar contas",
+                          onClick: () => navigate({ to: "/accounts" }),
+                        },
+                      ]}
+                    />
+                  )}
+                  {hasCard ? (
+                    <Alert
+                      variant="success"
+                      title="Cartões registrados"
+                      description="Seus cartões já aparecem na Timeline."
+                    />
+                  ) : (
+                    <Alert
+                      variant="info"
+                      title="Cartões"
+                      description="Adicione seus cartões de crédito — limite, fechamento e vencimento."
+                      actions={[
+                        {
+                          label: "Adicionar cartões",
+                          onClick: () => navigate({ to: "/accounts" }),
+                        },
+                      ]}
+                    />
+                  )}
+                </div>
+              </section>
               <WalletDialog
                 open={walletDialogOpen}
                 onClose={() => setWalletDialogOpen(false)}
-                onCreated={() =>
-                  queryClient.invalidateQueries({ queryKey: ["accounts"] })
-                }
+                onCreated={() => {
+                  queryClient.invalidateQueries({ queryKey: ["accounts"] });
+                  queryClient.invalidateQueries({ queryKey: ["insights"] });
+                }}
               />
             </div>
           ) : (
             <>
-              <div className="mb-4 flex flex-wrap items-center gap-2 border-y border-[var(--lr-border)] py-3">
+              <div className="mb-4 flex flex-wrap items-center gap-2.5 border-y border-[var(--lr-border)] py-3">
+                <span className="lr-label">MOSTRAR</span>
                 {chips.length > 0 ? (
                   <FilterPopover
                     label="Filtrar por conta ou cartão"
@@ -1111,7 +1413,7 @@ export function TimelinePage() {
                     open={accountsOpen}
                     onOpenChange={setAccountsOpen}
                   >
-                    <div className="flex w-64 flex-col gap-2.5 rounded-[var(--lr-r-md)] border border-[var(--lr-border)] bg-[var(--lr-surface)] p-3.5 shadow-[var(--lr-e2)]">
+                    <div className="flex w-[260px] flex-col gap-0.5 rounded-[var(--lr-r-md)] border border-[var(--lr-border)] bg-[var(--lr-surface)] p-1.5 shadow-[var(--lr-e2)]">
                       {chips.map((chip) => {
                         const checked = !hiddenChipIds.has(chip.id);
                         // Same guard as the event-type filter above: an empty
@@ -1122,20 +1424,45 @@ export function TimelinePage() {
                         const isLastVisible =
                           checked && hiddenChipIds.size >= chips.length - 1;
                         return (
-                          <Checkbox
+                          <div
                             key={chip.id}
-                            label={chip.label}
-                            checked={checked}
-                            disabled={isLastVisible}
-                            onChange={() =>
-                              setHiddenChipIds((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(chip.id)) next.delete(chip.id);
-                                else next.add(chip.id);
-                                return next;
-                              })
-                            }
-                          />
+                            className="flex items-center gap-2.5 rounded-[var(--lr-r-sm)] px-2 py-1.5"
+                          >
+                            <span
+                              aria-hidden="true"
+                              className={[
+                                "h-2 w-2 flex-none rounded-full",
+                                institutionDotColor(chip.id),
+                              ].join(" ")}
+                            />
+                            <span className="min-w-0 flex-1 truncate text-[.875rem] text-[var(--lr-text)]">
+                              {chip.label}
+                            </span>
+                            <button
+                              type="button"
+                              aria-label={
+                                isLastVisible
+                                  ? `${chip.label} — última conta visível`
+                                  : `${checked ? "Ocultar" : "Mostrar"} ${chip.label}`
+                              }
+                              disabled={isLastVisible}
+                              onClick={() =>
+                                setHiddenChipIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(chip.id)) next.delete(chip.id);
+                                  else next.add(chip.id);
+                                  return next;
+                                })
+                              }
+                              className={[
+                                "flex h-7 w-7 flex-none items-center justify-center rounded-[var(--lr-r-sm)] [&>svg]:h-4 [&>svg]:w-4",
+                                "text-[var(--lr-text-secondary)] hover:bg-[var(--lr-surface-sunken)] hover:text-[var(--lr-text)]",
+                                "disabled:cursor-not-allowed disabled:opacity-40",
+                              ].join(" ")}
+                            >
+                              <EyeIcon open={checked} />
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -1290,11 +1617,16 @@ export function TimelinePage() {
                       }
                     >
                       <div className="mb-3 flex items-center justify-between gap-2">
-                        <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-[var(--lr-text-secondary)]">
+                        <h2 className="flex items-center gap-2 text-[.8125rem] font-bold text-[var(--lr-text)]">
                           {today ? "HOJE · " : ""}
-                          {day.date}
+                          {longDayMonth(day.date)}
                           {today ? (
-                            <Badge kind="status" status="active">
+                            // Badge has no literal "warning" status (TIMELINE.md §5.1 wants
+                            // hmc-badge--warning) — "pending" is Badge's own gold/warning-toned
+                            // entry (see Badge.tsx STATUS_STYLES.pending), the closest existing
+                            // match without adding a 6th BadgeStatus for one call site.
+                            // Judgment call — flagged in the plan's report.
+                            <Badge kind="status" status="pending">
                               {dow}
                             </Badge>
                           ) : null}
@@ -1373,8 +1705,11 @@ export function TimelinePage() {
                             tx,
                             scheduledHandlers,
                             categoriesById,
+                            accountsById,
+                            cardsById,
                             expandedInstallments,
                             toggleInstallment,
+                            (t) => setEditingTx(t),
                           );
                         })}
                       </div>
@@ -1398,107 +1733,149 @@ export function TimelinePage() {
           )}
         </div>
 
-        <aside className="flex flex-col gap-4">
-          <Card>
-            <p className="lr-label mb-1">Saldo líquido</p>
-            <Mono
-              variant="number"
-              className="text-lg font-semibold text-[var(--lr-text)]"
-            >
-              {formatMoney(netBalanceCents)}
-            </Mono>
-            {/* §6.12 item 6 — quebra por conta/instituição sob o total. */}
-            {(accountsQuery.data ?? []).length > 0 ? (
-              <div className="mt-4 flex flex-col gap-2 border-t border-[var(--lr-border)] pt-3">
-                {(accountsQuery.data ?? []).map((a) => (
-                  <div
-                    key={a.id}
-                    className="flex items-center justify-between gap-2"
-                  >
-                    <Body as="span" muted className="truncate text-[.8125rem]">
-                      {a.name || a.institutionName}
-                    </Body>
-                    <Mono
-                      variant="number"
-                      className="flex-none text-[.8125rem]"
-                    >
-                      {formatMoney(a.balanceCents)}
-                    </Mono>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </Card>
-
-          <Card>
-            <div className="flex items-baseline justify-between">
-              <Body as="span" muted>
-                Faturas em aberto
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-10">
+          {pendingActivation.length > 0 ? (
+            <Card dashed className="text-center">
+              <Body muted className="text-[.875rem]">
+                Seus números aparecem aqui assim que carteira, contas e cartões
+                estiverem cadastrados.
               </Body>
-              <Mono variant="number" tone="out" className="text-[.9375rem]">
-                {totalInvoicesCents > 0 ? "− " : ""}
-                {formatMoney(totalInvoicesCents)}
-              </Mono>
-            </div>
-            <div className="mt-3 flex items-baseline justify-between border-t border-[var(--lr-border)] pt-3">
-              <Body as="span" muted>
-                Patrimônio total
-              </Body>
-              <Mono
-                variant="number"
-                tone={netWorthCents < 0 ? "out" : "default"}
-                className="text-[.9375rem]"
-              >
-                {formatMoney(netWorthCents)}
-              </Mono>
-            </div>
-            {openInvoices.length > 0 ? (
-              <ul className="mt-3 flex flex-col gap-1 border-t border-[var(--lr-border)] pt-3">
-                {openInvoices.map((c) => (
-                  <li
-                    key={c.id}
-                    className="flex items-center justify-between gap-2"
-                  >
-                    <Body as="span" muted className="truncate text-[.8125rem]">
-                      {c.name || c.institutionName}
-                    </Body>
-                    <Mono
-                      variant="number"
-                      tone="out"
-                      className="flex-none text-[.8125rem]"
-                    >
-                      − {formatMoney(c.usedCents)}
-                    </Mono>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </Card>
-
-          <Card sunken>
-            <div className="flex items-end justify-between gap-2">
-              <div>
-                <p className="lr-label mb-1 text-[.625rem]">DISPONÍVEL HOJE</p>
+            </Card>
+          ) : (
+            <>
+              <Card>
+                <p className="lr-label mb-1">Saldo líquido</p>
                 <Mono
                   variant="number"
-                  className="text-xl font-semibold text-[var(--lr-text)]"
+                  className="text-[2rem] tracking-[-0.02em] text-[var(--lr-text)]"
                 >
-                  {formatMoney(netWorthCents)}
+                  {formatMoney(netBalanceCents)}
                 </Mono>
-              </div>
-              {/* REBRAND (Task 1.3): blue-700 -> graphite-700 for this plain
-                  text link. Same open blue->graphite product question as
-                  Alert's info variant / Button's link variant / Badge's blue
-                  category color — not a settled design decision, flagging
-                  for product sign-off (see task-1.3 report). */}
-              <Link
-                to="/dashboard"
-                className="inline-flex text-xs text-[var(--lr-graphite-700)] hover:underline"
-              >
-                Ver análise →
-              </Link>
-            </div>
-          </Card>
+                {/* §6.12 item 6 — quebra por conta/instituição sob o total. */}
+                {(accountsQuery.data ?? []).length > 0 ? (
+                  <div className="mt-4 flex flex-col gap-2 border-t border-[var(--lr-border)] pt-3">
+                    {(accountsQuery.data ?? []).map((a) => (
+                      <div key={a.id} className="flex items-center gap-2.5">
+                        <InstitutionMark
+                          logoUrl={a.logoUrl}
+                          name={
+                            a.type === "cash" ? "Carteira" : a.institutionName
+                          }
+                          tone={a.type === "cash" ? "gold" : "petrol"}
+                          size="sm"
+                        />
+                        <Body
+                          as="span"
+                          muted
+                          className="min-w-0 flex-1 truncate text-[.8125rem]"
+                        >
+                          {a.name || a.institutionName}
+                        </Body>
+                        <Mono
+                          variant="number"
+                          className="flex-none text-[.8125rem]"
+                        >
+                          {formatMoney(a.balanceCents)}
+                        </Mono>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </Card>
+
+              <Card>
+                <div className="flex items-baseline justify-between">
+                  <Body as="span" muted>
+                    Faturas em aberto
+                  </Body>
+                  <Mono variant="number" tone="out" className="text-[.9375rem]">
+                    {totalInvoicesCents > 0 ? "− " : ""}
+                    {formatMoney(totalInvoicesCents)}
+                  </Mono>
+                </div>
+                <div className="mt-3 flex items-baseline justify-between border-t border-[var(--lr-border)] pt-3">
+                  <Body as="span" muted>
+                    Patrimônio total
+                  </Body>
+                  {insightsQuery.data ? (
+                    <Mono
+                      variant="number"
+                      tone={
+                        insightsQuery.data.patrimonioTotal.valueCents < 0
+                          ? "out"
+                          : "default"
+                      }
+                      className="text-[.9375rem]"
+                    >
+                      {formatMoney(
+                        insightsQuery.data.patrimonioTotal.valueCents,
+                      )}
+                    </Mono>
+                  ) : (
+                    <Skeleton className="h-4 w-20 rounded-[var(--lr-r-sm)]" />
+                  )}
+                </div>
+                {openInvoices.length > 0 ? (
+                  <ul className="mt-3 flex flex-col gap-1 border-t border-[var(--lr-border)] pt-3">
+                    {openInvoices.map((c) => (
+                      <li
+                        key={c.id}
+                        className="flex items-center justify-between gap-2"
+                      >
+                        <Body
+                          as="span"
+                          muted
+                          className="truncate text-[.8125rem]"
+                        >
+                          {c.name || c.institutionName}
+                        </Body>
+                        <Mono
+                          variant="number"
+                          tone="out"
+                          className="flex-none text-[.8125rem]"
+                        >
+                          − {formatMoney(c.usedCents)}
+                        </Mono>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </Card>
+
+              <Card sunken>
+                <div className="flex items-end justify-between gap-2">
+                  <div>
+                    <p className="lr-label mb-1 text-[.625rem]">
+                      DISPONÍVEL HOJE
+                    </p>
+                    {insightsQuery.data ? (
+                      <Mono
+                        variant="number"
+                        className="text-[1.5rem] text-[var(--lr-text)]"
+                      >
+                        {formatMoney(
+                          insightsQuery.data.disponivelHoje.valueCents,
+                        )}
+                      </Mono>
+                    ) : (
+                      <Skeleton className="h-7 w-28 rounded-[var(--lr-r-sm)]" />
+                    )}
+                  </div>
+                  {/* REBRAND (Task 1.3): blue-700 -> graphite-700 for this plain
+                      text link. Same open blue->graphite product question as
+                      Alert's info variant / Button's link variant / Badge's blue
+                      category color — not a settled design decision, flagging
+                      for product sign-off (see task-1.3 report). */}
+                  <Link
+                    to="/dashboard"
+                    className="inline-flex text-xs text-[var(--lr-graphite-700)] hover:underline"
+                  >
+                    Ver análise →
+                  </Link>
+                </div>
+              </Card>
+            </>
+          )}
         </aside>
       </div>
     </div>
