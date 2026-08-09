@@ -1274,7 +1274,7 @@ export function TimelinePage() {
                 doc de conformância, decisão de escopo #1). */}
             {pendingActivation.length === 0 ? (
               <Button
-                variant="secondary"
+                variant="primary"
                 icon={
                   <svg
                     aria-hidden="true"
