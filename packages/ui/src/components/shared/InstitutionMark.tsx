@@ -37,6 +37,31 @@ const TONE_CLASSES: Record<InstitutionMarkTone, string> = {
  * the Timeline aside's per-account rows don't each reimplement the same
  * fallback rule (§6.4).
  */
+const ICON_SIZE_CLASSES: Record<InstitutionMarkSize, string> = {
+  sm: "h-3.5 w-3.5",
+  md: "h-6 w-6",
+};
+
+/** Cash/wallet accounts never have a real institution logo, so the `gold`
+ * tone gets a banknote glyph instead of an initial — an initial reads as
+ * "unknown institution", but cash isn't an institution at all. */
+function CashIcon({ size }: { size: InstitutionMarkSize }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      className={ICON_SIZE_CLASSES[size]}
+    >
+      <rect x="2.5" y="6" width="19" height="12" rx="2" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M6 9v.01M18 15v.01" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function InstitutionMark({
   logoUrl,
   name,
@@ -69,7 +94,11 @@ export function InstitutionMark({
         className,
       ].join(" ")}
     >
-      {name.charAt(0).toUpperCase()}
+      {tone === "gold" ? (
+        <CashIcon size={size} />
+      ) : (
+        name.charAt(0).toUpperCase()
+      )}
     </span>
   );
 }

@@ -2,13 +2,13 @@ import { Badge } from "../Badge/Badge";
 import { Card } from "../Card/Card";
 import { Body } from "../Typography/Body";
 import { Mono } from "../Typography/Mono";
+import { InstitutionMark } from "../shared/InstitutionMark";
 import { formatMoney } from "../shared/formatMoney";
 
-export type AccountType = "checking" | "savings" | "cash";
+export type AccountType = "checking" | "cash";
 
 const TYPE_LABEL: Record<AccountType, string> = {
   checking: "Corrente",
-  savings: "Poupança",
   cash: "Dinheiro",
 };
 
@@ -27,37 +27,6 @@ export interface AccountCardProps {
   /** Decided by the caller from real account state — see Task 1's judgment-call note. When true, renders the alert badge. */
   overLimit?: boolean;
   onClick?: () => void;
-}
-
-function InstitutionMark({
-  logoUrl,
-  institutionName,
-}: {
-  logoUrl?: string;
-  institutionName: string;
-}) {
-  if (logoUrl) {
-    return (
-      <img
-        src={logoUrl}
-        alt=""
-        aria-hidden="true"
-        className="h-12 w-12 flex-none rounded-[var(--lr-r-md)] object-contain"
-      />
-    );
-  }
-  return (
-    // REBRAND (Task 1.3): blue-100/700/300 -> petrol-100/700/300 and
-    // blue-on-tint -> positive-on-tint — spec-backed (DESIGN_SYSTEM.md
-    // §1.2 lists "componentes selecionados" as Petrol; this institution-icon
-    // chip is grouped with that selection-state family per the task brief).
-    <span
-      aria-hidden="true"
-      className="flex h-12 w-12 flex-none items-center justify-center rounded-[var(--lr-r-md)] bg-[var(--lr-petrol-100)] text-[1.0625rem] font-bold text-[var(--lr-positive-on-tint)] dark:bg-[var(--lr-petrol-700)]/20 dark:text-[var(--lr-petrol-300)]"
-    >
-      {institutionName.charAt(0).toUpperCase()}
-    </span>
-  );
 }
 
 // design_handoff_lurem/design/Harmon.dc.html ("Contas e cartões" screen):
@@ -99,7 +68,11 @@ export function AccountCard({
         " ",
       )}
     >
-      <InstitutionMark logoUrl={logoUrl} institutionName={institutionName} />
+      <InstitutionMark
+        logoUrl={logoUrl}
+        name={institutionName}
+        tone={type === "cash" ? "gold" : "petrol"}
+      />
       <div className="min-w-0 flex-1">
         <p className="m-0 flex flex-wrap items-center gap-2">
           <Body as="span" weight="medium" className="truncate">

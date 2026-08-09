@@ -77,33 +77,6 @@ describe("disponivelHoje", () => {
     expect(result.valueCents).toBe(12_000);
   });
 
-  it("excludes savings accounts from the sum (segregation, not subtraction — §3.2)", () => {
-    const result = disponivelHoje(
-      {
-        accounts: [
-          {
-            account: account({ id: "a1", openingBalanceCents: 10_000 }),
-            transactions: [],
-          },
-          {
-            account: account({
-              id: "a2",
-              type: "savings",
-              openingBalanceCents: 999_000,
-            }),
-            transactions: [],
-          },
-        ],
-        cards: [],
-        scheduledTransactions: [],
-        recurringTransactions: [],
-        fulfillments: [],
-      },
-      ASOF,
-    );
-    expect(result.valueCents).toBe(10_000);
-  });
-
   it("subtracts the closed-but-not-due invoice of a card without auto-debit", () => {
     const card: CreditCardLike = {
       id: "card-1",

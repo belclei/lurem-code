@@ -42,7 +42,7 @@ async function resolveEditAccess(
   return { kind: "can_edit", account };
 }
 
-const AccountType = z.enum(["checking", "savings", "cash"]);
+const AccountType = z.enum(["checking", "cash"]);
 
 const CreateAccountBody = z.object({
   type: AccountType,

@@ -915,7 +915,11 @@ function WalletDialog({
     mutationFn: (openingBalanceCents: number) =>
       apiFetchJson("/accounts", {
         method: "POST",
-        body: JSON.stringify({ type: "cash", openingBalanceCents }),
+        body: JSON.stringify({
+          type: "cash",
+          name: "Carteira",
+          openingBalanceCents,
+        }),
       }),
     onSuccess: () => {
       onCreated();

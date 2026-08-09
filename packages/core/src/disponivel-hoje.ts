@@ -86,9 +86,11 @@ export function disponivelHoje(input: DisponivelHojeInput, asOf: Date): Money {
 
   const breakdown: BreakdownLine[] = [];
 
-  // Σ balance(account, asOf) — contas líquidas: checking + cash, ativas.
+  // Σ balance(account, asOf) — contas líquidas: toda conta bancária + cash,
+  // ativas. "savings" foi unificado a "checking" (2026-08-08): não existe
+  // mais uma conta bancária não-líquida.
   for (const { account, transactions } of input.accounts) {
-    if (account.type === "savings" || !account.isActive) continue;
+    if (!account.isActive) continue;
     const accountBalance = balance({ account, transactions, asOf });
     breakdown.push(...accountBalance.breakdown);
   }

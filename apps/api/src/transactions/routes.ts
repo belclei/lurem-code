@@ -93,7 +93,7 @@ export async function registerTransactionRoutes(
   /** Saldo confirmado atual de uma conta (fonte única: core.balance). */
   async function accountBalanceCents(account: {
     id: string;
-    type: "checking" | "savings" | "cash";
+    type: "checking" | "cash";
     openingBalanceCents: number;
     overdraftLimitCents: number;
     isActive: boolean;

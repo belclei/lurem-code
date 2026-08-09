@@ -47,7 +47,7 @@ async function institution() {
 async function account(
   userId: string,
   over: Partial<{
-    type: "checking" | "savings" | "cash";
+    type: "checking" | "cash";
     openingBalanceCents: number;
     overdraftLimitCents: number;
   }> = {},
