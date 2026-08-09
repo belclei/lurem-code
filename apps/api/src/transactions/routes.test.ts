@@ -202,6 +202,35 @@ describe("POST /v1/transactions — transfer & installment (US-3.6)", () => {
     expect(inLeg.accountId).toBe(to.id);
   });
 
+  it("creates a transfer without a description, defaulting it to empty", async () => {
+    const { userId, accessToken } = await authedUser();
+    const from = await account(userId, { openingBalanceCents: 100_000 });
+    const to = await account(userId, { openingBalanceCents: 0 });
+    const res = await post(accessToken, {
+      kind: "transfer",
+      accountId: from.id,
+      toAccountId: to.id,
+      transactionDate: TODAY,
+      amountCents: 30_000,
+    });
+    expect(res.statusCode).toBe(201);
+    const [out, inLeg] = res.json();
+    expect(out.description).toBe("");
+    expect(inLeg.description).toBe("");
+  });
+
+  it("rejects a non-transfer transaction without a description", async () => {
+    const { userId, accessToken } = await authedUser();
+    const a = await account(userId, { openingBalanceCents: 100_000 });
+    const res = await post(accessToken, {
+      kind: "expense",
+      accountId: a.id,
+      transactionDate: TODAY,
+      amountCents: 1_000,
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it("splits an installment purchase into N card rows, one per future month", async () => {
     const { userId, accessToken } = await authedUser();
     const c = await card(userId);

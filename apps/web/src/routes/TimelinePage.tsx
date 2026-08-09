@@ -484,7 +484,9 @@ function NewTransactionDialog({
     e.preventDefault();
     setFormError(null);
     const cents = reaisToCentsPositive(amount);
-    if (!description.trim()) {
+    // Transferência entre contas próprias dispensa descrição (§6.6) — as
+    // outras naturezas continuam exigindo uma.
+    if (kind !== "transfer" && !description.trim()) {
       setFormError("Descreva a transação.");
       return;
     }
@@ -539,7 +541,7 @@ function NewTransactionDialog({
           ]}
         />
         <Input
-          label="Descrição"
+          label={kind === "transfer" ? "Descrição (opcional)" : "Descrição"}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Mercado, salário, aluguel…"
@@ -683,7 +685,7 @@ function EditTransactionDialog({
     setFormError(null);
     if (!tx) return;
     const cents = reaisToCentsPositive(amount);
-    if (!description.trim()) {
+    if (tx.kind !== "transfer" && !description.trim()) {
       setFormError("Descreva a transação.");
       return;
     }
@@ -703,7 +705,7 @@ function EditTransactionDialog({
     <Dialog open={tx !== null} onClose={onClose} title="Editar transação">
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
         <Input
-          label="Descrição"
+          label={tx?.kind === "transfer" ? "Descrição (opcional)" : "Descrição"}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
@@ -1712,6 +1714,7 @@ export function TimelinePage() {
                                 <TransferPairCard
                                   key={tx.id}
                                   amountCents={tx.amountCents}
+                                  description={tx.description || undefined}
                                   from={resolveTransferParty(
                                     tx,
                                     accountsById,

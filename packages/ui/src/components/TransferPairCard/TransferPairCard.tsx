@@ -16,6 +16,8 @@ export interface TransferPairCardProps {
   amountCents: number;
   from: TransferAccount;
   to: TransferAccount;
+  /** Optional — transfers don't require a description (§6.6), but shows here when the user provided one. */
+  description?: string;
 }
 
 /**
@@ -28,6 +30,7 @@ export function TransferPairCard({
   amountCents,
   from,
   to,
+  description,
 }: TransferPairCardProps) {
   return (
     <Card>
@@ -48,8 +51,13 @@ export function TransferPairCard({
             <path d="M7 16a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h10m-10 12h10a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1M7 5l-3 3m3-3l3 3m10 6l-3-3m3 3l-3-3" />
           </svg>
         </span>
-        <div className="flex-1">
+        <div className="min-w-0 flex-1">
           <Body weight="medium">Transferência entre suas contas</Body>
+          {description ? (
+            <Body muted className="truncate text-[.75rem]">
+              {description}
+            </Body>
+          ) : null}
         </div>
         <Mono
           variant="number"
