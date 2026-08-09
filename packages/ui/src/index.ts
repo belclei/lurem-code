@@ -6,6 +6,7 @@ export * from "./components/shared/formatMoney";
 export * from "./components/shared/formatDate";
 export * from "./components/shared/InstitutionMark";
 export * from "./components/Select/Select";
+export * from "./components/DateField/DateField";
 export * from "./components/Alert/Alert";
 export * from "./components/Card/Card";
 export * from "./components/Badge/Badge";

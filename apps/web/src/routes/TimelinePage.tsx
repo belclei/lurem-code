@@ -13,6 +13,7 @@ import {
   Card,
   CategoryIcon,
   Checkbox,
+  DateField,
   Dialog,
   EmptyState,
   Input,
@@ -525,12 +526,7 @@ function NewTransactionDialog({
             inputMode="decimal"
             placeholder="0,00"
           />
-          <Input
-            label="Data"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            hint="AAAA-MM-DD"
-          />
+          <DateField label="Data" value={date} onChange={setDate} />
         </div>
         <Select
           label={kind === "transfer" ? "De (conta)" : "Conta ou cartão"}
@@ -693,12 +689,7 @@ function EditTransactionDialog({
             inputMode="decimal"
             placeholder="0,00"
           />
-          <Input
-            label="Data"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            hint="AAAA-MM-DD"
-          />
+          <DateField label="Data" value={date} onChange={setDate} />
         </div>
         <Select
           label="Categoria (opcional)"
