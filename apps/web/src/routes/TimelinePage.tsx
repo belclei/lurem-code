@@ -6,7 +6,6 @@
 // endpoint próprio para eles (ver comentário em timeline/routes.ts no backend).
 import {
   Alert,
-  Badge,
   Body,
   Button,
   Calendar,
@@ -316,6 +315,35 @@ function longDayMonth(dateYmd: string): string {
   const day = Number(dateYmd.slice(8, 10));
   const date = new Date(year, month - 1, day);
   return date.toLocaleDateString("pt-BR", { day: "numeric", month: "long" });
+}
+
+const GOOGLE_PLACEHOLDER_BIRTH_DATE = "1970-01-01";
+
+/** True when `dateYmd` falls in the 7-day run-up to `birthDate`'s next
+ * anniversary (inclusive of the day itself) — compares month/day only, so
+ * the year on `birthDate` (and any year mismatch between the two) never
+ * matters. Checks both "this year" and "next year" candidates for the
+ * anniversary so a birthday in early January still lights up during the
+ * last week of December. `birthDate` is the Google-signup placeholder
+ * (`apps/api/src/auth/routes.ts`) for accounts that never filled in a real
+ * one — never treated as a real birthday. */
+function isBirthdayWindow(dateYmd: string, birthDate: string): boolean {
+  const iso = birthDate.slice(0, 10);
+  if (!iso || iso === GOOGLE_PLACEHOLDER_BIRTH_DATE) return false;
+  const birthMonth = Number(iso.slice(5, 7));
+  const birthDay = Number(iso.slice(8, 10));
+  const year = Number(dateYmd.slice(0, 4));
+  const month = Number(dateYmd.slice(5, 7));
+  const day = Number(dateYmd.slice(8, 10));
+  const current = new Date(year, month - 1, day);
+  for (const candidateYear of [year, year + 1]) {
+    const anniversary = new Date(candidateYear, birthMonth - 1, birthDay);
+    const diffDays = Math.round(
+      (anniversary.getTime() - current.getTime()) / 86_400_000,
+    );
+    if (diffDays >= 0 && diffDays <= 7) return true;
+  }
+  return false;
 }
 
 // §3's accounts popover row: "ponto colorido da instituição" — neither
@@ -1601,6 +1629,14 @@ export function TimelinePage() {
                 {days.map((day) => {
                   const today = isToday(day.date);
                   const dow = dayOfWeek(day.date);
+                  const isBirthday =
+                    day.date.slice(5, 10) === user.birthDate.slice(5, 10) &&
+                    user.birthDate.slice(0, 10) !==
+                      GOOGLE_PLACEHOLDER_BIRTH_DATE;
+                  const showBirthdayAlert = isBirthdayWindow(
+                    day.date,
+                    user.birthDate,
+                  );
 
                   return (
                     <section
@@ -1611,20 +1647,24 @@ export function TimelinePage() {
                           : ""
                       }
                     >
+                      {showBirthdayAlert ? (
+                        <div className="mb-3">
+                          <Alert
+                            variant="success"
+                            layout="inline"
+                            emoji="🥳"
+                            title={
+                              isBirthday
+                                ? "Feliz aniversário!"
+                                : `Seu aniversário é dia ${longDayMonth(user.birthDate.slice(0, 10))}!`
+                            }
+                          />
+                        </div>
+                      ) : null}
                       <div className="mb-3 flex items-center justify-between gap-2">
                         <h2 className="flex items-center gap-2 text-[.8125rem] font-bold text-[var(--lr-text)]">
                           {today ? "HOJE · " : ""}
-                          {longDayMonth(day.date)}
-                          {today ? (
-                            // Badge has no literal "warning" status (TIMELINE.md §5.1 wants
-                            // hmc-badge--warning) — "pending" is Badge's own gold/warning-toned
-                            // entry (see Badge.tsx STATUS_STYLES.pending), the closest existing
-                            // match without adding a 6th BadgeStatus for one call site.
-                            // Judgment call — flagged in the plan's report.
-                            <Badge kind="status" status="pending">
-                              {dow}
-                            </Badge>
-                          ) : null}
+                          {longDayMonth(day.date)} - {dow}
                         </h2>
                         <div className="flex items-baseline gap-2 rounded-full bg-[var(--lr-surface)] px-3 py-1 text-[.75rem]">
                           <span className="uppercase tracking-widest text-[var(--lr-text-secondary)]">
