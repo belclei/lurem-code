@@ -70,6 +70,15 @@ describe("POST /v1/accounts", () => {
       where: { id: body.id },
     });
     expect(stored.reconciledBalanceCents).toBe(0);
+
+    const event = await server.prisma.domainEvent.findFirstOrThrow({
+      where: { aggregateType: "Account", aggregateId: body.id },
+    });
+    expect(event.type).toBe("account.created");
+    expect(event.payload).toMatchObject({
+      type: "checking",
+      institutionName: "Nubank",
+    });
   });
 
   it("rejects a cash account with a non-zero overdraft limit", async () => {

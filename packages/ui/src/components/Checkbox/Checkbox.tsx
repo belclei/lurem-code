@@ -1,4 +1,5 @@
 import { type InputHTMLAttributes, useEffect, useId, useRef } from "react";
+import { CheckIcon } from "../shared/icons";
 
 export interface CheckboxProps
   extends Omit<
@@ -76,18 +77,10 @@ export function Checkbox({
           {indeterminate ? (
             <span className="h-0.5 w-2.5 rounded-full bg-[var(--lr-ivory-000)]" />
           ) : checked ? (
-            <svg
-              aria-hidden="true"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
+            <CheckIcon
               strokeWidth={3}
-              className="text-[var(--lr-ivory-000)]"
-            >
-              <path d="m5 13 4 4L19 7" />
-            </svg>
+              className="h-3 w-3 text-[var(--lr-ivory-000)]"
+            />
           ) : null}
         </span>
       </span>

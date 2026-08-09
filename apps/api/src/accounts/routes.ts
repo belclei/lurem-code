@@ -42,7 +42,7 @@ async function resolveEditAccess(
   return { kind: "can_edit", account };
 }
 
-const AccountType = z.enum(["checking", "savings", "cash"]);
+const AccountType = z.enum(["checking", "cash"]);
 
 const CreateAccountBody = z.object({
   type: AccountType,
@@ -171,6 +171,20 @@ export async function registerAccountRoutes(
           overdraftLimitCents: body.overdraftLimitCents,
           reconciledBalanceCents: 0,
           reconciledAt: new Date(),
+        },
+      });
+
+      await fastify.prisma.domainEvent.create({
+        data: {
+          userId,
+          type: "account.created",
+          aggregateType: "Account",
+          aggregateId: account.id,
+          payload: {
+            type: account.type,
+            name: account.name,
+            institutionName: institution?.name ?? null,
+          },
         },
       });
 

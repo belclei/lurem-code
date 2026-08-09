@@ -30,9 +30,8 @@ import type {
 import { reaisToCentsOrZero, reaisToCentsPositive } from "../lib/money";
 
 const ACCOUNT_TYPE_OPTIONS = [
-  { value: "checking", label: "Conta corrente" },
-  { value: "savings", label: "Poupança" },
-  { value: "cash", label: "Carteira" },
+  { value: "checking", label: "Conta bancária" },
+  { value: "cash", label: "Espécie" },
 ];
 
 function resolveAutoDebitLabel(
@@ -116,7 +115,13 @@ function NewAccountDialog({
           label="Tipo"
           options={ACCOUNT_TYPE_OPTIONS}
           value={type}
-          onChange={(value) => setType(value as AccountType)}
+          onChange={(value) => {
+            const next = value as AccountType;
+            setType(next);
+            // "Espécie" (cash) tem "Carteira" como apelido default —
+            // pré-preenche só se o usuário ainda não digitou nada.
+            if (next === "cash" && !name.trim()) setName("Carteira");
+          }}
         />
         {type !== "cash" ? (
           <Select

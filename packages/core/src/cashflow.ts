@@ -124,8 +124,10 @@ function liquidBalanceLines(
   asOf: Date,
 ): BreakdownLine[] {
   const lines: BreakdownLine[] = [];
+  // "savings" was folded into "checking" (2026-08-08) — every bank account
+  // now counts as liquid alongside cash, not just checking.
   for (const { account, transactions } of input.accounts) {
-    if (account.type === "savings" || !account.isActive) continue;
+    if (!account.isActive) continue;
     lines.push(...balance({ account, transactions, asOf }).breakdown);
   }
   return lines;

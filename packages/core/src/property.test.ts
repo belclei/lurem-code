@@ -34,7 +34,7 @@ const dateArb = fc.date({
 
 const accountArb: fc.Arbitrary<AccountLike> = fc.record({
   id: fc.uuid(),
-  type: fc.constantFrom("checking", "savings", "cash"),
+  type: fc.constantFrom("checking", "cash"),
   openingBalanceCents: fc.integer({ min: -1_000_000, max: 1_000_000 }),
   overdraftLimitCents: fc.integer({ min: 0, max: 500_000 }),
   isActive: fc.boolean(),

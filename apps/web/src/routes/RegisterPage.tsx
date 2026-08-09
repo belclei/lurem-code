@@ -7,7 +7,7 @@
 // descreveu "ou Google" como opção aqui, mas só e-mail/senha tinha sido
 // construído — a API (POST /v1/auth/google, `token` opcional) já suportava
 // isso desde o gate de convite do Sprint 15, só faltava este botão.
-import { Alert, Button, Input } from "@lurem/ui";
+import { Alert, Button, DateField, Input } from "@lurem/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
@@ -158,12 +158,10 @@ export function RegisterPage() {
           onChange={(event) => setName(event.target.value)}
           required
         />
-        <Input
-          type="text"
+        <DateField
           label="Data de nascimento"
-          hint="AAAA-MM-DD"
           value={birthDate}
-          onChange={(event) => setBirthDate(event.target.value)}
+          onChange={setBirthDate}
           required
         />
         <Input

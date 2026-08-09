@@ -5,6 +5,7 @@ import {
   Alert,
   Avatar,
   Button,
+  DateField,
   Dialog,
   Input,
   RadioGroup,
@@ -188,12 +189,10 @@ export function SettingsPage() {
             value={name}
             onChange={(event) => setName(event.target.value)}
           />
-          <Input
-            type="text"
+          <DateField
             label="Data de nascimento"
-            hint="AAAA-MM-DD"
             value={birthDate}
-            onChange={(event) => setBirthDate(event.target.value)}
+            onChange={setBirthDate}
           />
           <Input
             label="E-mail"

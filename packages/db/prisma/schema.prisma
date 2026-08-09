@@ -195,7 +195,6 @@ model Institution {
 
 enum AccountType {
   checking
-  savings
   cash
 }
 

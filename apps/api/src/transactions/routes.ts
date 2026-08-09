@@ -32,7 +32,9 @@ const CreateTransactionBody = z
     accountId: z.string().min(1).optional(),
     creditCardId: z.string().min(1).optional(),
     categoryId: z.string().min(1).optional(),
-    description: z.string().min(1),
+    // Optional only for transfers (§6.6): moving money between your own
+    // accounts is self-explanatory, unlike an income/expense entry.
+    description: z.string().min(1).optional(),
     transactionDate: IsoDate,
     amountCents: z.number().int().positive(),
     currency: z.string().min(1).default("BRL"),
@@ -48,7 +50,11 @@ const CreateTransactionBody = z
     recurring: z.boolean().optional(),
     recurringDayOfMonth: z.number().int().min(1).max(31).optional(),
   })
-  .strict();
+  .strict()
+  .refine((data) => data.kind === "transfer" || Boolean(data.description), {
+    message: "Descrição é obrigatória.",
+    path: ["description"],
+  });
 
 type CreateBody = z.infer<typeof CreateTransactionBody>;
 
@@ -93,7 +99,7 @@ export async function registerTransactionRoutes(
   /** Saldo confirmado atual de uma conta (fonte única: core.balance). */
   async function accountBalanceCents(account: {
     id: string;
-    type: "checking" | "savings" | "cash";
+    type: "checking" | "cash";
     openingBalanceCents: number;
     overdraftLimitCents: number;
     isActive: boolean;
@@ -203,7 +209,7 @@ export async function registerTransactionRoutes(
           userId,
           kind: "transfer" as const,
           source: "manual" as const,
-          description: body.description,
+          description: body.description ?? "",
           transactionDate,
           currency: "BRL",
           amountCents: body.amountCents,
@@ -237,6 +243,9 @@ export async function registerTransactionRoutes(
       const hasAccount = body.accountId != null;
       const hasCard = body.creditCardId != null;
       if (hasAccount === hasCard) throw TRANSACTION_ACCOUNT_XOR_CARD();
+      // Guaranteed non-empty by CreateTransactionBody's own refine (only
+      // "transfer" — already returned above — may omit it).
+      const description = body.description as string;
 
       // ---- Parcelamento (§6.6): N linhas, uma por fatura futura ----
       if (body.installmentTotal != null) {
@@ -273,7 +282,7 @@ export async function registerTransactionRoutes(
               categoryId: body.categoryId ?? null,
               kind: "expense",
               source: "manual",
-              description: body.description,
+              description,
               transactionDate: makeDate(year, month, day),
               currency: "BRL",
               amountCents: cents,
@@ -333,7 +342,7 @@ export async function registerTransactionRoutes(
           categoryId: body.categoryId ?? null,
           kind: body.kind,
           source: "manual",
-          description: body.description,
+          description,
           transactionDate,
           currency: "BRL",
           amountCents: body.amountCents,
@@ -348,7 +357,7 @@ export async function registerTransactionRoutes(
         const series = await prisma.recurringTransaction.create({
           data: {
             userId,
-            description: body.description,
+            description,
             kind: body.kind,
             accountId: hasAccount ? body.accountId : null,
             creditCardId: hasCard ? body.creditCardId : null,

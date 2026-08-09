@@ -59,7 +59,7 @@ export const Estados: Story = {
       />
       <AccountCard
         institutionName="Banco Inter"
-        type="savings"
+        type="checking"
         balanceCents={0}
         isActive={false}
       />

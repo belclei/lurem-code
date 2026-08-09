@@ -36,7 +36,7 @@ describe("patrimonioTotal", () => {
     expect(result.valueCents).toBe(10_000);
   });
 
-  it("includes savings balances (poupança entra, ao contrário do Disponível Hoje)", () => {
+  it("sums multiple bank accounts", () => {
     const result = patrimonioTotal(
       {
         accounts: [
@@ -45,11 +45,7 @@ describe("patrimonioTotal", () => {
             transactions: [],
           },
           {
-            account: account({
-              id: "a2",
-              type: "savings",
-              openingBalanceCents: 50_000,
-            }),
+            account: account({ id: "a2", openingBalanceCents: 50_000 }),
             transactions: [],
           },
         ],
@@ -206,11 +202,7 @@ describe("patrimonioTotal", () => {
             transactions: [],
           },
           {
-            account: account({
-              id: "a2",
-              type: "savings",
-              openingBalanceCents: 20_000,
-            }),
+            account: account({ id: "a2", openingBalanceCents: 20_000 }),
             transactions: [],
           },
         ],

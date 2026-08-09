@@ -7,6 +7,7 @@ import {
   Alert,
   Button,
   Checkbox,
+  DateField,
   EmptyState,
   Input,
   RecurringRow,
@@ -221,12 +222,7 @@ export function RecurringPage() {
             value={dayOfMonth}
             onChange={(e) => setDayOfMonth(e.target.value)}
           />
-          <Input
-            label="Início"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            hint="AAAA-MM-DD"
-          />
+          <DateField label="Início" value={startDate} onChange={setStartDate} />
         </div>
         <Select
           label="Conta ou cartão"

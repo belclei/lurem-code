@@ -34,7 +34,7 @@ export interface InstitutionDto {
   logoUrl?: string;
 }
 
-export type AccountType = "checking" | "savings" | "cash";
+export type AccountType = "checking" | "cash";
 
 export interface AccountDto {
   id: string;

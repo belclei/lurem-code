@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Button } from "../Button/Button";
+import { ChevronLeftIcon, ChevronRightIcon } from "../shared/icons";
 
 export type CalendarMode = "single" | "range";
 export type CalendarDayStatus = "real" | "scheduled";
@@ -47,23 +48,6 @@ const MONTH_NAMES = [
   "novembro",
   "dezembro",
 ];
-
-const CHEVRON_LEFT = <path d="m15 6-6 6 6 6" />;
-const CHEVRON_RIGHT = <path d="m9 6 6 6-6 6" />;
-
-function chevronIcon(path: ReactNode) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      aria-hidden="true"
-    >
-      {path}
-    </svg>
-  );
-}
 
 function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -160,7 +144,7 @@ export function Calendar({
         <Button
           variant="tertiary"
           size="sm"
-          icon={chevronIcon(CHEVRON_LEFT)}
+          icon={<ChevronLeftIcon />}
           aria-label="Mês anterior"
           onClick={() => onMonthChange(addMonths(month, -1))}
         />
@@ -170,7 +154,7 @@ export function Calendar({
         <Button
           variant="tertiary"
           size="sm"
-          icon={chevronIcon(CHEVRON_RIGHT)}
+          icon={<ChevronRightIcon />}
           aria-label="Próximo mês"
           onClick={() => onMonthChange(addMonths(month, 1))}
         />

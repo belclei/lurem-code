@@ -4,7 +4,7 @@
 // que as fórmulas de IMPLEMENTACAO.md §2-§3 realmente consultam.
 
 export type TxKind = "income" | "expense" | "transfer";
-export type AccountType = "checking" | "savings" | "cash";
+export type AccountType = "checking" | "cash";
 
 export interface AccountLike {
   id: string;

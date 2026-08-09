@@ -122,6 +122,19 @@ export async function registerCardRoutes(
         },
       });
 
+      await fastify.prisma.domainEvent.create({
+        data: {
+          userId,
+          type: "card.created",
+          aggregateType: "CreditCard",
+          aggregateId: card.id,
+          payload: {
+            name: card.name,
+            institutionName: institution.name,
+          },
+        },
+      });
+
       reply.code(201);
       return toCardResponse(card, institution);
     },
