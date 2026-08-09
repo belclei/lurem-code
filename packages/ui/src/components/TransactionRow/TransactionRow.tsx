@@ -6,6 +6,7 @@ import { Body } from "../Typography/Body";
 import { Mono } from "../Typography/Mono";
 import { formatDate } from "../shared/formatDate";
 import { formatMoney } from "../shared/formatMoney";
+import { ChevronDownIcon } from "../shared/icons";
 
 export type TransactionKind = "income" | "expense" | "transfer";
 export type TransactionSource = "manual" | "import";
@@ -170,21 +171,12 @@ function RowHeader(props: TransactionRowProps) {
             }}
             className="flex-none rounded-[var(--lr-r-full)] p-1 text-[var(--lr-text-secondary)] hover:bg-[var(--lr-surface-sunken)]"
           >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 20 20"
-              fill="currentColor"
+            <ChevronDownIcon
               className={[
                 "h-3.5 w-3.5 transition-transform duration-150",
                 props.expanded ? "rotate-180" : "",
               ].join(" ")}
-            >
-              <path
-                fillRule="evenodd"
-                d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-                clipRule="evenodd"
-              />
-            </svg>
+            />
           </button>
         ) : null}
       </div>

@@ -5,6 +5,7 @@ export * from "./components/shared/Spinner";
 export * from "./components/shared/formatMoney";
 export * from "./components/shared/formatDate";
 export * from "./components/shared/InstitutionMark";
+export * from "./components/shared/icons";
 export * from "./components/Select/Select";
 export * from "./components/DateField/DateField";
 export * from "./components/Alert/Alert";

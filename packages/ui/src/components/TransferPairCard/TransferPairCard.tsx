@@ -3,6 +3,7 @@ import { Body } from "../Typography/Body";
 import { Mono } from "../Typography/Mono";
 import { InstitutionMark } from "../shared/InstitutionMark";
 import { formatMoney } from "../shared/formatMoney";
+import { TransferIcon } from "../shared/icons";
 
 export interface TransferAccount {
   name: string;
@@ -40,16 +41,7 @@ export function TransferPairCard({
           aria-hidden="true"
           className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[var(--lr-r-sm)] bg-[var(--lr-petrol-100)] text-[var(--lr-petrol-600)] dark:bg-[var(--lr-petrol-700)]/20 dark:text-[var(--lr-petrol-300)]"
         >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            className="h-4 w-4"
-          >
-            <path d="M7 16a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h10m-10 12h10a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1M7 5l-3 3m3-3l3 3m10 6l-3-3m3 3l-3-3" />
-          </svg>
+          <TransferIcon className="h-4 w-4" />
         </span>
         <div className="min-w-0 flex-1">
           <Body weight="medium">Transferência entre suas contas</Body>

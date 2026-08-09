@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Button } from "../Button/Button";
+import { CloseIcon } from "../shared/icons";
 
 export type AlertVariant = "info" | "success" | "warning" | "error";
 /**
@@ -308,14 +309,7 @@ export function Alert({
             aria-label="Fechar alerta"
             className="-m-1 flex-none cursor-pointer rounded-[var(--lr-r-sm)] p-1 text-[var(--lr-text-secondary)] opacity-70 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
           >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              className="h-4 w-4"
-            >
-              <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
-            </svg>
+            <CloseIcon className="h-4 w-4" />
           </button>
         ) : null}
       </div>

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { CloseIconThin } from "../shared/icons";
 
 export type BadgeStatus =
   | "active"
@@ -234,16 +235,7 @@ export function Badge(props: BadgeProps) {
           aria-label={props.removeLabel ?? "Remover categoria"}
           className="-mr-1 ml-0.5 inline-flex h-3.5 w-3.5 flex-none cursor-pointer items-center justify-center text-[var(--lr-text-secondary)] hover:text-[var(--lr-text)]"
         >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            className="h-full w-full"
-          >
-            <path d="M6 6l12 12M18 6 6 18" />
-          </svg>
+          <CloseIconThin className="h-full w-full" />
         </button>
       ) : null}
     </span>

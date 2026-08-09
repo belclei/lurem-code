@@ -12,12 +12,15 @@ import {
   Card,
   CategoryIcon,
   Checkbox,
+  ChevronDownIcon,
   DateField,
   Dialog,
   EmptyState,
+  EyeIcon,
   Input,
   InstitutionMark,
   Mono,
+  PlusIcon,
   ProfileIncompleteAlert,
   Segmented,
   Select,
@@ -256,21 +259,12 @@ function FilterPopover({
         ].join(" ")}
       >
         {triggerLabel}
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 20 20"
-          fill="currentColor"
+        <ChevronDownIcon
           className={[
             "h-3.5 w-3.5 flex-none text-[var(--lr-text-secondary)] transition-transform duration-150",
             open ? "rotate-180" : "",
           ].join(" ")}
-        >
-          <path
-            fillRule="evenodd"
-            d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-            clipRule="evenodd"
-          />
-        </svg>
+        />
       </button>
       {open ? (
         <div className="absolute left-0 top-full z-20 mt-1.5">{children}</div>
@@ -367,33 +361,6 @@ function institutionDotColor(id: string): string {
     hash = (hash * 31 + id.charCodeAt(i)) | 0;
   }
   return ACCOUNT_DOT_HUES[Math.abs(hash) % ACCOUNT_DOT_HUES.length] as string;
-}
-
-function EyeIcon({ open }: { open: boolean }) {
-  return open ? (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.8}
-    >
-      <path d="M2 12s3.7-7 10-7 10 7 10 7-3.7 7-10 7-10-7-10-7Z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  ) : (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.8}
-    >
-      <path d="M3 3l18 18" />
-      <path d="M10.6 5.2A10.7 10.7 0 0 1 12 5c6.5 0 10 7 10 7a15.9 15.9 0 0 1-4.1 4.9M6.3 6.3A15.6 15.6 0 0 0 2 12s3.5 7 10 7a10.5 10.5 0 0 0 4.6-1" />
-      <path d="M9.5 9.7A3 3 0 0 0 12 15a3 3 0 0 0 2.3-1.1" />
-    </svg>
-  );
 }
 
 function NewTransactionDialog({
@@ -1300,17 +1267,7 @@ export function TimelinePage() {
             {pendingActivation.length === 0 ? (
               <Button
                 variant="primary"
-                icon={
-                  <svg
-                    aria-hidden="true"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path d="M12 5v14M5 12h14" />
-                  </svg>
-                }
+                icon={<PlusIcon />}
                 onClick={() => setTxDialogOpen(true)}
               >
                 Nova transação
