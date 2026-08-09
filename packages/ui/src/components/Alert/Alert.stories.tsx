@@ -178,3 +178,24 @@ export const Estreito: Story = {
     </div>
   ),
 };
+
+/** `emoji` substitui o ícone svg no mesmo slot/tamanho — usado pelo alerta de aniversário da Timeline. */
+export const ComEmoji: Story = {
+  name: "Com emoji",
+  render: () => (
+    <div style={{ display: "grid", gap: "0.75rem", width: "22rem" }}>
+      <Alert
+        variant="success"
+        emoji="🥳"
+        title="Seu aniversário é dia 15!"
+        description="Parabéns antecipados — só mais uma semana."
+      />
+      <Alert
+        variant="success"
+        layout="inline"
+        emoji="🥳"
+        title="Feliz aniversário!"
+      />
+    </div>
+  ),
+};
