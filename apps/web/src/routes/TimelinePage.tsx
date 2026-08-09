@@ -65,6 +65,7 @@ import { reaisToCentsOrZero, reaisToCentsPositive } from "../lib/money";
 import type { DashboardInsights } from "./DashboardView";
 import { EditTransactionDialog } from "./timeline/EditTransactionDialog";
 import { NewTransactionDialog } from "./timeline/NewTransactionDialog";
+import { TimelineRailDot, TimelineRailLine } from "./timeline/TimelineRail";
 import { TimelineSummaryAside } from "./timeline/TimelineSummaryAside";
 import { WalletDialog } from "./timeline/WalletDialog";
 import {
@@ -788,7 +789,8 @@ export function TimelinePage() {
                 />
               ) : null}
 
-              <div className="flex flex-col gap-6">
+              <div className="relative flex flex-col gap-6">
+                <TimelineRailLine />
                 {days.map((day) => {
                   const today = isToday(day.date);
                   const dow = dayOfWeek(day.date);
@@ -802,115 +804,117 @@ export function TimelinePage() {
                   );
 
                   return (
-                    <section
-                      key={day.date}
-                      className={
-                        today
-                          ? "rounded-[var(--lr-r-md)] bg-[var(--lr-surface-sunken)] p-4"
-                          : ""
-                      }
-                    >
-                      {showBirthdayAlert ? (
-                        <div className="mb-3">
-                          <Alert
-                            variant="success"
-                            layout="inline"
-                            emoji="🥳"
-                            title={
-                              isBirthday
-                                ? "Feliz aniversário!"
-                                : `Seu aniversário é dia ${longDayMonth(user.birthDate.slice(0, 10))}!`
-                            }
-                          />
+                    <section key={day.date} className="relative">
+                      <TimelineRailDot today={today} />
+                      <div
+                        className={
+                          today
+                            ? "rounded-[var(--lr-r-md)] bg-[var(--lr-surface-sunken)] p-4 pl-8"
+                            : "pl-8"
+                        }
+                      >
+                        {showBirthdayAlert ? (
+                          <div className="mb-3">
+                            <Alert
+                              variant="success"
+                              layout="inline"
+                              emoji="🥳"
+                              title={
+                                isBirthday
+                                  ? "Feliz aniversário!"
+                                  : `Seu aniversário é dia ${longDayMonth(user.birthDate.slice(0, 10))}!`
+                              }
+                            />
+                          </div>
+                        ) : null}
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <h2 className="flex items-center gap-2 text-[.8125rem] font-bold text-[var(--lr-text)]">
+                            {today ? "HOJE · " : ""}
+                            {longDayMonth(day.date)} - {dow}
+                          </h2>
+                          <div className="flex items-baseline gap-2 rounded-full bg-[var(--lr-surface)] px-3 py-1 text-[.75rem]">
+                            <span className="uppercase tracking-widest text-[var(--lr-text-secondary)]">
+                              Saldo do dia
+                            </span>
+                            <Mono
+                              variant="number"
+                              className="text-[.8125rem] text-[var(--lr-text)]"
+                            >
+                              {formatMoney(day.balanceCents)}
+                            </Mono>
+                          </div>
                         </div>
-                      ) : null}
-                      <div className="mb-3 flex items-center justify-between gap-2">
-                        <h2 className="flex items-center gap-2 text-[.8125rem] font-bold text-[var(--lr-text)]">
-                          {today ? "HOJE · " : ""}
-                          {longDayMonth(day.date)} - {dow}
-                        </h2>
-                        <div className="flex items-baseline gap-2 rounded-full bg-[var(--lr-surface)] px-3 py-1 text-[.75rem]">
-                          <span className="uppercase tracking-widest text-[var(--lr-text-secondary)]">
-                            Saldo do dia
-                          </span>
-                          <Mono
-                            variant="number"
-                            className="text-[.8125rem] text-[var(--lr-text)]"
-                          >
-                            {formatMoney(day.balanceCents)}
-                          </Mono>
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        {day.items.map((item) => {
-                          if (item.itemType !== "transaction") {
-                            return (
-                              <TimelineEventRow
-                                key={item.id}
-                                // DomainEvent.type/payload are untyped String/Json
-                                // at the DB boundary (§6 catalog) —
-                                // TimelineEventRow owns the actual type union, so
-                                // this cast is the API contract's boundary, not a
-                                // real type escape.
-                                type={item.type as DomainEventType}
-                                payload={item.payload}
-                                createdAt={item.createdAt}
-                              />
-                            );
-                          }
-
-                          const tx = item.transaction;
-
-                          // Transfer pair: the "out" leg renders a single
-                          // TransferPairCard for both legs; the "in" leg (found
-                          // below) renders nothing so it isn't shown twice.
-                          if (
-                            tx.kind === "transfer" &&
-                            tx.transferDirection === "out" &&
-                            tx.transferPairId
-                          ) {
-                            const pair = findTransferPair(tx, day.items);
-                            if (pair) {
+                        <div className="flex flex-col gap-2">
+                          {day.items.map((item) => {
+                            if (item.itemType !== "transaction") {
                               return (
-                                <TransferPairCard
-                                  key={tx.id}
-                                  amountCents={tx.amountCents}
-                                  description={tx.description || undefined}
-                                  from={resolveTransferParty(
-                                    tx,
-                                    accountsById,
-                                    cardsById,
-                                  )}
-                                  to={resolveTransferParty(
-                                    pair,
-                                    accountsById,
-                                    cardsById,
-                                  )}
+                                <TimelineEventRow
+                                  key={item.id}
+                                  // DomainEvent.type/payload are untyped String/Json
+                                  // at the DB boundary (§6 catalog) —
+                                  // TimelineEventRow owns the actual type union, so
+                                  // this cast is the API contract's boundary, not a
+                                  // real type escape.
+                                  type={item.type as DomainEventType}
+                                  payload={item.payload}
+                                  createdAt={item.createdAt}
                                 />
                               );
                             }
-                          }
-                          if (
-                            tx.kind === "transfer" &&
-                            tx.transferDirection === "in" &&
-                            tx.transferPairId &&
-                            hasOutTransferPair(tx, day.items)
-                          ) {
-                            // Already rendered above via its "out" pair.
-                            return null;
-                          }
 
-                          return transactionRowProps(
-                            tx,
-                            scheduledHandlers,
-                            categoriesById,
-                            accountsById,
-                            cardsById,
-                            expandedInstallments,
-                            toggleInstallment,
-                            (t) => setEditingTx(t),
-                          );
-                        })}
+                            const tx = item.transaction;
+
+                            // Transfer pair: the "out" leg renders a single
+                            // TransferPairCard for both legs; the "in" leg (found
+                            // below) renders nothing so it isn't shown twice.
+                            if (
+                              tx.kind === "transfer" &&
+                              tx.transferDirection === "out" &&
+                              tx.transferPairId
+                            ) {
+                              const pair = findTransferPair(tx, day.items);
+                              if (pair) {
+                                return (
+                                  <TransferPairCard
+                                    key={tx.id}
+                                    amountCents={tx.amountCents}
+                                    description={tx.description || undefined}
+                                    from={resolveTransferParty(
+                                      tx,
+                                      accountsById,
+                                      cardsById,
+                                    )}
+                                    to={resolveTransferParty(
+                                      pair,
+                                      accountsById,
+                                      cardsById,
+                                    )}
+                                  />
+                                );
+                              }
+                            }
+                            if (
+                              tx.kind === "transfer" &&
+                              tx.transferDirection === "in" &&
+                              tx.transferPairId &&
+                              hasOutTransferPair(tx, day.items)
+                            ) {
+                              // Already rendered above via its "out" pair.
+                              return null;
+                            }
+
+                            return transactionRowProps(
+                              tx,
+                              scheduledHandlers,
+                              categoriesById,
+                              accountsById,
+                              cardsById,
+                              expandedInstallments,
+                              toggleInstallment,
+                              (t) => setEditingTx(t),
+                            );
+                          })}
+                        </div>
                       </div>
                     </section>
                   );
