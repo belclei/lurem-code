@@ -2,7 +2,8 @@
 //
 // patrimonioTotal(asOf) = Σ balance(todas as contas, asOf) − Σ faturas de
 // cartão em aberto (+ investimentos quando o módulo chegar, §1.8).
-// Poupança ENTRA aqui (é patrimônio), ao contrário do Disponível Hoje.
+// "savings" foi unificado a "checking" (2026-08-08) — toda conta bancária
+// já entra aqui E em Disponível Hoje, sem distinção de liquidez entre elas.
 //
 // ⚠ NOTA DE DECISÃO (ver relatório final): "faturas de cartão em aberto" é
 // mais amplo do que a janela "fechada e não vencida" de faturaFechadaNaoVencida

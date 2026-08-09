@@ -545,7 +545,7 @@ export function TimelinePage() {
                     <Alert
                       variant="info"
                       title="Contas"
-                      description="Adicione as contas de banco onde seu dinheiro vive — corrente ou poupança."
+                      description="Adicione as contas de banco onde seu dinheiro vive."
                       actions={[
                         {
                           label: "Adicionar contas",
