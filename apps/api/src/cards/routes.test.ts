@@ -105,6 +105,12 @@ describe("POST /v1/cards", () => {
     expect(body.closingDay).toBe(31);
     expect(body.institutionName).toBe("Itaú");
     expect(body.logoUrl).toBe("/itau.svg");
+
+    const event = await server.prisma.domainEvent.findFirstOrThrow({
+      where: { aggregateType: "CreditCard", aggregateId: body.id },
+    });
+    expect(event.type).toBe("card.created");
+    expect(event.payload).toMatchObject({ institutionName: "Itaú" });
   });
 
   it("rejects an autoDebitAccountId belonging to another user", async () => {

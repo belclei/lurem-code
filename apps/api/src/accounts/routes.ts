@@ -174,6 +174,20 @@ export async function registerAccountRoutes(
         },
       });
 
+      await fastify.prisma.domainEvent.create({
+        data: {
+          userId,
+          type: "account.created",
+          aggregateType: "Account",
+          aggregateId: account.id,
+          payload: {
+            type: account.type,
+            name: account.name,
+            institutionName: institution?.name ?? null,
+          },
+        },
+      });
+
       reply.code(201);
       return toAccountResponse(account, institution);
     },
