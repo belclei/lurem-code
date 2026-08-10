@@ -1,0 +1,12 @@
+# apps/api/cron/crontab — deploy scheduler for the API's daily jobs
+# (issues.md: "o fechamento do mês no cartão o sistema deve fazer
+# automaticamente" — the job existed but nothing ever invoked it). Installed
+# into the `cron` service (docker-compose.prod.yml) via entrypoint.sh.
+#
+# Times are in America/Sao_Paulo (TZ set on the container, see
+# docker-compose.prod.yml) — the project's canonical timezone for date logic
+# (ARQUITETURA.md §0). Staggered 5 minutes apart so they never overlap on a
+# slow migration/cold start.
+0 3 * * * cd /app && npm run job:fulfillment --workspace=@lurem/api >> /proc/1/fd/1 2>&1
+5 3 * * * cd /app && npm run job:invoice-events --workspace=@lurem/api >> /proc/1/fd/1 2>&1
+10 3 * * * cd /app && npm run job:usage-rollup --workspace=@lurem/api >> /proc/1/fd/1 2>&1

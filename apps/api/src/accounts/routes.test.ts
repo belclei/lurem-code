@@ -78,6 +78,7 @@ describe("POST /v1/accounts", () => {
     expect(event.payload).toMatchObject({
       type: "checking",
       institutionName: "Nubank",
+      openingBalanceCents: 10_000,
     });
   });
 
@@ -123,7 +124,7 @@ describe("POST /v1/accounts", () => {
     expect(response.statusCode).toBe(201);
     const body = response.json();
     expect(body.institutionId).toBeNull();
-    expect(body.institutionName).toBe("Carteira");
+    expect(body.institutionName).toBe("Em Espécie");
     expect(body.logoUrl).toBeUndefined();
   });
 
@@ -189,6 +190,36 @@ describe("PATCH/DELETE /v1/accounts/:id", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().name).toBe("Nubank PJ");
+
+    const event = await server.prisma.domainEvent.findFirstOrThrow({
+      where: { aggregateType: "Account", aggregateId: account.id },
+    });
+    expect(event.type).toBe("account.updated");
+    expect(event.payload).toMatchObject({
+      name: "Nubank PJ",
+      changed: ["name"],
+    });
+  });
+
+  it("does not emit account.updated when the PATCH body has no fields", async () => {
+    const { accessToken, userId } = await authedUser();
+    const institution = await createInstitution();
+    const account = await server.prisma.account.create({
+      data: { userId, type: "checking", institutionId: institution.id },
+    });
+
+    const response = await server.inject({
+      method: "PATCH",
+      url: `/v1/accounts/${account.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    const event = await server.prisma.domainEvent.findFirst({
+      where: { aggregateType: "Account", aggregateId: account.id },
+    });
+    expect(event).toBeNull();
   });
 
   it("404s when editing another user's account", async () => {

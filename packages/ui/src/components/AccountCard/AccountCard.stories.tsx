@@ -1,4 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import bradescoLogo from "../../assets/institutions/bradesco.svg";
+import interLogo from "../../assets/institutions/inter.svg";
+import itauLogo from "../../assets/institutions/itau.svg";
+import nubankLogo from "../../assets/institutions/nubank.svg";
 import { AccountCard } from "./AccountCard";
 
 const meta: Meta<typeof AccountCard> = {
@@ -16,6 +20,7 @@ const meta: Meta<typeof AccountCard> = {
   },
   args: {
     institutionName: "Nubank",
+    logoUrl: nubankLogo,
     type: "checking",
     balanceCents: 452030,
     isActive: true,
@@ -38,6 +43,7 @@ export const Estados: Story = {
     <div style={{ display: "grid", gap: "0.75rem", width: "32rem" }}>
       <AccountCard
         institutionName="Nubank"
+        logoUrl={nubankLogo}
         type="checking"
         balanceCents={452030}
         overdraftLimitCents={200000}
@@ -45,6 +51,7 @@ export const Estados: Story = {
       />
       <AccountCard
         institutionName="Itaú Unibanco"
+        logoUrl={itauLogo}
         name="Conta conjunta"
         type="checking"
         balanceCents={-8000}
@@ -52,6 +59,7 @@ export const Estados: Story = {
       />
       <AccountCard
         institutionName="Bradesco"
+        logoUrl={bradescoLogo}
         type="checking"
         balanceCents={-150000}
         overLimit
@@ -59,6 +67,7 @@ export const Estados: Story = {
       />
       <AccountCard
         institutionName="Banco Inter"
+        logoUrl={interLogo}
         type="checking"
         balanceCents={0}
         isActive={false}

@@ -12,7 +12,7 @@ import type { Prisma } from "@lurem/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireUser } from "../auth/authenticate.js";
-import { buildTimelinePage } from "./aggregate.js";
+import { buildTimelinePage, synthesizeStructuralDates } from "./aggregate.js";
 
 const TimelineQuery = z.object({
   cursor: z
@@ -117,7 +117,7 @@ export async function registerTimelineRoutes(
       // "transaction" (pseudo-tipo) não está entre os selecionados.
       const includeTransactions = !types || types.includes("transaction");
 
-      const [transactions, events, allAccounts, allTransactions] =
+      const [transactions, events, allAccounts, allTransactions, user] =
         await Promise.all([
           includeTransactions
             ? fastify.prisma.transaction.findMany({ where: txWhere })
@@ -129,11 +129,21 @@ export async function registerTimelineRoutes(
           fastify.prisma.account.findMany({ where: { userId } }),
           // Fetch all transactions (unfiltered) to calculate retroactive balances
           fastify.prisma.transaction.findMany({ where: { userId } }),
+          fastify.prisma.user.findUniqueOrThrow({ where: { id: userId } }),
         ]);
+
+      // issues.md: aniversário/dia de cadastro devem aparecer mesmo sem
+      // transação/evento naquele dia — mas ainda respeitando from/to.
+      const structuralDates = synthesizeStructuralDates(user).filter(
+        (date) =>
+          (!query.from || date >= query.from) &&
+          (!query.to || date <= query.to),
+      );
 
       const page = buildTimelinePage(transactions, events, {
         cursor: query.cursor,
         limit: query.limit,
+        structuralDates,
       });
 
       // Calculate current balance by summing all accounts

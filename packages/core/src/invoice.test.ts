@@ -127,7 +127,7 @@ describe("faturaFechadaNaoVencida", () => {
     expect(result.valueCents).toBe(300);
   });
 
-  it("excludes transfer-kind transactions from the invoice total", () => {
+  it("reduces the invoice total for a transfer's 'in' leg (issues.md: 'Pagar agora' — a transfer to the card is how a payment gets recorded)", () => {
     const asOf = new Date("2026-07-15T12:00:00.000Z");
     const result = faturaFechadaNaoVencida({
       card: card(),
@@ -142,6 +142,30 @@ describe("faturaFechadaNaoVencida", () => {
           id: "t2",
           kind: "transfer",
           transferDirection: "in",
+          amountBRLCents: 1_000,
+          transactionDate: new Date("2026-07-06T00:00:00.000Z"),
+        }),
+      ],
+      asOf,
+    });
+    expect(result.valueCents).toBe(0);
+  });
+
+  it("ignores a transfer's 'out' leg on a card (can't happen in practice, but stays neutral if it does)", () => {
+    const asOf = new Date("2026-07-15T12:00:00.000Z");
+    const result = faturaFechadaNaoVencida({
+      card: card(),
+      transactions: [
+        tx({
+          id: "t1",
+          kind: "expense",
+          amountBRLCents: 1_000,
+          transactionDate: new Date("2026-07-05T00:00:00.000Z"),
+        }),
+        tx({
+          id: "t2",
+          kind: "transfer",
+          transferDirection: "out",
           amountBRLCents: 1_000,
           transactionDate: new Date("2026-07-06T00:00:00.000Z"),
         }),

@@ -14,6 +14,7 @@ import { type FormEvent, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError, apiFetchJson, loginWithGoogle } from "../auth/api-client";
 import { useGoogleIdentityButton } from "../auth/useGoogleIdentityButton";
+import { fieldErrorsFrom } from "../lib/field-errors";
 import { describeAuthError } from "./LoginPage";
 
 interface RegisterPreview {
@@ -34,6 +35,7 @@ export function RegisterPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
   async function handleGoogleCredential(credential: string) {
@@ -100,8 +102,12 @@ export function RegisterPage() {
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setFormError(null);
+    setFieldErrors({});
     if (password !== confirmPassword) {
       setFormError("A confirmação não bate com a senha.");
+      setFieldErrors({
+        confirmPassword: "A confirmação não bate com a senha.",
+      });
       return;
     }
     setSubmitting(true);
@@ -116,6 +122,7 @@ export function RegisterPage() {
       await adoptSession(accessToken);
       await navigate({ to: "/timeline" });
     } catch (error) {
+      setFieldErrors(fieldErrorsFrom(error));
       setFormError(
         error instanceof ApiError
           ? error.message
@@ -157,12 +164,14 @@ export function RegisterPage() {
           value={name}
           onChange={(event) => setName(event.target.value)}
           required
+          error={fieldErrors.name}
         />
         <DateField
           label="Data de nascimento"
           value={birthDate}
           onChange={setBirthDate}
           required
+          error={fieldErrors.birthDate}
         />
         <Input
           type="password"
@@ -172,6 +181,7 @@ export function RegisterPage() {
           onChange={(event) => setPassword(event.target.value)}
           required
           autoComplete="new-password"
+          error={fieldErrors.password}
         />
         <Input
           type="password"
@@ -180,6 +190,7 @@ export function RegisterPage() {
           onChange={(event) => setConfirmPassword(event.target.value)}
           required
           autoComplete="new-password"
+          error={fieldErrors.confirmPassword}
         />
         {formError ? (
           <Alert variant="error" layout="inline" title={formError} />

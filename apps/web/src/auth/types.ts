@@ -23,6 +23,7 @@ export interface MeResponse {
   avatarMode: string;
   avatarUrls: string[];
   themePref: string;
+  createdAt: string;
   flags: Record<string, boolean>;
 }
 
@@ -142,6 +143,8 @@ export interface TimelineEventDto {
   type: string;
   payload: Record<string, unknown>;
   createdAt: string;
+  aggregateType: string;
+  aggregateId: string;
 }
 
 export interface TimelineTransactionDto {

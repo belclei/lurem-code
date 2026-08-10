@@ -1,9 +1,23 @@
 // apps/api/vitest.config.ts
+import { config as loadDotenv } from "dotenv";
 import { defineConfig } from "vitest/config";
+
+// Integration tests run `resetTestDb` (truncates every table) after every
+// single test — pointed at the same DATABASE_URL as `npm run dev`, that
+// wipes the real local dev database on every test run, not just a
+// disposable test one. `.env.test` (a separate `lurem_test` database, same
+// Postgres instance) exists specifically so that never happens again — this
+// loads it into `process.env` *before* any test file (and therefore before
+// `new PrismaClient()`) runs. Vitest does NOT auto-load `.env.test` the way
+// Vite's dev/build pipeline auto-loads mode-specific env files for
+// `import.meta.env` — that behavior doesn't extend to `process.env` in the
+// node test environment, so this has to be explicit.
+const testEnv = loadDotenv({ path: ".env.test" }).parsed ?? {};
 
 export default defineConfig({
   test: {
     environment: "node",
+    env: testEnv,
     testTimeout: 15000,
     // Integration tests share one real Postgres/Redis instance, and
     // `resetTestDb` truncates the whole DB after every test (not scoped to

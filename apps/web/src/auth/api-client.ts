@@ -15,8 +15,7 @@ interface ApiErrorBody {
   code: string;
   message: string;
   details?: ApiErrorDetail[];
-  // Structured payload for errors that carry numbers rather than a field list
-  // (ex.: account.overdraft_confirmation_required — §2.3).
+  // Structured payload for errors that carry numbers rather than a field list.
   data?: Record<string, unknown>;
 }
 

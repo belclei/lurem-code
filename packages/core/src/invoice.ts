@@ -1,19 +1,18 @@
 // IMPLEMENTACAO.md §3.4 — Fechamento e vencimento de fatura.
 //
-// ⚠ Nota de decisão (ver relatório final): a fórmula do documento usa "ainda
-// não pagas" para as transações da fatura, mas o schema normativo (§1.4) não
-// tem nenhum campo/relacionamento que marque uma transação de cartão como
-// paga — ARQUITETURA.md §6.4 confirma isso explicitamente ("não existe hoje
-// um vínculo entre a transferência de pagamento e a fatura"). Por isso, esta
-// função soma TODAS as transações do cartão dentro do período de fatura
-// fechada-e-não-vencida; "fatura já paga" (§3.7) é coberto apenas no sentido
-// de "o vencimento já passou" (fora da janela closingDate..dueDate), não no
-// sentido de um pagamento explícito registrado — não há dado para isso hoje.
+// issues.md ("Pagar agora"): uma transferência conta→cartão já é como o
+// resto do app registra o pagamento de uma fatura (transactions/routes.ts,
+// kind=transfer com toCreditCardId — "destino é outra conta ou um cartão
+// (pagamento de fatura)") — não existe uma tabela de pagamento separada,
+// então a perna "in" dessa transferência É o pagamento. Reduz o valor da
+// fatura, simetricamente a income (estorno/refund). A perna "out" nunca
+// aparece num cartão (não é possível transferir dinheiro para fora de um
+// cartão de crédito) — se aparecer mesmo assim, é tratada como neutra (0),
+// igual ao comportamento anterior a esta mudança.
 //
-// kind='transfer' é excluído da soma (§3.1: transfer nunca conta como receita
-// nem despesa em nenhum agregado). kind='income' (ex.: estorno/refund) reduz
-// o valor da fatura, simetricamente a expense aumentando — trata a fatura
-// como um mini-balanço a partir de zero (sem "saldo inicial").
+// kind='income' (ex.: estorno/refund) reduz o valor da fatura, simetricamente
+// a expense aumentando — trata a fatura como um mini-balanço a partir de zero
+// (sem "saldo inicial").
 
 import type {
   BreakdownLine,
@@ -60,20 +59,27 @@ export function previousYearMonth(
 }
 
 /**
- * kind='transfer' nunca chega aqui — já é filtrado antes (§3.1: transfer
- * nunca conta como receita/despesa). O type guard abaixo torna essa garantia
- * explícita no tipo, em vez de um branch `default: return 0` inalcançável
- * (o que deixaria cobertura de branch/statement estruturalmente impossível
- * de atingir 100% — §3 exige 100%, não "100% do alcançável").
+ * Only income/expense/transfer-in count here — a transfer's "out" leg on a
+ * card's own transaction list can't happen in practice (there's no way to
+ * move money out of a credit card), but the type guard still excludes it
+ * explicitly rather than falling through a `default: return 0` (which would
+ * leave a branch structurally unreachable — §3 requires 100% coverage of
+ * what's reachable, not of the impossible).
  */
-function isIncomeOrExpense(
-  tx: TransactionLike,
-): tx is TransactionLike & { kind: "income" | "expense" } {
-  return tx.kind === "income" || tx.kind === "expense";
+function countsTowardInvoice(tx: TransactionLike): tx is TransactionLike & {
+  kind: "income" | "expense" | "transfer";
+} {
+  if (tx.kind === "income" || tx.kind === "expense") return true;
+  return tx.kind === "transfer" && tx.transferDirection === "in";
 }
 
-function delta(tx: TransactionLike & { kind: "income" | "expense" }): number {
-  return tx.kind === "expense" ? tx.amountBRLCents : -tx.amountBRLCents;
+function delta(
+  tx: TransactionLike & { kind: "income" | "expense" | "transfer" },
+): number {
+  if (tx.kind === "expense") return tx.amountBRLCents;
+  // income (estorno) and a transfer's "in" leg (fatura sendo paga) both
+  // reduce the invoice — same sign, same "mini-balanço a partir de zero".
+  return -tx.amountBRLCents;
 }
 
 /** Soma as transações do cartão dentro do período de fatura (year, month), sem nenhum outro filtro de data. */
@@ -86,10 +92,13 @@ export function sumCardTransactionsForInvoiceMonth(
   const period = faturaPeriodo(card, year, month);
   const inPeriod = transactions
     .filter((tx) => isWithinPeriod(tx.transactionDate, period))
-    .filter(isIncomeOrExpense);
+    .filter(countsTowardInvoice);
 
   const breakdown: BreakdownLine[] = inPeriod.map((tx) => ({
-    label: "closed_invoice_transaction",
+    label:
+      tx.kind === "transfer"
+        ? "closed_invoice_payment"
+        : "closed_invoice_transaction",
     valueCents: delta(tx),
     kind: "closed_invoice",
     sourceRef: { type: "Transaction", id: tx.id },

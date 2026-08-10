@@ -285,7 +285,7 @@ export function AdminPage() {
         </h2>
         {usageQuery.data ? (
           <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-2 sm:gap-4">
               <div className="rounded-[var(--lr-r-lg)] border border-[var(--lr-border)] p-4">
                 <p className="text-xs uppercase tracking-wide text-[var(--lr-text-secondary)]">
                   DAU

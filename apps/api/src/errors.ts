@@ -52,26 +52,6 @@ export const VALIDATION_FAILED = (details: ErrorDetail[]) =>
   );
 export const NOT_FOUND = () =>
   new AppError("not_found", 404, "Não encontramos o que você procurava.");
-// §2.3 — escrita ultrapassaria o cheque especial e confirmOverLimit !== true.
-// Não grava; client remonta o aviso a partir de data.{projectedBalanceCents,overdraftLimitCents}.
-export const ACCOUNT_OVERDRAFT_CONFIRMATION_REQUIRED = (
-  projectedBalanceCents: number,
-  overdraftLimitCents: number,
-) =>
-  new AppError(
-    "account.overdraft_confirmation_required",
-    409,
-    "Esta transação deixa a conta além do limite de cheque especial. Confirmar mesmo assim?",
-    undefined,
-    { projectedBalanceCents, overdraftLimitCents },
-  );
-// §2.3 — carteira física (type=cash) não pode ficar negativa; sem confirmOverLimit.
-export const ACCOUNT_CASH_CANNOT_BE_NEGATIVE = () =>
-  new AppError(
-    "account.cash_cannot_be_negative",
-    422,
-    "A carteira não pode ficar negativa.",
-  );
 // §7 — transação pertence a uma conta OU a um cartão, nunca aos dois (nem a nenhum).
 export const TRANSACTION_ACCOUNT_XOR_CARD = () =>
   new AppError(

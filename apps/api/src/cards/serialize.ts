@@ -45,6 +45,7 @@ export function toCardResponse(
     transactions.map((tx) => ({
       id: tx.id,
       kind: tx.kind,
+      transferDirection: tx.transferDirection ?? undefined,
       amountBRLCents: tx.amountBRLCents,
       transactionDate: tx.transactionDate,
       isScheduled: tx.isScheduled,

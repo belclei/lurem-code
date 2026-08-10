@@ -49,7 +49,8 @@ export function TimelineSummaryAside({
         <p className="lr-label mb-1">Saldo líquido</p>
         <Mono
           variant="number"
-          className="text-[2rem] tracking-[-0.02em] text-[var(--lr-text)]"
+          tone={netBalanceCents < 0 ? "out" : "default"}
+          className="text-[2rem] tracking-[-0.02em]"
         >
           {formatMoney(netBalanceCents)}
         </Mono>
@@ -60,7 +61,7 @@ export function TimelineSummaryAside({
               <div key={a.id} className="flex items-center gap-2.5">
                 <InstitutionMark
                   logoUrl={a.logoUrl}
-                  name={a.type === "cash" ? "Carteira" : a.institutionName}
+                  name={a.institutionName}
                   tone={a.type === "cash" ? "gold" : "petrol"}
                   size="sm"
                 />

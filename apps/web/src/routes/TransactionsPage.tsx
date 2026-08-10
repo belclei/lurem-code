@@ -24,6 +24,7 @@ import type {
   TransactionDto,
   TxKind,
 } from "../auth/types";
+import { fieldErrorsFrom } from "../lib/field-errors";
 import { reaisToCentsPositive } from "../lib/money";
 
 interface CategoryDto {
@@ -43,7 +44,7 @@ function todayYmd(): string {
 
 interface CreatePayload {
   kind: TxKind;
-  description: string;
+  description?: string;
   transactionDate: string;
   amountCents: number;
   accountId?: string;
@@ -52,7 +53,6 @@ interface CreatePayload {
   toCreditCardId?: string;
   categoryId?: string;
   isScheduled?: boolean;
-  confirmOverLimit?: boolean;
 }
 
 export function TransactionsPage() {
@@ -91,10 +91,7 @@ export function TransactionsPage() {
   const [destValue, setDestValue] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [overdraft, setOverdraft] = useState<{
-    message: string;
-    payload: CreatePayload;
-  } | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const accounts = accountsQuery.data ?? [];
   const cards = cardsQuery.data ?? [];
@@ -134,25 +131,11 @@ export function TransactionsPage() {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       setDescription("");
       setAmount("");
-      setOverdraft(null);
       setFormError(null);
+      setFieldErrors({});
     },
-    onError: (err, payload) => {
-      if (
-        err instanceof ApiError &&
-        err.code === "account.overdraft_confirmation_required"
-      ) {
-        const projected = Number(err.data?.projectedBalanceCents ?? 0);
-        const beyond = Math.abs(projected) / 100;
-        setOverdraft({
-          message: `Esta transação deixa a conta R$ ${beyond.toLocaleString(
-            "pt-BR",
-            { minimumFractionDigits: 2 },
-          )} negativa (além do limite de cheque especial). Confirmar mesmo assim?`,
-          payload,
-        });
-        return;
-      }
+    onError: (err) => {
+      setFieldErrors(fieldErrorsFrom(err));
       setFormError(
         err instanceof ApiError
           ? err.message
@@ -197,22 +180,28 @@ export function TransactionsPage() {
 
   function buildPayload(): CreatePayload | null {
     const cents = reaisToCentsPositive(amount);
-    if (!description.trim()) {
+    if (kind !== "transfer" && !description.trim()) {
       setFormError("Descreva a transação.");
+      setFieldErrors({ description: "Descreva a transação." });
       return null;
     }
     if (cents === null) {
       setFormError("Informe um valor válido.");
+      setFieldErrors({ amountCents: "Informe um valor válido." });
       return null;
     }
     if (!sourceValue) {
       setFormError("Escolha a conta ou o cartão.");
+      setFieldErrors({ accountId: "Escolha a conta ou o cartão." });
       return null;
     }
     const source = resolveTarget(sourceValue);
+    // Vazio (transferência sem descrição) precisa virar `undefined`, não "" —
+    // o backend valida `description` com min(1) quando o campo está
+    // presente; uma string vazia falharia mesmo sendo tecnicamente opcional.
     const base: CreatePayload = {
       kind,
-      description: description.trim(),
+      description: description.trim() || undefined,
       transactionDate: date,
       amountCents: cents,
       categoryId: categoryId ?? undefined,
@@ -220,10 +209,12 @@ export function TransactionsPage() {
     if (kind === "transfer") {
       if (!source.accountId) {
         setFormError("A transferência sai de uma conta.");
+        setFieldErrors({ accountId: "A transferência sai de uma conta." });
         return null;
       }
       if (!destValue) {
         setFormError("Escolha o destino da transferência.");
+        setFieldErrors({ toAccountId: "Escolha o destino da transferência." });
         return null;
       }
       const dest = resolveTarget(destValue);
@@ -240,6 +231,7 @@ export function TransactionsPage() {
   function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     setFormError(null);
+    setFieldErrors({});
     const payload = buildPayload();
     if (payload) createMutation.mutate(payload);
   }
@@ -252,7 +244,7 @@ export function TransactionsPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
-      <nav className="mb-6 flex gap-4 text-sm">
+      <nav className="mb-6 flex flex-wrap gap-4 text-sm">
         <Link
           to="/timeline"
           className="text-[var(--lr-text-secondary)] hover:underline"
@@ -298,7 +290,7 @@ export function TransactionsPage() {
 
       <form
         onSubmit={onSubmit}
-        className="mb-8 grid gap-4 rounded-xl border border-[var(--lr-border)] p-4"
+        className="mb-8 grid gap-4 rounded-[var(--lr-r-lg)] border border-[var(--lr-border)] p-4"
       >
         <Segmented
           label="Tipo"
@@ -311,10 +303,11 @@ export function TransactionsPage() {
           ]}
         />
         <Input
-          label="Descrição"
+          label={kind === "transfer" ? "Descrição (opcional)" : "Descrição"}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Mercado, salário, aluguel…"
+          error={fieldErrors.description}
         />
         <div className="grid gap-4 sm:grid-cols-2">
           <Input
@@ -325,8 +318,14 @@ export function TransactionsPage() {
             affix="R$"
             inputMode="decimal"
             placeholder="0,00"
+            error={fieldErrors.amountCents}
           />
-          <DateField label="Data" value={date} onChange={setDate} />
+          <DateField
+            label="Data"
+            value={date}
+            onChange={setDate}
+            error={fieldErrors.transactionDate}
+          />
         </div>
         <Select
           label={kind === "transfer" ? "De (conta)" : "Conta ou cartão"}
@@ -334,6 +333,7 @@ export function TransactionsPage() {
           value={sourceValue}
           onChange={setSourceValue}
           placeholder="Selecione…"
+          error={fieldErrors.accountId}
         />
         {kind === "transfer" ? (
           <Select
@@ -342,6 +342,7 @@ export function TransactionsPage() {
             value={destValue}
             onChange={setDestValue}
             placeholder="Selecione…"
+            error={fieldErrors.toAccountId}
           />
         ) : (
           <Select
@@ -358,30 +359,6 @@ export function TransactionsPage() {
             variant="error"
             title="Confira os campos"
             description={formError}
-          />
-        ) : null}
-
-        {overdraft ? (
-          <Alert
-            variant="warning"
-            title="Cheque especial"
-            description={overdraft.message}
-            actions={[
-              {
-                label: "Cancelar",
-                onClick: () => setOverdraft(null),
-                variant: "ghost",
-              },
-              {
-                label: "Confirmar mesmo assim",
-                onClick: () =>
-                  createMutation.mutate({
-                    ...overdraft.payload,
-                    confirmOverLimit: true,
-                  }),
-                variant: "secondary",
-              },
-            ]}
           />
         ) : null}
 

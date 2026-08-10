@@ -3,6 +3,7 @@ import { Alert, Button, Dialog, Input } from "@lurem/ui";
 import { useMutation } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { ApiError, apiFetchJson } from "../../auth/api-client";
+import { fieldErrorsFrom } from "../../lib/field-errors";
 import { reaisToCentsOrZero } from "../../lib/money";
 
 /** US-4.1's simplest case: no institution, so it's a small Dialog instead
@@ -19,6 +20,7 @@ export function WalletDialog({
 }) {
   const [amount, setAmount] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const createMutation = useMutation({
     mutationFn: (openingBalanceCents: number) =>
@@ -31,10 +33,13 @@ export function WalletDialog({
         }),
       }),
     onSuccess: () => {
+      setFormError(null);
+      setFieldErrors({});
       onCreated();
       onClose();
     },
     onError: (error: unknown) => {
+      setFieldErrors(fieldErrorsFrom(error));
       setFormError(
         error instanceof ApiError
           ? error.message
@@ -48,9 +53,11 @@ export function WalletDialog({
     const cents = reaisToCentsOrZero(amount);
     if (cents === null) {
       setFormError("Informe um valor válido.");
+      setFieldErrors({ openingBalanceCents: "Informe um valor válido." });
       return;
     }
     setFormError(null);
+    setFieldErrors({});
     createMutation.mutate(cents);
   }
 
@@ -66,6 +73,7 @@ export function WalletDialog({
           affix="R$"
           value={amount}
           onChange={(event) => setAmount(event.target.value)}
+          error={fieldErrors.openingBalanceCents}
         />
         {formError ? (
           <Alert variant="error" layout="inline" title={formError} />

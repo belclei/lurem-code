@@ -1,4 +1,5 @@
 import { Badge } from "../Badge/Badge";
+import { Button } from "../Button/Button";
 import { Card } from "../Card/Card";
 import { Body } from "../Typography/Body";
 import { Mono } from "../Typography/Mono";
@@ -19,6 +20,10 @@ export interface CreditCardCardProps {
   /** Resolved account label (e.g. institution/nickname) — caller looks it up, this component never joins across accounts. Absent → no auto-debit mention. */
   autoDebitAccountLabel?: string;
   onClick?: () => void;
+  /** issues.md: "Pagar agora" — present only when there's a closed invoice
+   * to settle. Absent → no button, even if invoiceStatus is
+   * "closed_awaiting_payment" (caller's call, e.g. still loading destinations). */
+  onPayNow?: () => void;
 }
 
 function InstitutionMark({
@@ -93,6 +98,7 @@ export function CreditCardCard({
   dueDay,
   autoDebitAccountLabel,
   onClick,
+  onPayNow,
 }: CreditCardCardProps) {
   const usagePercent = limitCents > 0 ? (usedCents / limitCents) * 100 : 0;
   const barWidthPercent = Math.min(usagePercent, 100);
@@ -131,6 +137,17 @@ export function CreditCardCard({
             <Badge kind="status" status="alert">
               Além do limite
             </Badge>
+          ) : null}
+          {invoiceStatus === "closed_awaiting_payment" && onPayNow ? (
+            <Button
+              variant="secondary"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPayNow();
+              }}
+            >
+              Pagar agora
+            </Button>
           ) : null}
         </div>
       </div>

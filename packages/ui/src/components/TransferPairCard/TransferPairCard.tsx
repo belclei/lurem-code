@@ -11,6 +11,8 @@ export interface TransferAccount {
   /** Institution logo — absent renders InstitutionMark's initial-letter fallback (same rule as AccountCard's own institution mark, §6.4). */
   logoUrl?: string;
   balanceAfterCents: number;
+  /** True for a type="cash" account (carteira/espécie) — renders the dedicated banknote glyph (InstitutionMark's gold tone) instead of an initial, same rule as AccountCard/TimelineSummaryAside. */
+  isCash?: boolean;
 }
 
 export interface TransferPairCardProps {
@@ -19,6 +21,7 @@ export interface TransferPairCardProps {
   to: TransferAccount;
   /** Optional — transfers don't require a description (§6.6), but shows here when the user provided one. */
   description?: string;
+  onClick?: () => void;
 }
 
 /**
@@ -32,9 +35,10 @@ export function TransferPairCard({
   from,
   to,
   description,
+  onClick,
 }: TransferPairCardProps) {
   return (
-    <Card>
+    <Card interactive={Boolean(onClick)} onClick={onClick}>
       {/* Header: transfer icon + title + amount */}
       <div className="mb-4 flex items-center gap-3">
         <span
@@ -64,22 +68,15 @@ export function TransferPairCard({
         <InstitutionMark
           logoUrl={from.logoUrl}
           name={from.institution || from.name}
+          tone={from.isCash ? "gold" : "petrol"}
           size="sm"
         />
         <div className="min-w-0 flex-1">
           <Body weight="medium" className="truncate">
             {from.name}
           </Body>
-          {/* TIMELINE.md §5d's literal "Conta corrente · origem/destino"
-              wording is static — TransferAccount doesn't carry an account
-              type (savings/checking/card), so a fatura-payment transfer
-              to a card would also read "Conta corrente". Not extended to
-              a dynamic type field: that means threading account/card type
-              through resolveTransferParty in TimelinePage.tsx too, more
-              data plumbing than this conformance pass scoped. Judgment
-              call — flagged in the plan's report. */}
           <Body muted className="text-[.75rem]">
-            Conta corrente · origem
+            {from.isCash ? "Em espécie" : "Conta corrente"} · origem
           </Body>
         </div>
         <Mono variant="number" tone="out" className="flex-none">
@@ -92,6 +89,7 @@ export function TransferPairCard({
         <InstitutionMark
           logoUrl={to.logoUrl}
           name={to.institution || to.name}
+          tone={to.isCash ? "gold" : "petrol"}
           size="sm"
         />
         <div className="min-w-0 flex-1">
@@ -99,7 +97,7 @@ export function TransferPairCard({
             {to.name}
           </Body>
           <Body muted className="text-[.75rem]">
-            Conta corrente · destino
+            {to.isCash ? "Em espécie" : "Conta corrente"} · destino
           </Body>
         </div>
         <Mono variant="number" tone="in" className="flex-none">

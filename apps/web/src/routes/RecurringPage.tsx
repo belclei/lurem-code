@@ -20,6 +20,7 @@ import { useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError, apiFetchJson } from "../auth/api-client";
 import type { AccountDto, CardDto, RecurringDto } from "../auth/types";
+import { fieldErrorsFrom } from "../lib/field-errors";
 
 function todayYmd(): string {
   // Data-calendário de hoje em America/Sao_Paulo (zona canônica, §0) — não UTC.
@@ -87,6 +88,7 @@ export function RecurringPage() {
   const [startDate, setStartDate] = useState(todayYmd());
   const [isVariable, setIsVariable] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const accounts = accountsQuery.data ?? [];
   const cards = cardsQuery.data ?? [];
@@ -119,13 +121,16 @@ export function RecurringPage() {
       setDescription("");
       setAmount("");
       setFormError(null);
+      setFieldErrors({});
     },
-    onError: (err) =>
+    onError: (err) => {
+      setFieldErrors(fieldErrorsFrom(err));
       setFormError(
         err instanceof ApiError
           ? err.message
           : "Não foi possível criar a série.",
-      ),
+      );
+    },
   });
 
   const patchMutation = useMutation({
@@ -160,13 +165,25 @@ export function RecurringPage() {
   function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     setFormError(null);
+    setFieldErrors({});
     const cents = reaisToCents(amount);
     const day = Number(dayOfMonth);
-    if (!description.trim()) return setFormError("Descreva a série.");
-    if (cents === null) return setFormError("Informe um valor válido.");
-    if (!Number.isInteger(day) || day < 1 || day > 31)
+    if (!description.trim()) {
+      setFieldErrors({ description: "Descreva a série." });
+      return setFormError("Descreva a série.");
+    }
+    if (cents === null) {
+      setFieldErrors({ referenceAmountCents: "Informe um valor válido." });
+      return setFormError("Informe um valor válido.");
+    }
+    if (!Number.isInteger(day) || day < 1 || day > 31) {
+      setFieldErrors({ dayOfMonth: "Dia do mês entre 1 e 31." });
       return setFormError("Dia do mês entre 1 e 31.");
-    if (!sourceValue) return setFormError("Escolha a conta ou o cartão.");
+    }
+    if (!sourceValue) {
+      setFieldErrors({ accountId: "Escolha a conta ou o cartão." });
+      return setFormError("Escolha a conta ou o cartão.");
+    }
     const [prefix, id] = sourceValue.split(":");
     createMutation.mutate({
       description: description.trim(),
@@ -189,7 +206,7 @@ export function RecurringPage() {
 
       <form
         onSubmit={onSubmit}
-        className="mb-8 grid gap-4 rounded-xl border border-[var(--lr-border)] p-4"
+        className="mb-8 grid gap-4 rounded-[var(--lr-r-lg)] border border-[var(--lr-border)] p-4"
       >
         <Segmented
           label="Tipo"
@@ -205,6 +222,7 @@ export function RecurringPage() {
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Aluguel, assinatura, salário…"
+          error={fieldErrors.description}
         />
         <div className="grid gap-4 sm:grid-cols-3">
           <Input
@@ -215,14 +233,21 @@ export function RecurringPage() {
             affix="R$"
             inputMode="decimal"
             placeholder="0,00"
+            error={fieldErrors.referenceAmountCents}
           />
           <Input
             label="Dia do mês"
             type="number"
             value={dayOfMonth}
             onChange={(e) => setDayOfMonth(e.target.value)}
+            error={fieldErrors.dayOfMonth}
           />
-          <DateField label="Início" value={startDate} onChange={setStartDate} />
+          <DateField
+            label="Início"
+            value={startDate}
+            onChange={setStartDate}
+            error={fieldErrors.startDate}
+          />
         </div>
         <Select
           label="Conta ou cartão"
@@ -230,6 +255,7 @@ export function RecurringPage() {
           value={sourceValue}
           onChange={setSourceValue}
           placeholder="Selecione…"
+          error={fieldErrors.accountId}
         />
         <Checkbox
           checked={isVariable}

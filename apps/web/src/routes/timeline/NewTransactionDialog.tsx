@@ -7,6 +7,7 @@ import {
   Input,
   Segmented,
   Select,
+  formatMoney,
 } from "@lurem/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { type FormEvent, useMemo, useState } from "react";
@@ -17,13 +18,14 @@ import type {
   TransactionDto,
   TxKind,
 } from "../../auth/types";
+import { fieldErrorsFrom } from "../../lib/field-errors";
 import { reaisToCentsPositive } from "../../lib/money";
 import { todayYmd } from "./dateHelpers";
 import type { CategoryDto } from "./types";
 
 interface CreateTxPayload {
   kind: TxKind;
-  description: string;
+  description?: string;
   transactionDate: string;
   amountCents: number;
   accountId?: string;
@@ -54,6 +56,7 @@ export function NewTransactionDialog({
   const [destValue, setDestValue] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const categoriesQuery = useQuery({
     queryKey: ["categories"],
@@ -82,6 +85,35 @@ export function NewTransactionDialog({
     [categoriesQuery.data, kind],
   );
 
+  // issues.md: o aviso de "vai passar do limite" acontece aqui, no momento
+  // do cadastro — não mais como um banner reativo no topo da Timeline
+  // depois que a conta já ficou negativa. Só informa, nunca bloqueia (§0:
+  // a conta/cartão sempre pode extrapolar).
+  const overLimitWarning = useMemo(() => {
+    const cents = reaisToCentsPositive(amount);
+    if (cents === null || !sourceValue) return null;
+    const [prefix, id] = sourceValue.split(":");
+    if (prefix === "acc" && (kind === "expense" || kind === "transfer")) {
+      const account = accounts.find((a) => a.id === id);
+      if (!account) return null;
+      const projected = account.balanceCents - cents;
+      if (projected >= -account.overdraftLimitCents) return null;
+      const overBy = Math.abs(projected) - account.overdraftLimitCents;
+      const label = `${account.institutionName}${account.name ? ` - ${account.name}` : ""}`;
+      return `Essa transação deixa ${label} ${formatMoney(overBy)} além do limite.`;
+    }
+    if (prefix === "card" && kind === "expense") {
+      const card = cards.find((c) => c.id === id);
+      if (!card) return null;
+      const projected = card.usedCents + cents;
+      if (projected <= card.limitCents) return null;
+      const overBy = projected - card.limitCents;
+      const label = `${card.institutionName}${card.name ? ` - ${card.name}` : ""}`;
+      return `Essa transação deixa a fatura ${label} ${formatMoney(overBy)} além do limite.`;
+    }
+    return null;
+  }, [amount, sourceValue, kind, accounts, cards]);
+
   function resolveTarget(value: string | null): {
     accountId?: string;
     creditCardId?: string;
@@ -105,10 +137,12 @@ export function NewTransactionDialog({
       setDestValue(null);
       setCategoryId(null);
       setFormError(null);
+      setFieldErrors({});
       onCreated();
       onClose();
     },
     onError: (err: unknown) => {
+      setFieldErrors(fieldErrorsFrom(err));
       setFormError(
         err instanceof ApiError
           ? err.message
@@ -120,25 +154,32 @@ export function NewTransactionDialog({
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     setFormError(null);
+    setFieldErrors({});
     const cents = reaisToCentsPositive(amount);
     // Transferência entre contas próprias dispensa descrição (§6.6) — as
     // outras naturezas continuam exigindo uma.
     if (kind !== "transfer" && !description.trim()) {
       setFormError("Descreva a transação.");
+      setFieldErrors({ description: "Descreva a transação." });
       return;
     }
     if (cents === null) {
       setFormError("Informe um valor válido.");
+      setFieldErrors({ amountCents: "Informe um valor válido." });
       return;
     }
     if (!sourceValue) {
       setFormError("Escolha a conta ou o cartão.");
+      setFieldErrors({ accountId: "Escolha a conta ou o cartão." });
       return;
     }
     const source = resolveTarget(sourceValue);
+    // Vazio (transferência sem descrição) precisa virar `undefined`, não "" —
+    // o backend valida `description` com min(1) quando o campo está
+    // presente; uma string vazia falharia mesmo sendo tecnicamente opcional.
     const base: CreateTxPayload = {
       kind,
-      description: description.trim(),
+      description: description.trim() || undefined,
       transactionDate: date,
       amountCents: cents,
       categoryId: categoryId ?? undefined,
@@ -150,6 +191,7 @@ export function NewTransactionDialog({
       }
       if (!destValue) {
         setFormError("Escolha o destino da transferência.");
+        setFieldErrors({ toAccountId: "Escolha o destino da transferência." });
         return;
       }
       const dest = resolveTarget(destValue);
@@ -182,6 +224,7 @@ export function NewTransactionDialog({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Mercado, salário, aluguel…"
+          error={fieldErrors.description}
         />
         <div className="grid gap-4 sm:grid-cols-2">
           <Input
@@ -192,8 +235,14 @@ export function NewTransactionDialog({
             affix="R$"
             inputMode="decimal"
             placeholder="0,00"
+            error={fieldErrors.amountCents}
           />
-          <DateField label="Data" value={date} onChange={setDate} />
+          <DateField
+            label="Data"
+            value={date}
+            onChange={setDate}
+            error={fieldErrors.transactionDate}
+          />
         </div>
         <Select
           label={kind === "transfer" ? "De (conta)" : "Conta ou cartão"}
@@ -201,6 +250,7 @@ export function NewTransactionDialog({
           value={sourceValue}
           onChange={setSourceValue}
           placeholder="Selecione…"
+          error={fieldErrors.accountId}
         />
         {kind === "transfer" ? (
           <Select
@@ -209,6 +259,7 @@ export function NewTransactionDialog({
             value={destValue}
             onChange={setDestValue}
             placeholder="Selecione…"
+            error={fieldErrors.toAccountId}
           />
         ) : (
           <Select
@@ -219,6 +270,9 @@ export function NewTransactionDialog({
             placeholder="Sem categoria"
           />
         )}
+        {overLimitWarning ? (
+          <Alert variant="warning" layout="inline" title={overLimitWarning} />
+        ) : null}
         {formError ? (
           <Alert variant="error" layout="inline" title={formError} />
         ) : null}

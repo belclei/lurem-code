@@ -138,6 +138,68 @@ describe("POST /v1/cards", () => {
   });
 });
 
+describe("PATCH /v1/cards/:id", () => {
+  it("emits card.updated with the changed fields", async () => {
+    const { accessToken, userId } = await authedUser();
+    const institution = await createInstitution();
+    const card = await server.prisma.creditCard.create({
+      data: {
+        userId,
+        institutionId: institution.id,
+        limitCents: 100_000,
+        closingDay: 5,
+        dueDay: 15,
+      },
+    });
+
+    const response = await server.inject({
+      method: "PATCH",
+      url: `/v1/cards/${card.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { name: "Itaú PJ" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().name).toBe("Itaú PJ");
+
+    const event = await server.prisma.domainEvent.findFirstOrThrow({
+      where: { aggregateType: "CreditCard", aggregateId: card.id },
+    });
+    expect(event.type).toBe("card.updated");
+    expect(event.payload).toMatchObject({
+      name: "Itaú PJ",
+      changed: ["name"],
+    });
+  });
+
+  it("does not emit card.updated when the PATCH body has no fields", async () => {
+    const { accessToken, userId } = await authedUser();
+    const institution = await createInstitution();
+    const card = await server.prisma.creditCard.create({
+      data: {
+        userId,
+        institutionId: institution.id,
+        limitCents: 100_000,
+        closingDay: 5,
+        dueDay: 15,
+      },
+    });
+
+    const response = await server.inject({
+      method: "PATCH",
+      url: `/v1/cards/${card.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    const event = await server.prisma.domainEvent.findFirst({
+      where: { aggregateType: "CreditCard", aggregateId: card.id },
+    });
+    expect(event).toBeNull();
+  });
+});
+
 describe("GET /v1/cards/:id/invoice", () => {
   it("returns Money with a breakdown, never just a bare total", async () => {
     const { accessToken, userId } = await authedUser();

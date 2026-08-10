@@ -1,6 +1,4 @@
-import type { ReactNode } from "react";
-import { Body } from "../Typography/Body";
-import { Mono } from "../Typography/Mono";
+import { Alert, type AlertVariant } from "../Alert/Alert";
 import { formatDate } from "../shared/formatDate";
 import { formatMoney } from "../shared/formatMoney";
 
@@ -44,9 +42,12 @@ export type DomainEventType =
 /** Loosely-typed union of every field any catalog entry's copy needs — see Task 5's judgment-call note (mirrors `DomainEvent.payload: Json` in the Prisma schema). */
 export interface DomainEventPayload {
   institutionName?: string;
+  /** Apelido da conta/cartão (ex.: "Nubank PJ") — quando presente, some junto do institutionName na copy, igual à lista de contas. */
+  name?: string;
   counterpartName?: string;
   changed?: string[];
   balanceCents?: number;
+  openingBalanceCents?: number;
   overdraftLimitCents?: number;
   usedCents?: number;
   limitCents?: number;
@@ -61,8 +62,6 @@ export interface DomainEventPayload {
 export interface TimelineEventRowProps {
   type: DomainEventType;
   payload: DomainEventPayload;
-  /** ISO timestamp — formatted via `formatDate` (§7). */
-  createdAt: string;
 }
 
 function pct(
@@ -77,7 +76,8 @@ function pct(
 // não julgamento" tone throughout (ARQUITETURA.md, recurring theme) — never
 // phrased as blame, even for `.rejected`/`.deleted` entries.
 const EVENT_TEXT: Record<DomainEventType, (p: DomainEventPayload) => string> = {
-  "account.created": (p) => `Você criou a conta ${p.institutionName ?? ""}`,
+  "account.created": (p) =>
+    `Você criou a conta ${p.institutionName ?? ""}${p.name ? ` - ${p.name}` : ""} — saldo inicial de ${formatMoney(p.openingBalanceCents ?? 0)}`,
   "account.updated": (p) =>
     p.changed?.includes("overdraftLimitCents")
       ? `Você alterou o limite de cheque especial de ${p.institutionName ?? "conta"}`
@@ -92,7 +92,8 @@ const EVENT_TEXT: Record<DomainEventType, (p: DomainEventPayload) => string> = {
     `Sua conta ${p.institutionName ?? ""} entrou em alerta — ${formatMoney(p.balanceCents ?? 0)} além do limite`,
   "account.over_limit_cleared": (p) =>
     `Sua conta ${p.institutionName ?? ""} voltou para dentro do limite`,
-  "card.created": (p) => `Você adicionou o cartão ${p.institutionName ?? ""}`,
+  "card.created": (p) =>
+    `Você adicionou o cartão ${p.institutionName ?? ""}${p.name ? ` - ${p.name}` : ""}`,
   "card.updated": (p) => `Você atualizou o cartão ${p.institutionName ?? ""}`,
   "card.over_limit_entered": (p) =>
     `Seu cartão ${p.institutionName ?? ""} entrou em alerta — ${pct(p.usedCents, p.limitCents)} do limite`,
@@ -156,117 +157,45 @@ const EVENT_TEXT: Record<DomainEventType, (p: DomainEventPayload) => string> = {
 };
 
 // Category → icon mapping (line icons, viewBox 24×24, stroke 1.8 — Alert.tsx's
-// established convention). One shared icon per event *family* (not per type)
-// keeps this table readable — distinguishing copy carries the specifics —
-// but each family below now gets its own icon pulled from an existing
-// design-system glyph (brand/design-system/index.html), rather than the
-// previous 2-icon catch-all that made ~24 of the 31 types visually
-// indistinguishable from each other.
-function eventIcon(type: DomainEventType): ReactNode {
-  if (type.endsWith("over_limit_entered")) {
-    return (
-      <>
-        <path d="M12 4 3 19h18z" />
-        <path d="M12 10v4M12 17h.01" />
-      </>
-    );
-  }
-  // Entering vs. leaving the alert state are opposite-meaning events — the
-  // warning triangle above only ever fit "entered"; "cleared" gets the same
-  // resolved/success checkmark Alert.tsx uses for its `success` variant.
-  if (type.endsWith("over_limit_cleared")) {
-    return (
-      <>
-        <circle cx="12" cy="12" r="9" />
-        <path d="m8 12 3 3 5-6" />
-      </>
-    );
-  }
-  if (type.startsWith("card.invoice")) {
-    return <path d="M4 7h16v10H4zM4 11h16" />;
-  }
-  // index.html "hmc-inst" — the institution glyph AccountCard/CreditCardCard
-  // already show next to an account/card's own name.
-  if (type.startsWith("account") || type.startsWith("card")) {
-    return (
-      <>
-        <rect x="3" y="7" width="18" height="12" rx="2" />
-        <path d="M16 13h2" />
-      </>
-    );
-  }
-  // index.html nav item "Transações".
-  if (type.startsWith("transaction")) {
-    return <path d="M4 7h16M4 12h16M4 17h10" />;
-  }
-  // index.html nav item "Timeline" — the same clock glyph already tags an
-  // "Agendada" TransactionRow/badge elsewhere in the reference.
-  if (type.startsWith("scheduled")) {
-    return (
-      <>
-        <circle cx="12" cy="12" r="8" />
-        <path d="M12 8v4l3 2" />
-      </>
-    );
-  }
-  // index.html nav item "Recorrências".
-  if (type.startsWith("recurring")) {
-    return (
-      <>
-        <path d="M4 12a8 8 0 0 1 14-5M20 12a8 8 0 0 1-14 5" />
-        <path d="M18 3v4h-4M6 21v-4h4" />
-      </>
-    );
-  }
-  if (type.startsWith("import")) {
-    return <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />;
-  }
-  // connection.*/share.*/portador.*: the reference never draws a dedicated
-  // icon for "another person" — it uses an avatar (hmc-avatar, initial +
-  // color) instead, everywhere from the connections list to a portador
-  // validation card. This row has no avatar slot (just icon+text+timestamp),
-  // and inventing 3 icons with no design-system precedent would trade one
-  // compliance problem for another — so these 10 types keep sharing a single
-  // "connected people" glyph, at least now scoped to one coherent domain
-  // instead of a meaningless catch-all shared with unrelated event types.
-  return (
-    <path d="M9 12a3 3 0 100-6 3 3 0 000 6zM15 18a3 3 0 100-6 3 3 0 000 6zM10.5 10.5l3 4" />
-  );
+// issues.md: só Alert e Card podem compor o conteúdo da timeline — este
+// componente não desenha mais sua própria linha (ícone svg + texto + data),
+// delega a um Alert inline. A data já aparece no cabeçalho do dia (§7,
+// TimelinePage), então este row nunca repete um timestamp próprio; o emoji
+// por família substitui o antigo ícone svg por família (mesmo espírito, ver
+// Alert's `emoji` prop).
+function eventEmoji(type: DomainEventType): string {
+  if (type.endsWith("over_limit_entered")) return "⚠️";
+  if (type.endsWith("over_limit_cleared")) return "✅";
+  if (type.startsWith("card.invoice")) return "🧾";
+  if (type.startsWith("account") || type.startsWith("card")) return "🏦";
+  if (type.startsWith("transaction")) return "💸";
+  if (type.startsWith("scheduled")) return "⏰";
+  if (type.startsWith("recurring")) return "🔁";
+  if (type.startsWith("import")) return "📥";
+  // connection.*/share.*/portador.*: eventos sobre outra pessoa.
+  return "🤝";
+}
+
+function eventVariant(type: DomainEventType): AlertVariant {
+  if (type.endsWith("over_limit_entered")) return "warning";
+  if (type.endsWith("over_limit_cleared")) return "success";
+  if (type === "card.invoice_due") return "warning";
+  return "info";
 }
 
 /**
  * Lurem's generic structural timeline event line. Dumb component: reads a
  * `type` + loosely-typed `payload` and renders one of the catalog's 35
- * pt-BR copy templates (IMPLEMENTACAO.md §6, BACKLOG US-2.4) — never
- * decides which event happened.
+ * pt-BR copy templates (IMPLEMENTACAO.md §6, BACKLOG US-2.4) as an inline
+ * Alert — never decides which event happened.
  */
-export function TimelineEventRow({
-  type,
-  payload,
-  createdAt,
-}: TimelineEventRowProps) {
+export function TimelineEventRow({ type, payload }: TimelineEventRowProps) {
   return (
-    <div className="flex items-center gap-3 py-2">
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.8}
-        className="h-[15px] w-[15px] flex-none text-[var(--lr-petrol-700)] dark:text-[var(--lr-petrol-300)]"
-      >
-        {eventIcon(type)}
-      </svg>
-      <Body as="span" className="flex-1 text-[.875rem]">
-        {EVENT_TEXT[type](payload)}
-      </Body>
-      <Mono
-        variant="number"
-        tone="default"
-        className="flex-none text-[.75rem] text-[var(--lr-text-secondary)]"
-      >
-        {formatDate(createdAt)}
-      </Mono>
-    </div>
+    <Alert
+      layout="inline"
+      variant={eventVariant(type)}
+      emoji={eventEmoji(type)}
+      title={EVENT_TEXT[type](payload)}
+    />
   );
 }

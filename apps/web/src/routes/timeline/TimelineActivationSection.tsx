@@ -1,0 +1,114 @@
+// apps/web/src/routes/timeline/TimelineActivationSection.tsx
+import { Alert } from "@lurem/ui";
+import { WalletDialog } from "./WalletDialog";
+
+export interface TimelineActivationSectionProps {
+  activationDoneCount: number;
+  hasWallet: boolean;
+  hasBankAccount: boolean;
+  hasCard: boolean;
+  walletDialogOpen: boolean;
+  onWalletDialogOpenChange: (open: boolean) => void;
+  onOpenAccountDialog: () => void;
+  onOpenCardDialog: () => void;
+  onWalletCreated: () => void;
+}
+
+/** US-4.1's "PRIMEIROS PASSOS" activation section (§6.11) — shown alongside
+ * the feed while wallet/accounts/cards aren't all registered yet. Purely
+ * presentational aside from owning WalletDialog's open state locally;
+ * account/card additions open NewAccountDialog/NewCardDialog directly
+ * (issues.md: never navigate away to /accounts). */
+export function TimelineActivationSection({
+  activationDoneCount,
+  hasWallet,
+  hasBankAccount,
+  hasCard,
+  walletDialogOpen,
+  onWalletDialogOpenChange,
+  onOpenAccountDialog,
+  onOpenCardDialog,
+  onWalletCreated,
+}: TimelineActivationSectionProps) {
+  return (
+    <div>
+      <p className="mb-4 text-[.9375rem] text-[var(--lr-text-secondary)]">
+        Sua história ainda vai começar. Cadastre suas contas e cartões — na
+        ordem que quiser — e tudo aparece aqui em ordem, com o saldo de cada
+        dia.
+      </p>
+      <section>
+        <h2 className="mb-1 text-[.8125rem] font-bold text-[var(--lr-text)]">
+          PRIMEIROS PASSOS
+        </h2>
+        <p className="mb-4 text-sm text-[var(--lr-text-secondary)]">
+          {activationDoneCount} de 3 concluídos
+        </p>
+        <div className="flex flex-col gap-2">
+          {hasWallet ? (
+            <Alert
+              variant="success"
+              title="Carteira registrada"
+              description="Seu dinheiro físico já faz parte da Timeline."
+            />
+          ) : (
+            <Alert
+              variant="warning"
+              title="Carteira"
+              description="Quanto de dinheiro físico você tem hoje? Não sabe por onde começar? Um chute vale — dá pra ajustar depois."
+              actions={[
+                {
+                  label: "Adicionar",
+                  onClick: () => onWalletDialogOpenChange(true),
+                },
+              ]}
+            />
+          )}
+          {hasBankAccount ? (
+            <Alert
+              variant="success"
+              title="Contas registradas"
+              description="Suas contas já aparecem na Timeline."
+            />
+          ) : (
+            <Alert
+              variant="info"
+              title="Contas"
+              description="Adicione as contas de banco onde seu dinheiro vive."
+              actions={[
+                {
+                  label: "Adicionar contas",
+                  onClick: onOpenAccountDialog,
+                },
+              ]}
+            />
+          )}
+          {hasCard ? (
+            <Alert
+              variant="success"
+              title="Cartões registrados"
+              description="Seus cartões já aparecem na Timeline."
+            />
+          ) : (
+            <Alert
+              variant="info"
+              title="Cartões"
+              description="Adicione seus cartões de crédito — limite, fechamento e vencimento."
+              actions={[
+                {
+                  label: "Adicionar cartões",
+                  onClick: onOpenCardDialog,
+                },
+              ]}
+            />
+          )}
+        </div>
+      </section>
+      <WalletDialog
+        open={walletDialogOpen}
+        onClose={() => onWalletDialogOpenChange(false)}
+        onCreated={onWalletCreated}
+      />
+    </div>
+  );
+}

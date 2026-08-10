@@ -88,6 +88,15 @@ function post(token: string, payload: unknown) {
   });
 }
 
+function patch(token: string, id: string, payload: unknown) {
+  return server.inject({
+    method: "PATCH",
+    url: `/v1/transactions/${id}`,
+    headers: { authorization: `Bearer ${token}` },
+    payload: payload as object,
+  });
+}
+
 const TODAY = "2026-07-25";
 
 describe("POST /v1/transactions — manual (US-3.5)", () => {
@@ -120,7 +129,7 @@ describe("POST /v1/transactions — manual (US-3.5)", () => {
     expect(res.json().code).toBe("transaction.account_xor_card");
   });
 
-  it("returns 409 overdraft_confirmation_required with projected balance data, and does not write", async () => {
+  it("writes an expense past the overdraft limit (warn-only, never blocks)", async () => {
     const { userId, accessToken } = await authedUser();
     const acc = await account(userId, {
       openingBalanceCents: 10_000,
@@ -133,35 +142,14 @@ describe("POST /v1/transactions — manual (US-3.5)", () => {
       transactionDate: TODAY,
       amountCents: 20_000,
     });
-    expect(res.statusCode).toBe(409);
-    const body = res.json();
-    expect(body.code).toBe("account.overdraft_confirmation_required");
-    expect(body.data.projectedBalanceCents).toBe(-10_000);
-    expect(body.data.overdraftLimitCents).toBe(5_000);
+    expect(res.statusCode).toBe(201);
     const count = await server.prisma.transaction.count({
       where: { accountId: acc.id },
     });
-    expect(count).toBe(0);
+    expect(count).toBe(1);
   });
 
-  it("writes when confirmOverLimit=true", async () => {
-    const { userId, accessToken } = await authedUser();
-    const acc = await account(userId, {
-      openingBalanceCents: 10_000,
-      overdraftLimitCents: 5_000,
-    });
-    const res = await post(accessToken, {
-      kind: "expense",
-      accountId: acc.id,
-      description: "compra grande",
-      transactionDate: TODAY,
-      amountCents: 20_000,
-      confirmOverLimit: true,
-    });
-    expect(res.statusCode).toBe(201);
-  });
-
-  it("rejects cash going negative (422) with no confirm option", async () => {
+  it("writes an expense that leaves a cash account negative (warn-only)", async () => {
     const { userId, accessToken } = await authedUser();
     const acc = await account(userId, {
       type: "cash",
@@ -173,10 +161,8 @@ describe("POST /v1/transactions — manual (US-3.5)", () => {
       description: "gasto",
       transactionDate: TODAY,
       amountCents: 2_000,
-      confirmOverLimit: true,
     });
-    expect(res.statusCode).toBe(422);
-    expect(res.json().code).toBe("account.cash_cannot_be_negative");
+    expect(res.statusCode).toBe(201);
   });
 });
 
@@ -200,6 +186,39 @@ describe("POST /v1/transactions — transfer & installment (US-3.6)", () => {
     expect(inLeg.transferDirection).toBe("in");
     expect(out.accountId).toBe(from.id);
     expect(inLeg.accountId).toBe(to.id);
+  });
+
+  it("PATCHing one leg of a transfer syncs amount/date/description to its pair", async () => {
+    const { userId, accessToken } = await authedUser();
+    const from = await account(userId, { openingBalanceCents: 100_000 });
+    const to = await account(userId, { openingBalanceCents: 0 });
+    const created = await post(accessToken, {
+      kind: "transfer",
+      accountId: from.id,
+      toAccountId: to.id,
+      description: "Poupança",
+      transactionDate: TODAY,
+      amountCents: 30_000,
+    });
+    const [out, inLeg] = created.json();
+
+    const res = await patch(accessToken, out.id, {
+      description: "Poupança de julho",
+      amountCents: 45_000,
+      transactionDate: "2026-07-26",
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().amountCents).toBe(45_000);
+
+    const pairLeg = await server.prisma.transaction.findUniqueOrThrow({
+      where: { id: inLeg.id },
+    });
+    expect(pairLeg.amountCents).toBe(45_000);
+    expect(pairLeg.amountBRLCents).toBe(45_000);
+    expect(pairLeg.description).toBe("Poupança de julho");
+    expect(pairLeg.transactionDate.toISOString().slice(0, 10)).toBe(
+      "2026-07-26",
+    );
   });
 
   it("creates a transfer without a description, defaulting it to empty", async () => {

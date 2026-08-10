@@ -16,6 +16,8 @@ export interface TimelineEventItem {
   type: string;
   payload: unknown;
   createdAt: string;
+  aggregateType: string;
+  aggregateId: string;
 }
 
 export interface TimelineTransactionItem {
@@ -72,10 +74,52 @@ interface SortableItem {
   item: TimelineItem;
 }
 
+const GOOGLE_PLACEHOLDER_BIRTH_DATE = "1970-01-01";
+
+/**
+ * Days with no transaction/event but that still must appear (issues.md: "Se
+ * o dia não tem transação, mas tem algum outro evento, tipo, aniversário,
+ * ainda assim você deve exibir este dia") — birthday (every year since the
+ * user joined) and the join day itself. Client renders the actual Alert
+ * (dateHelpers.ts's `isBirthday`/`isJoinDay`); this only guarantees the day
+ * exists in the page so the client gets a chance to render it.
+ *
+ * This year's birthday is included even if it hasn't happened yet
+ * (issues.md: registering a birthday for tomorrow must show up today, not
+ * wait for the day to arrive — same idea as a scheduled transaction showing
+ * ahead of its date). The loop below only ever reaches one year past
+ * `today`'s year at most, so this can't spiral into showing every future
+ * year's birthday — just the next upcoming one.
+ */
+export function synthesizeStructuralDates(
+  user: { birthDate: Date | null; createdAt: Date },
+  today: Date = new Date(),
+): string[] {
+  const todayYmd = SAO_PAULO_DAY.format(today);
+  const joinYmd = SAO_PAULO_DAY.format(user.createdAt);
+  const dates = new Set<string>([joinYmd]);
+
+  if (user.birthDate) {
+    const birthIso = user.birthDate.toISOString().slice(0, 10);
+    if (birthIso !== GOOGLE_PLACEHOLDER_BIRTH_DATE) {
+      const monthDay = birthIso.slice(5, 10);
+      const startYear = Number(joinYmd.slice(0, 4));
+      const endYear = Number(todayYmd.slice(0, 4));
+      for (let year = startYear; year <= endYear; year++) {
+        dates.add(`${year}-${monthDay}`);
+      }
+    }
+  }
+
+  // Never before the user existed — a birthday the same calendar year they
+  // joined, but before the join date, isn't a real timeline day for them.
+  return [...dates].filter((date) => date >= joinYmd);
+}
+
 export function buildTimelinePage(
   transactions: Transaction[],
   events: DomainEvent[],
-  opts: { cursor?: string; limit: number },
+  opts: { cursor?: string; limit: number; structuralDates?: string[] },
 ): TimelinePageWithoutBalance {
   const installmentsByGroupId = new Map<string, Transaction[]>();
   for (const tx of transactions) {
@@ -106,6 +150,8 @@ export function buildTimelinePage(
         type: event.type,
         payload: event.payload,
         createdAt: event.createdAt.toISOString(),
+        aggregateType: event.aggregateType,
+        aggregateId: event.aggregateId,
       },
     })),
   ];
@@ -123,6 +169,10 @@ export function buildTimelinePage(
     const list = byDay.get(entry.date) ?? [];
     list.push(entry.item);
     byDay.set(entry.date, list);
+  }
+  for (const date of opts.structuralDates ?? []) {
+    if (opts.cursor && date >= opts.cursor) continue;
+    if (!byDay.has(date)) byDay.set(date, []);
   }
 
   const allDates = [...byDay.keys()].sort((a, b) => (a < b ? 1 : -1));

@@ -21,6 +21,7 @@ import {
   downloadMyDataExport,
   logout,
 } from "../auth/api-client";
+import { fieldErrorsFrom } from "../lib/field-errors";
 
 export function SettingsPage() {
   const { isBooting, user, refreshUser } = useAuth();
@@ -28,12 +29,18 @@ export function SettingsPage() {
   const [name, setName] = useState(user?.name ?? "");
   const [birthDate, setBirthDate] = useState(user?.birthDate ?? "");
   const [personalError, setPersonalError] = useState<string | null>(null);
+  const [personalFieldErrors, setPersonalFieldErrors] = useState<
+    Record<string, string>
+  >({});
   const [personalSaved, setPersonalSaved] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordFieldErrors, setPasswordFieldErrors] = useState<
+    Record<string, string>
+  >({});
   const [passwordSaved, setPasswordSaved] = useState(false);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -60,11 +67,13 @@ export function SettingsPage() {
       apiFetchJson("/me", { method: "PATCH", body: JSON.stringify(body) }),
     onSuccess: async () => {
       setPersonalError(null);
+      setPersonalFieldErrors({});
       setPersonalSaved(true);
       await refreshUser();
     },
     onError: (error: unknown) => {
       setPersonalSaved(false);
+      setPersonalFieldErrors(fieldErrorsFrom(error));
       setPersonalError(
         error instanceof ApiError ? error.message : "Não foi possível salvar.",
       );
@@ -109,6 +118,7 @@ export function SettingsPage() {
       }),
     onSuccess: () => {
       setPasswordError(null);
+      setPasswordFieldErrors({});
       setPasswordSaved(true);
       setCurrentPassword("");
       setNewPassword("");
@@ -116,6 +126,7 @@ export function SettingsPage() {
     },
     onError: (error: unknown) => {
       setPasswordSaved(false);
+      setPasswordFieldErrors(fieldErrorsFrom(error));
       setPasswordError(
         error instanceof ApiError
           ? error.message
@@ -151,14 +162,19 @@ export function SettingsPage() {
   function submitPersonal(event: FormEvent) {
     event.preventDefault();
     setPersonalSaved(false);
+    setPersonalFieldErrors({});
     personalMutation.mutate({ name, birthDate });
   }
 
   function submitPassword(event: FormEvent) {
     event.preventDefault();
     setPasswordSaved(false);
+    setPasswordFieldErrors({});
     if (newPassword !== confirmPassword) {
       setPasswordError("A confirmação não bate com a nova senha.");
+      setPasswordFieldErrors({
+        confirmPassword: "A confirmação não bate com a nova senha.",
+      });
       return;
     }
     passwordMutation.mutate({ currentPassword, newPassword });
@@ -188,11 +204,13 @@ export function SettingsPage() {
             label="Nome completo"
             value={name}
             onChange={(event) => setName(event.target.value)}
+            error={personalFieldErrors.name}
           />
           <DateField
             label="Data de nascimento"
             value={birthDate}
             onChange={setBirthDate}
+            error={personalFieldErrors.birthDate}
           />
           <Input
             label="E-mail"
@@ -283,6 +301,7 @@ export function SettingsPage() {
               label="Senha atual"
               value={currentPassword}
               onChange={(event) => setCurrentPassword(event.target.value)}
+              error={passwordFieldErrors.currentPassword}
             />
             <Input
               type="password"
@@ -290,12 +309,14 @@ export function SettingsPage() {
               hint="Mínimo de 8 caracteres."
               value={newPassword}
               onChange={(event) => setNewPassword(event.target.value)}
+              error={passwordFieldErrors.newPassword}
             />
             <Input
               type="password"
               label="Confirmar nova senha"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
+              error={passwordFieldErrors.confirmPassword}
             />
             {passwordError ? (
               <Alert variant="error" layout="inline" title={passwordError} />

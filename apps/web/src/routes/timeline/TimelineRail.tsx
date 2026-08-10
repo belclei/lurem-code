@@ -21,12 +21,19 @@ export function TimelineRailLine() {
 /** Bolinha de um dia — hoje em dourado (maior, sem borda), os demais em tom
  * neutro (menor, com borda). Ambos os tamanhos centralizam dentro do mesmo
  * "hitbox" de 16px, então o centro visual nunca muda entre variantes.
- * Renderizar dentro de um `<section>` com `position: relative`. */
+ * Renderizar dentro de um `<section>` com `position: relative`. Quando
+ * `today`, o wrapper do dia ganha `p-4` (TimelinePage.tsx) — o topo do
+ * conteúdo desce 16px, então a bolinha precisa do mesmo deslocamento pra
+ * continuar centralizada ao lado de "HOJE · ...", em vez de ficar presa no
+ * topo da caixa. */
 export function TimelineRailDot({ today }: { today: boolean }) {
   return (
     <span
       aria-hidden="true"
-      className="absolute left-2 top-1 flex h-4 w-4 items-center justify-center"
+      className={[
+        "absolute left-2 flex h-4 w-4 items-center justify-center",
+        today ? "top-5" : "top-1",
+      ].join(" ")}
     >
       <span
         className={

@@ -75,6 +75,31 @@ services:
       - "traefik.http.routers.lurem-api.priority=10"
       - "traefik.http.services.lurem-api.loadbalancer.server.port=3001"
 
+  # Daily jobs (issues.md: fechamento/vencimento de fatura precisa rodar
+  # sozinho — o mesmo vale pros outros dois jobs "diários" que também nunca
+  # tinham um scheduler real). Same image as `api`, just runs crond instead
+  # of the HTTP server — see apps/api/cron/crontab for the schedule.
+  cron:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    entrypoint: ["/app/apps/api/cron/entrypoint.sh"]
+    environment:
+      DATABASE_URL: postgresql://lurem:${POSTGRES_PASSWORD}@postgres:5432/lurem?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET}
+      WEB_APP_URL: https://${DOMAIN}
+      TZ: America/Sao_Paulo
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   web:
     build:
       context: .

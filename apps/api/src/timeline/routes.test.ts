@@ -69,7 +69,10 @@ describe("GET /v1/timeline", () => {
 
     const response = await server.inject({
       method: "GET",
-      url: "/v1/timeline",
+      // `to` scopes out the user's join-day synthetic entry (issues.md:
+      // always shown, even with no transaction/event) so this test can
+      // assert exact day counts regardless of when it runs.
+      url: "/v1/timeline?from=2026-07-18&to=2026-07-20",
       headers: { authorization: `Bearer ${accessToken}` },
     });
 
@@ -105,7 +108,9 @@ describe("GET /v1/timeline", () => {
 
     const response = await server.inject({
       method: "GET",
-      url: "/v1/timeline",
+      // Same `to` reasoning as above — excludes this user's own join-day
+      // synthetic entry, which is unrelated to what this test verifies.
+      url: "/v1/timeline?from=2026-07-19&to=2026-07-19",
       headers: { authorization: `Bearer ${accessToken}` },
     });
 
@@ -131,7 +136,8 @@ describe("GET /v1/timeline", () => {
 
     const firstPage = await server.inject({
       method: "GET",
-      url: "/v1/timeline?limit=2",
+      // `to` excludes the join-day synthetic entry — see note above.
+      url: "/v1/timeline?limit=2&from=2026-07-01&to=2026-07-03",
       headers: { authorization: `Bearer ${accessToken}` },
     });
     const firstBody = firstPage.json();
@@ -143,7 +149,7 @@ describe("GET /v1/timeline", () => {
 
     const secondPage = await server.inject({
       method: "GET",
-      url: `/v1/timeline?limit=2&cursor=${firstBody.nextCursor}`,
+      url: `/v1/timeline?limit=2&from=2026-07-01&to=2026-07-03&cursor=${firstBody.nextCursor}`,
       headers: { authorization: `Bearer ${accessToken}` },
     });
     const secondBody = secondPage.json();
@@ -182,7 +188,8 @@ describe("GET /v1/timeline", () => {
 
     const response = await server.inject({
       method: "GET",
-      url: `/v1/timeline?accountIds=${wallet.id}`,
+      // `to` excludes the join-day synthetic entry — see note above.
+      url: `/v1/timeline?accountIds=${wallet.id}&from=2026-07-10&to=2026-07-10`,
       headers: { authorization: `Bearer ${accessToken}` },
     });
 
@@ -219,7 +226,8 @@ describe("GET /v1/timeline", () => {
 
     const response = await server.inject({
       method: "GET",
-      url: "/v1/timeline?types=account.created",
+      // `to` excludes the join-day synthetic entry — see note above.
+      url: "/v1/timeline?types=account.created&from=2026-07-10&to=2026-07-10",
       headers: { authorization: `Bearer ${accessToken}` },
     });
 
@@ -274,7 +282,8 @@ describe("GET /v1/timeline", () => {
 
     const response = await server.inject({
       method: "GET",
-      url: "/v1/timeline",
+      // `to` excludes the join-day synthetic entry — see note above.
+      url: "/v1/timeline?from=2026-07-01&to=2026-07-03",
       headers: { authorization: `Bearer ${accessToken}` },
     });
 
@@ -294,5 +303,26 @@ describe("GET /v1/timeline", () => {
     expect(body.days[1].balanceCents).toBe(700);
     // Day 1: balance = 700 + 300 (day 2 expense) = 1000
     expect(body.days[2].balanceCents).toBe(1000);
+  });
+
+  it("shows the join day even with no transaction/event on it (issues.md: structural days)", async () => {
+    const { accessToken } = await authedUser();
+    const todayYmd = new Date().toLocaleDateString("en-CA", {
+      timeZone: "America/Sao_Paulo",
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/v1/timeline",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    const todayDay = body.days.find(
+      (d: { date: string }) => d.date === todayYmd,
+    );
+    expect(todayDay).toBeDefined();
+    expect(todayDay.items).toEqual([]);
   });
 });
