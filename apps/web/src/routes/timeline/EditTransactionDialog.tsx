@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { type FormEvent, useMemo, useState } from "react";
 import { ApiError, apiFetchJson } from "../../auth/api-client";
 import type { TransactionDto } from "../../auth/types";
+import { fieldErrorsFrom } from "../../lib/field-errors";
 import { reaisToCentsPositive } from "../../lib/money";
 import type { CategoryDto } from "./types";
 
@@ -20,17 +21,21 @@ interface UpdateTxPayload {
  * Kind/account/destination aren't editable here: the backend contract
  * doesn't accept them, and building that (would it move money between
  * accounts retroactively? re-run overdraft checks?) is a bigger product
- * decision than this conformance pass covers. Opened from both the
- * "scheduled" and "installment" TransactionRow variants' "Editar"
- * button (§5b/§5c) — see this task's judgment-call note above. */
+ * decision than this conformance pass covers. Opened from the "default",
+ * "scheduled" and "installment" TransactionRow variants' click/"Editar"
+ * — see this task's judgment-call note above. */
 export function EditTransactionDialog({
   tx,
   onClose,
   onSaved,
+  onDelete,
+  deleting = false,
 }: {
   tx: TransactionDto | null;
   onClose: () => void;
   onSaved: () => void;
+  onDelete: (tx: TransactionDto) => void;
+  deleting?: boolean;
 }) {
   const [loadedTxId, setLoadedTxId] = useState<string | null>(null);
   const [description, setDescription] = useState("");
@@ -38,6 +43,7 @@ export function EditTransactionDialog({
   const [date, setDate] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Resets the form's local state whenever a *different* transaction is
   // opened. The dialog is mounted once for the whole page and toggled
@@ -52,6 +58,7 @@ export function EditTransactionDialog({
     setDate(tx.transactionDate.slice(0, 10));
     setCategoryId(tx.categoryId);
     setFormError(null);
+    setFieldErrors({});
   }
 
   const categoriesQuery = useQuery({
@@ -77,10 +84,12 @@ export function EditTransactionDialog({
       }),
     onSuccess: () => {
       setFormError(null);
+      setFieldErrors({});
       onSaved();
       onClose();
     },
     onError: (err: unknown) => {
+      setFieldErrors(fieldErrorsFrom(err));
       setFormError(
         err instanceof ApiError
           ? err.message
@@ -92,18 +101,23 @@ export function EditTransactionDialog({
   function onSubmit(event: FormEvent) {
     event.preventDefault();
     setFormError(null);
+    setFieldErrors({});
     if (!tx) return;
     const cents = reaisToCentsPositive(amount);
     if (tx.kind !== "transfer" && !description.trim()) {
       setFormError("Descreva a transação.");
+      setFieldErrors({ description: "Descreva a transação." });
       return;
     }
     if (cents === null) {
       setFormError("Informe um valor válido.");
+      setFieldErrors({ amountCents: "Informe um valor válido." });
       return;
     }
     updateMutation.mutate({
-      description: description.trim(),
+      // Vazio (transferência sem descrição) precisa virar `undefined`, não
+      // "" — o backend valida `description` com min(1) quando presente.
+      description: description.trim() || undefined,
       categoryId,
       transactionDate: date,
       amountCents: cents,
@@ -117,6 +131,7 @@ export function EditTransactionDialog({
           label={tx?.kind === "transfer" ? "Descrição (opcional)" : "Descrição"}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          error={fieldErrors.description}
         />
         <div className="grid gap-4 sm:grid-cols-2">
           <Input
@@ -127,8 +142,14 @@ export function EditTransactionDialog({
             affix="R$"
             inputMode="decimal"
             placeholder="0,00"
+            error={fieldErrors.amountCents}
           />
-          <DateField label="Data" value={date} onChange={setDate} />
+          <DateField
+            label="Data"
+            value={date}
+            onChange={setDate}
+            error={fieldErrors.transactionDate}
+          />
         </div>
         <Select
           label="Categoria (opcional)"
@@ -136,17 +157,28 @@ export function EditTransactionDialog({
           value={categoryId}
           onChange={setCategoryId}
           placeholder="Sem categoria"
+          error={fieldErrors.categoryId}
         />
         {formError ? (
           <Alert variant="error" layout="inline" title={formError} />
         ) : null}
-        <div className="flex justify-end gap-2.5">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancelar
+        <div className="flex items-center justify-between gap-2.5">
+          <Button
+            type="button"
+            variant="danger"
+            loading={deleting}
+            onClick={() => tx && onDelete(tx)}
+          >
+            Apagar transação
           </Button>
-          <Button type="submit" loading={updateMutation.isPending}>
-            Salvar
-          </Button>
+          <div className="flex gap-2.5">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" loading={updateMutation.isPending}>
+              Salvar
+            </Button>
+          </div>
         </div>
       </form>
     </Dialog>

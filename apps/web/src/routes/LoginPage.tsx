@@ -1,5 +1,5 @@
 // apps/web/src/routes/LoginPage.tsx
-import { Button, Input } from "@lurem/ui";
+import { Alert, Button, Input } from "@lurem/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
@@ -106,12 +106,7 @@ export function LoginPage() {
           autoComplete="current-password"
         />
         {formError ? (
-          <p
-            role="alert"
-            className="text-sm text-[var(--lr-negative)] dark:text-[var(--lr-negative)]"
-          >
-            {formError}
-          </p>
+          <Alert variant="error" layout="inline" title={formError} />
         ) : null}
         <Button type="submit" loading={submitting}>
           Entrar

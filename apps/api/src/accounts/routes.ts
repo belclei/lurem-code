@@ -9,6 +9,10 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireUser } from "../auth/authenticate.js";
 import { NOT_FOUND, SHARE_VIEW_ONLY, VALIDATION_FAILED } from "../errors.js";
+import {
+  assertInstitutionNicknameRule,
+  assertUniqueNickname,
+} from "../shared/nickname-rules.js";
 import { toAccountResponse } from "./serialize.js";
 
 type EditAccess =
@@ -159,6 +163,15 @@ export async function registerAccountRoutes(
         }
       }
 
+      await assertUniqueNickname(fastify, userId, body.name);
+      await assertInstitutionNicknameRule(
+        fastify,
+        userId,
+        body.institutionId,
+        body.name,
+        "account",
+      );
+
       const account = await fastify.prisma.account.create({
         data: {
           userId,
@@ -183,7 +196,14 @@ export async function registerAccountRoutes(
           payload: {
             type: account.type,
             name: account.name,
-            institutionName: institution?.name ?? null,
+            // Mesma regra de toAccountResponse (serialize.ts) — conta em
+            // espécie não tem instituição, "Em Espécie" é o rótulo que a
+            // timeline/lista já usa pra ela em todo o resto do app.
+            institutionName:
+              account.type === "cash"
+                ? "Em Espécie"
+                : (institution?.name ?? null),
+            openingBalanceCents: account.openingBalanceCents,
           },
         },
       });
@@ -218,6 +238,19 @@ export async function registerAccountRoutes(
           },
         ]);
       }
+      if (body.name !== undefined) {
+        await assertUniqueNickname(fastify, existing.userId, body.name, {
+          accountId: existing.id,
+        });
+        await assertInstitutionNicknameRule(
+          fastify,
+          existing.userId,
+          existing.institutionId,
+          body.name,
+          "account",
+          existing.id,
+        );
+      }
 
       const account = await fastify.prisma.account.update({
         where: { id },
@@ -234,6 +267,29 @@ export async function registerAccountRoutes(
             where: { id: account.institutionId },
           })
         : null;
+
+      const changed = (
+        ["name", "overdraftLimitCents", "isActive"] as const
+      ).filter((field) => body[field] !== undefined);
+      if (changed.length > 0) {
+        await fastify.prisma.domainEvent.create({
+          data: {
+            userId: existing.userId,
+            type: "account.updated",
+            aggregateType: "Account",
+            aggregateId: account.id,
+            payload: {
+              institutionName:
+                account.type === "cash"
+                  ? "Em Espécie"
+                  : (institution?.name ?? null),
+              name: account.name,
+              changed,
+            },
+          },
+        });
+      }
+
       const transactions = await fastify.prisma.transaction.findMany({
         where: { accountId: account.id },
       });

@@ -1,171 +1,46 @@
 // apps/web/src/routes/TimelinePage.tsx
 // BACKLOG.md US-6.1 — a Timeline é a home real do app (§6.12, ver também
 // ARQUITETURA.md §6.11 para o estado vazio/ativação, que chega na Sprint 7).
-// TimelineAlertBanner e os totais do painel lateral derivam de /v1/accounts e
-// /v1/cards (que já expõem isOverLimit/balanceCents/usedCents) — não existe
-// endpoint próprio para eles (ver comentário em timeline/routes.ts no backend).
-import {
-  Alert,
-  Body,
-  Button,
-  Calendar,
-  Card,
-  CategoryIcon,
-  Checkbox,
-  DateField,
-  Dialog,
-  EmptyState,
-  EyeIcon,
-  Input,
-  InstitutionMark,
-  Mono,
-  PlusIcon,
-  Popover,
-  ProfileIncompleteAlert,
-  Segmented,
-  Select,
-  Skeleton,
-  TimelineAlertBanner,
-  TimelineEventRow,
-  TransactionRow,
-  TransferPairCard,
-  formatMoney,
-} from "@lurem/ui";
-import type {
-  AlertedEntity,
-  CalendarRange,
-  DomainEventType,
-  TransferAccount,
-} from "@lurem/ui";
+// Os totais do painel lateral derivam de /v1/accounts e /v1/cards (que já
+// expõem isOverLimit/balanceCents/usedCents) — não existe endpoint próprio
+// para eles (ver comentário em timeline/routes.ts no backend). issues.md: o
+// banner reativo de "conta além do limite" foi removido daqui — o aviso
+// agora acontece no momento do cadastro da transação (NewTransactionDialog),
+// não como um lembrete permanente no topo da página.
+import { Body, Button, PlusIcon, ProfileIncompleteAlert } from "@lurem/ui";
+import type { CalendarRange } from "@lurem/ui";
 import {
   useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Link, Navigate, useNavigate } from "@tanstack/react-router";
-import {
-  type FormEvent,
-  type ReactNode,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { Navigate, useNavigate } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { ApiError, apiFetchJson } from "../auth/api-client";
+import { apiFetchJson } from "../auth/api-client";
 import type {
   AccountDto,
   CardDto,
-  TimelineItemDto,
+  InstitutionDto,
   TimelinePageDto,
   TransactionDto,
-  TxKind,
 } from "../auth/types";
-import { reaisToCentsOrZero, reaisToCentsPositive } from "../lib/money";
 import type { DashboardInsights } from "./DashboardView";
+import { EditAccountDialog } from "./timeline/EditAccountDialog";
+import { EditCardDialog } from "./timeline/EditCardDialog";
 import { EditTransactionDialog } from "./timeline/EditTransactionDialog";
+import { NewAccountDialog } from "./timeline/NewAccountDialog";
+import { NewCardDialog } from "./timeline/NewCardDialog";
 import { NewTransactionDialog } from "./timeline/NewTransactionDialog";
-import { TimelineRailDot, TimelineRailLine } from "./timeline/TimelineRail";
+import { TimelineActivationSection } from "./timeline/TimelineActivationSection";
+import { TimelineFeed } from "./timeline/TimelineFeed";
+import { TimelineFilterBar } from "./timeline/TimelineFilterBar";
 import { TimelineSummaryAside } from "./timeline/TimelineSummaryAside";
-import { WalletDialog } from "./timeline/WalletDialog";
-import {
-  GOOGLE_PLACEHOLDER_BIRTH_DATE,
-  dayOfWeek,
-  greetingAndDate,
-  isBirthdayWindow,
-  isThisMonthRange,
-  isToday,
-  longDayMonth,
-  periodLabel,
-  shortDate,
-  thisMonthRange,
-  toYmd,
-  todayYmd,
-} from "./timeline/dateHelpers";
+import { greetingAndDate, thisMonthRange, toYmd } from "./timeline/dateHelpers";
+import { EVENT_TYPE_GROUPS } from "./timeline/eventTypeGroups";
 import type { Chip, ScheduledHandlers } from "./timeline/transactionRowHelpers";
-import {
-  findTransferPair,
-  hasOutTransferPair,
-  institutionDotColor,
-  resolveTransferParty,
-  transactionRowProps,
-} from "./timeline/transactionRowHelpers";
 import type { CategoryDto } from "./timeline/types";
-
-// ARQUITETURA.md §6.12 item 3: a Timeline filtra por tipo de evento além de
-// conta/cartão. `DomainEvent.type` tem 34 valores concretos (TimelineEventRow's
-// catalog) — granular demais pra um filtro; agrupados nas mesmas famílias que
-// TimelineEventRow já usa pra ícone (eventIcon()), então o rótulo do filtro e o
-// ícone que o usuário vê na lista sempre concordam. "transaction" é o
-// pseudo-tipo que GET /v1/timeline usa pra alternar as `Transaction` reais
-// (que não são DomainEvent) — ver apps/api/src/timeline/routes.ts.
-interface EventTypeGroup {
-  id: string;
-  label: string;
-  types: string[];
-}
-
-const EVENT_TYPE_GROUPS: EventTypeGroup[] = [
-  { id: "transaction", label: "Transações", types: ["transaction"] },
-  {
-    id: "account_card",
-    label: "Contas e cartões",
-    types: [
-      "account.created",
-      "account.updated",
-      "account.balance_adjusted",
-      "account.over_limit_entered",
-      "account.over_limit_cleared",
-      "card.created",
-      "card.updated",
-      "card.over_limit_entered",
-      "card.over_limit_cleared",
-      "card.invoice_closed",
-      "card.invoice_due",
-    ],
-  },
-  {
-    id: "scheduled",
-    label: "Agendadas",
-    types: ["scheduled.confirmed", "scheduled.skipped", "scheduled.deleted"],
-  },
-  {
-    id: "recurring",
-    label: "Recorrências",
-    types: ["recurring.created", "recurring.paused", "recurring.ended"],
-  },
-  { id: "import", label: "Importação", types: ["import.completed"] },
-  {
-    id: "connections",
-    label: "Conexões e portador",
-    types: [
-      "invite.deleted",
-      "invite.resent",
-      "connection.requested",
-      "connection.accepted",
-      "connection.rejected",
-      "connection.deleted",
-      "connection.resent",
-      "share.granted",
-      "share.permission_changed",
-      "share.revoked",
-      "portador.assigned",
-      "portador.accepted",
-      "portador.rejected",
-      "portador.settled",
-    ],
-  },
-];
-
-function TimelineSkeleton() {
-  return (
-    <div className="flex flex-col gap-3">
-      <Skeleton className="h-6 w-32 rounded-[var(--lr-r-md)]" />
-      <Skeleton className="h-16 w-full rounded-[var(--lr-r-lg)]" />
-      <Skeleton className="h-16 w-full rounded-[var(--lr-r-lg)]" />
-    </div>
-  );
-}
 
 export function TimelinePage() {
   const { isBooting, user } = useAuth();
@@ -173,6 +48,8 @@ export function TimelinePage() {
   const hasSession = !isBooting && Boolean(user);
   const [hiddenChipIds, setHiddenChipIds] = useState<Set<string>>(new Set());
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
+  const [accountDialogOpen, setAccountDialogOpen] = useState(false);
+  const [cardDialogOpen, setCardDialogOpen] = useState(false);
   const [txDialogOpen, setTxDialogOpen] = useState(false);
   const [periodRange, setPeriodRange] = useState<CalendarRange>(() =>
     thisMonthRange(),
@@ -194,10 +71,22 @@ export function TimelinePage() {
   // Task 18/19 (§5b/§5c) — the transaction currently open in
   // EditTransactionDialog; null means closed.
   const [editingTx, setEditingTx] = useState<TransactionDto | null>(null);
+  // issues.md: clicar num evento de conta/cartão na timeline abre a edição.
+  const [editingAccount, setEditingAccount] = useState<AccountDto | null>(null);
+  const [editingCard, setEditingCard] = useState<CardDto | null>(null);
   const queryClient = useQueryClient();
 
   function toggleInstallment(id: string) {
     setExpandedInstallments((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleChip(id: string) {
+    setHiddenChipIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -264,6 +153,11 @@ export function TimelinePage() {
     queryFn: () => apiFetchJson<CardDto[]>("/cards"),
     enabled: hasSession,
   });
+  const institutionsQuery = useQuery({
+    queryKey: ["institutions"],
+    queryFn: () => apiFetchJson<InstitutionDto[]>("/institutions"),
+    enabled: hasSession,
+  });
   // "Disponível hoje" and "Patrimônio total" (§6, aside) both used to
   // render the same ad-hoc netBalanceCents-minus-invoices value — they're
   // distinct figures (IMPLEMENTACAO.md §3.2/§3.5) already computed
@@ -277,12 +171,14 @@ export function TimelinePage() {
   });
 
   // US-4.1 — while any of the 3 items is missing, the Timeline shows
-  // activation cards for just the missing ones instead of the feed (never a
-  // linear wizard: each card is independent, any order, and the ones already
-  // done simply aren't rendered). Only once all 3 exist does the real
-  // day-grouped feed take over. Loading is treated as "not pending yet" —
-  // rendering activation cards for a beat while accounts/cards are still in
-  // flight would flash them for a returning user who already has data.
+  // activation cards for just the missing ones (never a linear wizard: each
+  // card is independent, any order, and the ones already done simply aren't
+  // rendered) *alongside* the feed, not instead of it — issues.md: the feed
+  // (and "Nova transação", and the sidebar's real numbers) only need ONE of
+  // the 3 to exist, not all of them. Loading is treated as "not pending
+  // yet" — rendering activation cards for a beat while accounts/cards are
+  // still in flight would flash them for a returning user who already has
+  // data.
   const accountsLoaded = accountsQuery.isSuccess;
   const cardsLoaded = cardsQuery.isSuccess;
   const hasWallet = (accountsQuery.data ?? []).some((a) => a.type === "cash");
@@ -304,6 +200,11 @@ export function TimelinePage() {
     accountsLoaded && cardsLoaded
       ? Number(hasWallet) + Number(hasBankAccount) + Number(hasCard)
       : 0;
+  // issues.md: o botão "Nova transação" (e o painel lateral, e o feed) só
+  // precisam de UM destino cadastrado (carteira, conta ou cartão) — não
+  // esperam os 3 tipos de ativação completarem.
+  const hasAnyTransactionDestination =
+    accountsLoaded && cardsLoaded && activationDoneCount > 0;
 
   const chips: Chip[] = useMemo(
     () => [
@@ -354,13 +255,6 @@ export function TimelinePage() {
         (g) => g.types,
       )
     : undefined;
-  const eventTypesTriggerLabel = eventTypesFilterActive
-    ? `Tipo de evento (${EVENT_TYPE_GROUPS.length - hiddenEventGroupIds.size}/${EVENT_TYPE_GROUPS.length})`
-    : "Todos os tipos";
-  const categoryFilterLabel = categoryFilterId
-    ? ((categoriesQuery.data ?? []).find((c) => c.id === categoryFilterId)
-        ?.name ?? "Categoria")
-    : "Todas as categorias";
 
   const timelineQuery = useInfiniteQuery({
     queryKey: [
@@ -390,31 +284,6 @@ export function TimelinePage() {
     enabled: hasSession,
   });
 
-  const alertedEntities: AlertedEntity[] = [
-    ...(accountsQuery.data ?? [])
-      .filter((a) => a.isOverLimit)
-      .map(
-        (a): AlertedEntity => ({
-          id: a.id,
-          kind: "account",
-          institutionName: a.institutionName,
-          overAmountCents: Math.abs(a.balanceCents) - a.overdraftLimitCents,
-          onConfigure: () => {},
-        }),
-      ),
-    ...(cardsQuery.data ?? [])
-      .filter((c) => c.isOverLimit)
-      .map(
-        (c): AlertedEntity => ({
-          id: c.id,
-          kind: "card",
-          institutionName: c.institutionName,
-          usagePercent: (c.usedCents / c.limitCents) * 100,
-          onConfigure: () => {},
-        }),
-      ),
-  ];
-
   const netBalanceCents = (accountsQuery.data ?? []).reduce(
     (sum, a) => sum + a.balanceCents,
     0,
@@ -436,7 +305,7 @@ export function TimelinePage() {
   const { greeting, dateLabel } = greetingAndDate();
 
   return (
-    <div className="mx-auto max-w-[1180px] px-12 pt-10 pb-24">
+    <div className="mx-auto max-w-[1180px] px-4 pt-6 pb-6 sm:px-8 sm:pt-10 lg:px-12 lg:pb-24">
       {!user.hasCompleteProfile ? (
         <div className="mb-6">
           <ProfileIncompleteAlert
@@ -445,18 +314,12 @@ export function TimelinePage() {
         </div>
       ) : null}
 
-      {alertedEntities.length > 0 ? (
-        <div className="mb-6">
-          <TimelineAlertBanner entities={alertedEntities} />
-        </div>
-      ) : null}
-
-      <div className="grid items-start gap-8 lg:grid-cols-[1fr_320px]">
+      <div className="grid items-start gap-6 lg:grid-cols-[1fr_320px] lg:gap-8">
         <div>
-          <div className="mb-7 flex items-end justify-between gap-6">
-            <div>
+          <div className="mb-7 flex flex-col items-start gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
+            <div className="min-w-0">
               <p className="lr-label mb-2">{dateLabel}</p>
-              <h1 className="mb-1.5 text-[2rem] font-normal tracking-[-0.02em] text-[var(--lr-text)]">
+              <h1 className="mb-1.5 text-[1.5rem] font-normal tracking-[-0.02em] text-[var(--lr-text)] sm:text-[2rem]">
                 {greeting}, {user.name}.
               </h1>
               <Body muted>
@@ -469,7 +332,7 @@ export function TimelinePage() {
                 saída em vez de um botão utilizável. "Importar" (§2) fica de fora:
                 o pipeline de importação/revisão ainda não existe no app (design
                 doc de conformância, decisão de escopo #1). */}
-            {pendingActivation.length === 0 ? (
+            {hasAnyTransactionDestination ? (
               <Button
                 variant="primary"
                 icon={<PlusIcon />}
@@ -500,445 +363,120 @@ export function TimelinePage() {
               queryClient.invalidateQueries({ queryKey: ["cards"] });
               queryClient.invalidateQueries({ queryKey: ["insights"] });
             }}
+            onDelete={(t) =>
+              deleteMutation.mutate(t.id, {
+                onSuccess: () => setEditingTx(null),
+              })
+            }
+            deleting={deleteMutation.isPending}
           />
 
           {pendingActivation.length > 0 ? (
-            <div>
-              <p className="mb-4 text-[.9375rem] text-[var(--lr-text-secondary)]">
-                Sua história ainda vai começar. Cadastre suas contas e cartões —
-                na ordem que quiser — e tudo aparece aqui em ordem, com o saldo
-                de cada dia.
-              </p>
-              <section>
-                <h2 className="mb-1 text-[.8125rem] font-bold text-[var(--lr-text)]">
-                  PRIMEIROS PASSOS
-                </h2>
-                <p className="mb-4 text-sm text-[var(--lr-text-secondary)]">
-                  {activationDoneCount} de 3 concluídos
-                </p>
-                <div className="flex flex-col gap-2">
-                  {hasWallet ? (
-                    <Alert
-                      variant="success"
-                      title="Carteira registrada"
-                      description="Seu dinheiro físico já faz parte da Timeline."
-                    />
-                  ) : (
-                    <Alert
-                      variant="warning"
-                      title="Carteira"
-                      description="Quanto de dinheiro físico você tem hoje?"
-                      actions={[
-                        {
-                          label: "Adicionar",
-                          onClick: () => setWalletDialogOpen(true),
-                        },
-                      ]}
-                    />
-                  )}
-                  {hasBankAccount ? (
-                    <Alert
-                      variant="success"
-                      title="Contas registradas"
-                      description="Suas contas já aparecem na Timeline."
-                    />
-                  ) : (
-                    <Alert
-                      variant="info"
-                      title="Contas"
-                      description="Adicione as contas de banco onde seu dinheiro vive."
-                      actions={[
-                        {
-                          label: "Adicionar contas",
-                          onClick: () => navigate({ to: "/accounts" }),
-                        },
-                      ]}
-                    />
-                  )}
-                  {hasCard ? (
-                    <Alert
-                      variant="success"
-                      title="Cartões registrados"
-                      description="Seus cartões já aparecem na Timeline."
-                    />
-                  ) : (
-                    <Alert
-                      variant="info"
-                      title="Cartões"
-                      description="Adicione seus cartões de crédito — limite, fechamento e vencimento."
-                      actions={[
-                        {
-                          label: "Adicionar cartões",
-                          onClick: () => navigate({ to: "/accounts" }),
-                        },
-                      ]}
-                    />
-                  )}
-                </div>
-              </section>
-              <WalletDialog
-                open={walletDialogOpen}
-                onClose={() => setWalletDialogOpen(false)}
-                onCreated={() => {
-                  queryClient.invalidateQueries({ queryKey: ["accounts"] });
-                  queryClient.invalidateQueries({ queryKey: ["insights"] });
-                }}
-              />
-            </div>
-          ) : (
-            <>
-              <div className="mb-4 flex flex-wrap items-center gap-2.5 border-y border-[var(--lr-border)] py-3">
-                <span className="lr-label">MOSTRAR</span>
-                {chips.length > 0 ? (
-                  <Popover
-                    label="Filtrar por conta ou cartão"
-                    triggerLabel={
-                      hasActiveFilter
-                        ? `${chips.length - hiddenChipIds.size} de ${chips.length} contas`
-                        : "Todas as contas"
-                    }
-                    open={accountsOpen}
-                    onOpenChange={setAccountsOpen}
-                  >
-                    <div className="flex w-[260px] flex-col gap-0.5 rounded-[var(--lr-r-md)] border border-[var(--lr-border)] bg-[var(--lr-surface)] p-1.5 shadow-[var(--lr-e2)]">
-                      {chips.map((chip) => {
-                        const checked = !hiddenChipIds.has(chip.id);
-                        // Same guard as the event-type filter above: an empty
-                        // accountIds/cardIds CSV collapses back to "no filter"
-                        // server-side (splitCsv, apps/api/src/timeline/routes.ts),
-                        // so hiding the last visible chip would silently show
-                        // everything instead of nothing.
-                        const isLastVisible =
-                          checked && hiddenChipIds.size >= chips.length - 1;
-                        return (
-                          <div
-                            key={chip.id}
-                            className="flex items-center gap-2.5 rounded-[var(--lr-r-sm)] px-2 py-1.5"
-                          >
-                            <span
-                              aria-hidden="true"
-                              className={[
-                                "h-2 w-2 flex-none rounded-full",
-                                institutionDotColor(chip.id),
-                              ].join(" ")}
-                            />
-                            <span className="min-w-0 flex-1 truncate text-[.875rem] text-[var(--lr-text)]">
-                              {chip.label}
-                            </span>
-                            <button
-                              type="button"
-                              aria-label={
-                                isLastVisible
-                                  ? `${chip.label} — última conta visível`
-                                  : `${checked ? "Ocultar" : "Mostrar"} ${chip.label}`
-                              }
-                              disabled={isLastVisible}
-                              onClick={() =>
-                                setHiddenChipIds((prev) => {
-                                  const next = new Set(prev);
-                                  if (next.has(chip.id)) next.delete(chip.id);
-                                  else next.add(chip.id);
-                                  return next;
-                                })
-                              }
-                              className={[
-                                "flex h-7 w-7 flex-none items-center justify-center rounded-[var(--lr-r-sm)] [&>svg]:h-4 [&>svg]:w-4",
-                                "text-[var(--lr-text-secondary)] hover:bg-[var(--lr-surface-sunken)] hover:text-[var(--lr-text)]",
-                                "disabled:cursor-not-allowed disabled:opacity-40",
-                              ].join(" ")}
-                            >
-                              <EyeIcon open={checked} />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </Popover>
-                ) : null}
+            <TimelineActivationSection
+              activationDoneCount={activationDoneCount}
+              hasWallet={hasWallet}
+              hasBankAccount={hasBankAccount}
+              hasCard={hasCard}
+              walletDialogOpen={walletDialogOpen}
+              onWalletDialogOpenChange={setWalletDialogOpen}
+              onOpenAccountDialog={() => setAccountDialogOpen(true)}
+              onOpenCardDialog={() => setCardDialogOpen(true)}
+              onWalletCreated={() => {
+                queryClient.invalidateQueries({ queryKey: ["accounts"] });
+                queryClient.invalidateQueries({ queryKey: ["insights"] });
+              }}
+            />
+          ) : null}
 
-                <Popover
-                  label="Filtrar por período"
-                  triggerLabel={periodLabel(periodRange)}
-                  open={periodOpen}
-                  onOpenChange={setPeriodOpen}
-                >
-                  <Calendar
-                    label="Selecione o período"
-                    mode="range"
-                    month={calendarMonth}
-                    onMonthChange={setCalendarMonth}
-                    selected={periodRange}
-                    onSelect={(value) => {
-                      const range = value as CalendarRange;
-                      setPeriodRange(range);
-                      if (range.from && range.to) setPeriodOpen(false);
-                    }}
-                    footer={
-                      <>
-                        <Button
-                          variant="tertiary"
-                          size="sm"
-                          onClick={() => {
-                            setPeriodRange(thisMonthRange());
-                            setPeriodOpen(false);
-                          }}
-                        >
-                          Este mês
-                        </Button>
-                        <Button
-                          variant="tertiary"
-                          size="sm"
-                          onClick={() => {
-                            setPeriodRange({});
-                            setPeriodOpen(false);
-                          }}
-                        >
-                          Limpar
-                        </Button>
-                      </>
-                    }
-                  />
-                </Popover>
+          <NewAccountDialog
+            key={accountDialogOpen ? "open" : "closed"}
+            open={accountDialogOpen}
+            onClose={() => setAccountDialogOpen(false)}
+            institutions={institutionsQuery.data ?? []}
+            onCreated={() => {
+              queryClient.invalidateQueries({ queryKey: ["accounts"] });
+              queryClient.invalidateQueries({ queryKey: ["insights"] });
+            }}
+          />
+          <NewCardDialog
+            key={cardDialogOpen ? "open" : "closed"}
+            open={cardDialogOpen}
+            onClose={() => setCardDialogOpen(false)}
+            institutions={institutionsQuery.data ?? []}
+            accounts={accountsQuery.data ?? []}
+            onCreated={() => {
+              queryClient.invalidateQueries({ queryKey: ["cards"] });
+              queryClient.invalidateQueries({ queryKey: ["insights"] });
+            }}
+          />
+          <EditAccountDialog
+            key={editingAccount?.id ?? "closed"}
+            account={editingAccount}
+            onClose={() => setEditingAccount(null)}
+            onSaved={() => {
+              queryClient.invalidateQueries({ queryKey: ["accounts"] });
+              queryClient.invalidateQueries({ queryKey: ["timeline"] });
+            }}
+          />
+          <EditCardDialog
+            key={editingCard?.id ?? "closed"}
+            card={editingCard}
+            accounts={accountsQuery.data ?? []}
+            onClose={() => setEditingCard(null)}
+            onSaved={() => {
+              queryClient.invalidateQueries({ queryKey: ["cards"] });
+              queryClient.invalidateQueries({ queryKey: ["timeline"] });
+            }}
+          />
 
-                <Popover
-                  label="Filtrar por tipo de evento"
-                  triggerLabel={eventTypesTriggerLabel}
-                  open={eventTypesOpen}
-                  onOpenChange={setEventTypesOpen}
-                >
-                  <div className="flex w-64 flex-col gap-2.5 rounded-[var(--lr-r-md)] border border-[var(--lr-border)] bg-[var(--lr-surface)] p-3.5 shadow-[var(--lr-e2)]">
-                    {EVENT_TYPE_GROUPS.map((group) => {
-                      const checked = !hiddenEventGroupIds.has(group.id);
-                      const isLastVisible =
-                        checked &&
-                        hiddenEventGroupIds.size >=
-                          EVENT_TYPE_GROUPS.length - 1;
-                      return (
-                        <Checkbox
-                          key={group.id}
-                          label={group.label}
-                          checked={checked}
-                          disabled={isLastVisible}
-                          onChange={() => toggleEventGroup(group.id)}
-                        />
-                      );
-                    })}
-                  </div>
-                </Popover>
+          <TimelineFilterBar
+            chips={chips}
+            hiddenChipIds={hiddenChipIds}
+            onToggleChip={toggleChip}
+            hasActiveFilter={hasActiveFilter}
+            accountsOpen={accountsOpen}
+            onAccountsOpenChange={setAccountsOpen}
+            periodRange={periodRange}
+            onPeriodRangeChange={setPeriodRange}
+            calendarMonth={calendarMonth}
+            onCalendarMonthChange={setCalendarMonth}
+            periodOpen={periodOpen}
+            onPeriodOpenChange={setPeriodOpen}
+            hiddenEventGroupIds={hiddenEventGroupIds}
+            onToggleEventGroup={toggleEventGroup}
+            eventTypesOpen={eventTypesOpen}
+            onEventTypesOpenChange={setEventTypesOpen}
+            categories={categoriesQuery.data ?? []}
+            categoryFilterId={categoryFilterId}
+            onCategoryFilterIdChange={setCategoryFilterId}
+            categoryOpen={categoryOpen}
+            onCategoryOpenChange={setCategoryOpen}
+          />
 
-                <Popover
-                  label="Filtrar por categoria"
-                  triggerLabel={categoryFilterLabel}
-                  open={categoryOpen}
-                  onOpenChange={setCategoryOpen}
-                >
-                  <div className="flex w-56 flex-col overflow-hidden rounded-[var(--lr-r-md)] border border-[var(--lr-border)] bg-[var(--lr-surface)] py-1 shadow-[var(--lr-e2)]">
-                    {[
-                      {
-                        id: null as string | null,
-                        label: "Todas as categorias",
-                      },
-                      ...(categoriesQuery.data ?? []).map((c) => ({
-                        id: c.id,
-                        label: c.name,
-                      })),
-                    ].map((option) => (
-                      <button
-                        key={option.id ?? "__all__"}
-                        type="button"
-                        onClick={() => {
-                          setCategoryFilterId(option.id);
-                          setCategoryOpen(false);
-                        }}
-                        className={[
-                          "px-3.5 py-2 text-left text-[.875rem]",
-                          // REBRAND (Task 1.3): blue-100/700 -> petrol-100/700.
-                          // Not in the task-1.3 brief's original site list (this
-                          // usage was missed by the recon grep) but structurally
-                          // identical to Select.tsx's "selected item" treatment
-                          // (same classes, same purpose: a selected filter
-                          // option) — classified as selection-state/Petrol per
-                          // DESIGN_SYSTEM.md §1.2, not the info/link/graphite
-                          // bucket, despite living in the same file as the
-                          // graphite-classified plain link further down.
-                          categoryFilterId === option.id
-                            ? "bg-[var(--lr-petrol-100)] font-bold text-[var(--lr-text)] dark:bg-[var(--lr-petrol-700)]/30"
-                            : "text-[var(--lr-text)] hover:bg-[var(--lr-surface-sunken)]",
-                        ].join(" ")}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </Popover>
-              </div>
-
-              {timelineQuery.isLoading ? <TimelineSkeleton /> : null}
-              {timelineQuery.isError ? (
-                <p
-                  role="alert"
-                  className="text-[var(--lr-negative)] dark:text-[var(--lr-negative)]"
-                >
-                  Não foi possível carregar a timeline.
-                </p>
-              ) : null}
-              {!timelineQuery.isLoading && days.length === 0 ? (
-                <EmptyState
-                  title="Nada por aqui ainda"
-                  description="Suas contas, cartões e transações vão aparecer aqui conforme você usar o Lurem."
-                />
-              ) : null}
-
-              <div className="relative flex flex-col gap-6">
-                <TimelineRailLine />
-                {days.map((day) => {
-                  const today = isToday(day.date);
-                  const dow = dayOfWeek(day.date);
-                  const isBirthday =
-                    day.date.slice(5, 10) === user.birthDate.slice(5, 10) &&
-                    user.birthDate.slice(0, 10) !==
-                      GOOGLE_PLACEHOLDER_BIRTH_DATE;
-                  const showBirthdayAlert = isBirthdayWindow(
-                    day.date,
-                    user.birthDate,
-                  );
-
-                  return (
-                    <section key={day.date} className="relative">
-                      <TimelineRailDot today={today} />
-                      <div
-                        className={
-                          today
-                            ? "rounded-[var(--lr-r-md)] bg-[var(--lr-surface-sunken)] p-4 pl-8"
-                            : "pl-8"
-                        }
-                      >
-                        {showBirthdayAlert ? (
-                          <div className="mb-3">
-                            <Alert
-                              variant="success"
-                              layout="inline"
-                              emoji="🥳"
-                              title={
-                                isBirthday
-                                  ? "Feliz aniversário!"
-                                  : `Seu aniversário é dia ${longDayMonth(user.birthDate.slice(0, 10))}!`
-                              }
-                            />
-                          </div>
-                        ) : null}
-                        <div className="mb-3 flex items-center justify-between gap-2">
-                          <h2 className="flex items-center gap-2 text-[.8125rem] font-bold text-[var(--lr-text)]">
-                            {today ? "HOJE · " : ""}
-                            {longDayMonth(day.date)} - {dow}
-                          </h2>
-                          <div className="flex items-baseline gap-2 rounded-full bg-[var(--lr-surface)] px-3 py-1 text-[.75rem]">
-                            <span className="uppercase tracking-widest text-[var(--lr-text-secondary)]">
-                              Saldo do dia
-                            </span>
-                            <Mono
-                              variant="number"
-                              className="text-[.8125rem] text-[var(--lr-text)]"
-                            >
-                              {formatMoney(day.balanceCents)}
-                            </Mono>
-                          </div>
-                        </div>
-                        <div className="flex flex-col gap-2">
-                          {day.items.map((item) => {
-                            if (item.itemType !== "transaction") {
-                              return (
-                                <TimelineEventRow
-                                  key={item.id}
-                                  // DomainEvent.type/payload are untyped String/Json
-                                  // at the DB boundary (§6 catalog) —
-                                  // TimelineEventRow owns the actual type union, so
-                                  // this cast is the API contract's boundary, not a
-                                  // real type escape.
-                                  type={item.type as DomainEventType}
-                                  payload={item.payload}
-                                  createdAt={item.createdAt}
-                                />
-                              );
-                            }
-
-                            const tx = item.transaction;
-
-                            // Transfer pair: the "out" leg renders a single
-                            // TransferPairCard for both legs; the "in" leg (found
-                            // below) renders nothing so it isn't shown twice.
-                            if (
-                              tx.kind === "transfer" &&
-                              tx.transferDirection === "out" &&
-                              tx.transferPairId
-                            ) {
-                              const pair = findTransferPair(tx, day.items);
-                              if (pair) {
-                                return (
-                                  <TransferPairCard
-                                    key={tx.id}
-                                    amountCents={tx.amountCents}
-                                    description={tx.description || undefined}
-                                    from={resolveTransferParty(
-                                      tx,
-                                      accountsById,
-                                      cardsById,
-                                    )}
-                                    to={resolveTransferParty(
-                                      pair,
-                                      accountsById,
-                                      cardsById,
-                                    )}
-                                  />
-                                );
-                              }
-                            }
-                            if (
-                              tx.kind === "transfer" &&
-                              tx.transferDirection === "in" &&
-                              tx.transferPairId &&
-                              hasOutTransferPair(tx, day.items)
-                            ) {
-                              // Already rendered above via its "out" pair.
-                              return null;
-                            }
-
-                            return transactionRowProps(
-                              tx,
-                              scheduledHandlers,
-                              categoriesById,
-                              accountsById,
-                              cardsById,
-                              expandedInstallments,
-                              toggleInstallment,
-                              (t) => setEditingTx(t),
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </section>
-                  );
-                })}
-              </div>
-
-              {timelineQuery.hasNextPage ? (
-                <div className="mt-6">
-                  <Button
-                    variant="secondary"
-                    loading={timelineQuery.isFetchingNextPage}
-                    onClick={() => timelineQuery.fetchNextPage()}
-                  >
-                    Carregar mais
-                  </Button>
-                </div>
-              ) : null}
-            </>
-          )}
+          <TimelineFeed
+            isLoading={timelineQuery.isLoading}
+            isError={timelineQuery.isError}
+            days={days}
+            hasNextPage={timelineQuery.hasNextPage}
+            isFetchingNextPage={timelineQuery.isFetchingNextPage}
+            onFetchNextPage={() => timelineQuery.fetchNextPage()}
+            userBirthDate={user.birthDate}
+            userCreatedAt={user.createdAt}
+            scheduledHandlers={scheduledHandlers}
+            categoriesById={categoriesById}
+            accountsById={accountsById}
+            cardsById={cardsById}
+            expandedInstallments={expandedInstallments}
+            onToggleInstallment={toggleInstallment}
+            onEditTransaction={(t) => setEditingTx(t)}
+            onEditAccount={(a) => setEditingAccount(a)}
+            onEditCard={(c) => setEditingCard(c)}
+          />
         </div>
 
         <aside className="flex flex-col gap-4 lg:sticky lg:top-10">
           <TimelineSummaryAside
-            hasPendingActivation={pendingActivation.length > 0}
+            hasPendingActivation={!hasAnyTransactionDestination}
             netBalanceCents={netBalanceCents}
             accounts={accountsQuery.data ?? []}
             totalInvoicesCents={totalInvoicesCents}

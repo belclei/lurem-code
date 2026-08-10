@@ -6,6 +6,10 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireUser } from "../auth/authenticate.js";
 import { INTERNAL, NOT_FOUND, VALIDATION_FAILED } from "../errors.js";
+import {
+  assertInstitutionNicknameRule,
+  assertUniqueNickname,
+} from "../shared/nickname-rules.js";
 import { toCardResponse } from "./serialize.js";
 
 const CreateCardBody = z.object({
@@ -109,6 +113,15 @@ export async function registerCardRoutes(
         }
       }
 
+      await assertUniqueNickname(fastify, userId, body.name);
+      await assertInstitutionNicknameRule(
+        fastify,
+        userId,
+        body.institutionId,
+        body.name,
+        "card",
+      );
+
       const card = await fastify.prisma.creditCard.create({
         data: {
           userId,
@@ -166,6 +179,19 @@ export async function registerCardRoutes(
           ]);
         }
       }
+      if (body.name !== undefined) {
+        await assertUniqueNickname(fastify, userId, body.name, {
+          cardId: existing.id,
+        });
+        await assertInstitutionNicknameRule(
+          fastify,
+          userId,
+          existing.institutionId,
+          body.name,
+          "card",
+          existing.id,
+        );
+      }
 
       const card = await fastify.prisma.creditCard.update({
         where: { id },
@@ -190,6 +216,33 @@ export async function registerCardRoutes(
       if (!institution) {
         throw INTERNAL();
       }
+
+      const changed = (
+        [
+          "name",
+          "limitCents",
+          "closingDay",
+          "dueDay",
+          "autoDebitAccountId",
+          "isActive",
+        ] as const
+      ).filter((field) => body[field] !== undefined);
+      if (changed.length > 0) {
+        await fastify.prisma.domainEvent.create({
+          data: {
+            userId,
+            type: "card.updated",
+            aggregateType: "CreditCard",
+            aggregateId: card.id,
+            payload: {
+              name: card.name,
+              institutionName: institution.name,
+              changed,
+            },
+          },
+        });
+      }
+
       const transactions = await fastify.prisma.transaction.findMany({
         where: { creditCardId: card.id },
       });
@@ -256,6 +309,7 @@ export async function registerCardRoutes(
         transactions.map((tx) => ({
           id: tx.id,
           kind: tx.kind,
+          transferDirection: tx.transferDirection ?? undefined,
           amountBRLCents: tx.amountBRLCents,
           transactionDate: tx.transactionDate,
           isScheduled: tx.isScheduled,

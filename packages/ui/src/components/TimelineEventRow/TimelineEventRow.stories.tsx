@@ -114,11 +114,7 @@ export const CatalogoCompleto: Story = {
   render: () => (
     <div style={{ width: "32rem", display: "flex", flexDirection: "column" }}>
       {SAMPLES.map((sample) => (
-        <TimelineEventRow
-          key={sample.type}
-          {...sample}
-          createdAt="2026-07-24T09:00:00.000Z"
-        />
+        <TimelineEventRow key={sample.type} {...sample} />
       ))}
     </div>
   ),
@@ -128,7 +124,6 @@ export const Playground: Story = {
   args: {
     type: "account.created",
     payload: { institutionName: "Nubank" },
-    createdAt: "2026-07-24T09:00:00.000Z",
   },
   render: (args) => (
     <div style={{ width: "32rem" }}>

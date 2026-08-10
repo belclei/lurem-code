@@ -4,6 +4,13 @@
 // consumes the CSS-variable tokens — except the sidebar background itself,
 // which is pinned to #090F1A (not --lr-night-900) to exactly match
 // logo.png's baked-in background so the image blends in seamlessly.
+//
+// issues.md #38 (responsivo): below `md` the 248px side rail has nowhere to
+// go, so it's replaced by a fixed bottom tab bar (`<nav>` at the end of this
+// file) — same nav items, icon-only. The avatar/logout footer has no mobile
+// equivalent of its own; "Perfil" in the bottom bar covers the avatar's job
+// (opens Settings) and a dedicated tab covers logout, since Settings had no
+// other sign-out affordance for a screen where the sidebar doesn't exist.
 import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import packageJson from "../../package.json";
@@ -48,7 +55,7 @@ export function AppLayout() {
 
   return (
     <div className="flex min-h-screen bg-[var(--lr-bg)]">
-      <aside className="sticky top-0 flex h-screen w-[248px] flex-none flex-col bg-[#090F1A] px-4 py-6 text-[var(--lr-ivory-100)]">
+      <aside className="sticky top-0 hidden h-screen w-[248px] flex-none flex-col bg-[#090F1A] px-4 py-6 text-[var(--lr-ivory-100)] md:flex">
         <div className="px-2 pt-2 pb-7 w-full flex items-center justify-center">
           <img src="/logo.png" alt="Lurem" className="w-[168px]" />
         </div>
@@ -121,9 +128,78 @@ export function AppLayout() {
         ) : null}
       </aside>
 
-      <main className="min-w-0 flex-1 overflow-x-hidden">
+      <main className="min-w-0 flex-1 overflow-x-hidden pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
         <Outlet />
       </main>
+
+      <nav
+        aria-label="Navegação principal"
+        className="fixed inset-x-0 bottom-0 z-40 flex items-stretch justify-around border-t border-[var(--lr-night-700)] bg-[#090F1A] pb-[env(safe-area-inset-bottom)] md:hidden"
+      >
+        {NAV_ITEMS.map((item) => {
+          const isActive = location.pathname.startsWith(item.to);
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              aria-label={item.label}
+              className={[
+                "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[.625rem] no-underline",
+                isActive
+                  ? "text-[var(--lr-ivory-100)]"
+                  : "text-[var(--lr-night-300)]",
+              ].join(" ")}
+            >
+              {item.icon}
+              <span className="truncate">{item.label.split(" ")[0]}</span>
+            </Link>
+          );
+        })}
+        {user?.role === "admin" ? (
+          <Link
+            to="/admin"
+            aria-label="Admin"
+            className={[
+              "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[.625rem] no-underline",
+              location.pathname.startsWith("/admin")
+                ? "text-[var(--lr-ivory-100)]"
+                : "text-[var(--lr-night-300)]",
+            ].join(" ")}
+          >
+            <AdminNavIcon />
+            <span className="truncate">Admin</span>
+          </Link>
+        ) : null}
+        {user ? (
+          <>
+            <button
+              type="button"
+              aria-label="Perfil e configurações"
+              onClick={() => navigate({ to: "/settings" })}
+              className={[
+                "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[.625rem]",
+                location.pathname.startsWith("/settings")
+                  ? "text-[var(--lr-ivory-100)]"
+                  : "text-[var(--lr-night-300)]",
+              ].join(" ")}
+            >
+              <div className="grid h-[18px] w-[18px] place-items-center rounded-full bg-[var(--lr-night-700)] text-[.5625rem] text-[var(--lr-ivory-100)]">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <span className="truncate">Perfil</span>
+            </button>
+            <button
+              type="button"
+              aria-label="Sair"
+              onClick={() => void handleLogout()}
+              className="flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[.625rem] text-[var(--lr-night-300)]"
+            >
+              <LogoutIcon />
+              <span className="truncate">Sair</span>
+            </button>
+          </>
+        ) : null}
+      </nav>
     </div>
   );
 }

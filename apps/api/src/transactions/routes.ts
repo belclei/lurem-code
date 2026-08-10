@@ -3,13 +3,7 @@ import { randomUUID } from "node:crypto";
 // BACKLOG.md US-3.5–3.9 — POST/GET /v1/transactions, ações de agendada
 // (confirm/skip), PATCH/DELETE. Regra de dinheiro determinística vive em
 // @lurem/core; aqui só orquestra I/O + validação de contrato.
-import {
-  addMonths,
-  balance,
-  clampDay,
-  makeDate,
-  todayAsDate,
-} from "@lurem/core";
+import { addMonths, clampDay, makeDate } from "@lurem/core";
 import type { Prisma, Transaction } from "@lurem/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -19,7 +13,6 @@ import {
   TRANSACTION_ACCOUNT_XOR_CARD,
   VALIDATION_FAILED,
 } from "../errors.js";
-import { assertOverdraftAllowed } from "./overdraft.js";
 import { toTransactionResponse } from "./serialize.js";
 
 const IsoDate = z
@@ -39,7 +32,6 @@ const CreateTransactionBody = z
     amountCents: z.number().int().positive(),
     currency: z.string().min(1).default("BRL"),
     isScheduled: z.boolean().default(false),
-    confirmOverLimit: z.boolean().optional(),
     // transferência (§6.6): destino é outra conta ou um cartão (pagamento de fatura)
     toAccountId: z.string().min(1).optional(),
     toCreditCardId: z.string().min(1).optional(),
@@ -79,40 +71,10 @@ function splitInstallments(totalCents: number, n: number): number[] {
   return Array.from({ length: n }, (_, i) => base + (i === 0 ? remainder : 0));
 }
 
-function toTransactionLike(tx: Transaction) {
-  return {
-    id: tx.id,
-    kind: tx.kind,
-    transferDirection: tx.transferDirection ?? undefined,
-    amountBRLCents: tx.amountBRLCents,
-    transactionDate: tx.transactionDate,
-    isScheduled: tx.isScheduled,
-    recurringTransactionId: tx.recurringTransactionId ?? undefined,
-  };
-}
-
 export async function registerTransactionRoutes(
   fastify: FastifyInstance,
 ): Promise<void> {
   const { prisma } = fastify;
-
-  /** Saldo confirmado atual de uma conta (fonte única: core.balance). */
-  async function accountBalanceCents(account: {
-    id: string;
-    type: "checking" | "cash";
-    openingBalanceCents: number;
-    overdraftLimitCents: number;
-    isActive: boolean;
-  }): Promise<number> {
-    const txs = await prisma.transaction.findMany({
-      where: { accountId: account.id },
-    });
-    return balance({
-      account,
-      transactions: txs.map(toTransactionLike),
-      asOf: new Date(),
-    }).valueCents;
-  }
 
   async function findOwnedAccount(userId: string, id: string) {
     const account = await prisma.account.findFirst({ where: { id, userId } });
@@ -191,18 +153,6 @@ export async function registerTransactionRoutes(
         if (hasAccountDest)
           await findOwnedAccount(userId, body.toAccountId as string);
         else await findOwnedCard(userId, body.toCreditCardId as string);
-
-        const today = todayAsDate(new Date());
-        const affectsBalanceNow =
-          !body.isScheduled && transactionDate.getTime() <= today.getTime();
-        if (affectsBalanceNow) {
-          assertOverdraftAllowed({
-            account: source,
-            currentBalanceCents: await accountBalanceCents(source),
-            deltaCents: -amountBRLCents,
-            confirmOverLimit: body.confirmOverLimit === true,
-          });
-        }
 
         const transferPairId = randomUUID();
         const common = {
@@ -313,23 +263,7 @@ export async function registerTransactionRoutes(
 
       // ---- Manual income/expense (US-3.5) ----
       if (hasAccount) {
-        const account = await findOwnedAccount(
-          userId,
-          body.accountId as string,
-        );
-        const today = todayAsDate(new Date());
-        const affectsBalanceNow =
-          !body.isScheduled && transactionDate.getTime() <= today.getTime();
-        if (affectsBalanceNow) {
-          const delta =
-            body.kind === "expense" ? -amountBRLCents : amountBRLCents;
-          assertOverdraftAllowed({
-            account,
-            currentBalanceCents: await accountBalanceCents(account),
-            deltaCents: delta,
-            confirmOverLimit: body.confirmOverLimit === true,
-          });
-        }
+        await findOwnedAccount(userId, body.accountId as string);
       } else {
         await findOwnedCard(userId, body.creditCardId as string);
       }
@@ -478,24 +412,51 @@ export async function registerTransactionRoutes(
       const tx = await findOwnedTx(userId, id);
       if (body.categoryId !== undefined)
         await validateCategory(userId, body.categoryId);
-      const updated = await prisma.transaction.update({
-        where: { id: tx.id },
+      const data = {
+        ...(body.description !== undefined
+          ? { description: body.description }
+          : {}),
+        ...(body.categoryId !== undefined
+          ? { categoryId: body.categoryId }
+          : {}),
+        ...(body.transactionDate !== undefined
+          ? { transactionDate: parseDate(body.transactionDate) }
+          : {}),
+        ...(body.amountCents !== undefined
+          ? {
+              amountCents: body.amountCents,
+              amountBRLCents: body.amountCents,
+            }
+          : {}),
+      };
+      // Uma transferência é 2 linhas (out/in) que precisam concordar em
+      // descrição/data/valor — editar só uma desincronizaria o par (a perna
+      // "in" mostraria um valor diferente da "out"). Atualiza as duas juntas,
+      // atomicamente, quando a transação editada faz parte de um par.
+      const [updated] = tx.transferPairId
+        ? await prisma.$transaction([
+            prisma.transaction.update({ where: { id: tx.id }, data }),
+            prisma.transaction.updateMany({
+              where: {
+                userId,
+                transferPairId: tx.transferPairId,
+                id: { not: tx.id },
+              },
+              data,
+            }),
+          ])
+        : [await prisma.transaction.update({ where: { id: tx.id }, data })];
+      // Editar em vez de criar/apagar não deixa rastro nenhum na timeline por
+      // si só (o card renderiza o estado atual) — issues.md: "quando algum
+      // dado financeiro for alterado, deve aparecer na timeline". Criação
+      // não emite um evento próprio: a transação em si já É a entry.
+      await prisma.domainEvent.create({
         data: {
-          ...(body.description !== undefined
-            ? { description: body.description }
-            : {}),
-          ...(body.categoryId !== undefined
-            ? { categoryId: body.categoryId }
-            : {}),
-          ...(body.transactionDate !== undefined
-            ? { transactionDate: parseDate(body.transactionDate) }
-            : {}),
-          ...(body.amountCents !== undefined
-            ? {
-                amountCents: body.amountCents,
-                amountBRLCents: body.amountCents,
-              }
-            : {}),
+          userId,
+          type: "transaction.updated",
+          aggregateType: "Transaction",
+          aggregateId: updated.id,
+          payload: {},
         },
       });
       return toTransactionResponse(updated);
@@ -518,6 +479,18 @@ export async function registerTransactionRoutes(
       } else {
         await prisma.transaction.delete({ where: { id: tx.id } });
       }
+      // Apagar remove a única entry que representava esta transação —
+      // sem um domain event, o gasto/receita simplesmente some da timeline
+      // sem deixar rastro.
+      await prisma.domainEvent.create({
+        data: {
+          userId,
+          type: "transaction.deleted",
+          aggregateType: "Transaction",
+          aggregateId: tx.id,
+          payload: {},
+        },
+      });
       return reply.code(204).send();
     },
   );

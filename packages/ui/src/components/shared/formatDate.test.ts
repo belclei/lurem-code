@@ -10,18 +10,22 @@ describe("formatDate", () => {
     expect(formatDate("2026-01-05T12:00:00.000Z")).toBe("05/01/2026");
   });
 
-  // Regression tests for timezone pinning — verify date-only ISO strings
-  // and midnight-UTC timestamps render correctly regardless of host TZ env var.
-  // The key is determinism: output must be the same on any machine's host TZ.
-  it("formats date-only ISO string consistently (regression: host-TZ independence)", () => {
-    // "2026-07-24" parses as UTC midnight. In Brazil (UTC-3), this is 23:00 on 23/07.
-    // The formatter should produce "23/07/2026" consistently, regardless of host TZ.
-    expect(formatDate("2026-07-24")).toBe("23/07/2026");
+  // Regression tests: calendar dates must render as the day written in the
+  // ISO string, never shifted by timezone conversion (host TZ or America/Sao_Paulo).
+  it("formats date-only ISO string as the literal calendar day", () => {
+    expect(formatDate("2026-07-24")).toBe("24/07/2026");
   });
 
-  it("formats midnight-UTC timestamp consistently (regression: host-TZ independence)", () => {
-    // "2026-07-24T00:00:00.000Z" is midnight UTC, which is 23:00 BRT on 23/07.
-    // The formatter should produce "23/07/2026" consistently, regardless of host TZ.
-    expect(formatDate("2026-07-24T00:00:00.000Z")).toBe("23/07/2026");
+  it("formats midnight-UTC timestamp as the literal calendar day", () => {
+    // "2026-07-24T00:00:00.000Z" must still read as 24/07, not shift to 23/07
+    // via America/Sao_Paulo conversion — the date component is authoritative.
+    expect(formatDate("2026-07-24T00:00:00.000Z")).toBe("24/07/2026");
+  });
+
+  it("still converts a real (non-midnight) instant through America/Sao_Paulo", () => {
+    // Unlike a calendar date, a real instant's time-of-day is meaningful —
+    // 2026-08-10T02:00:00.000Z is 2026-08-09 23:00 in São Paulo (UTC-3), a
+    // day earlier than its UTC date component.
+    expect(formatDate("2026-08-10T02:00:00.000Z")).toBe("09/08/2026");
   });
 });

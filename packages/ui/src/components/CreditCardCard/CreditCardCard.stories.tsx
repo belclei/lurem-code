@@ -1,4 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import bradescoLogo from "../../assets/institutions/bradesco.svg";
+import c6Logo from "../../assets/institutions/c6.svg";
+import itauLogo from "../../assets/institutions/itau.svg";
+import nubankLogo from "../../assets/institutions/nubank.svg";
 import { CreditCardCard } from "./CreditCardCard";
 
 const meta: Meta<typeof CreditCardCard> = {
@@ -16,6 +20,7 @@ const meta: Meta<typeof CreditCardCard> = {
   },
   args: {
     institutionName: "Itaú Unibanco",
+    logoUrl: itauLogo,
     usedCents: 120000,
     limitCents: 500000,
     invoiceStatus: "open",
@@ -40,6 +45,7 @@ export const Estados: Story = {
     <div style={{ display: "grid", gap: "0.75rem", width: "32rem" }}>
       <CreditCardCard
         institutionName="Itaú Unibanco"
+        logoUrl={itauLogo}
         usedCents={120000}
         limitCents={500000}
         invoiceStatus="open"
@@ -48,6 +54,7 @@ export const Estados: Story = {
       />
       <CreditCardCard
         institutionName="Nubank"
+        logoUrl={nubankLogo}
         usedCents={400000}
         limitCents={500000}
         invoiceStatus="open"
@@ -57,6 +64,7 @@ export const Estados: Story = {
       />
       <CreditCardCard
         institutionName="C6 Bank"
+        logoUrl={c6Logo}
         usedCents={620000}
         limitCents={500000}
         invoiceStatus="open"
@@ -65,6 +73,7 @@ export const Estados: Story = {
       />
       <CreditCardCard
         institutionName="Bradesco"
+        logoUrl={bradescoLogo}
         usedCents={250000}
         limitCents={500000}
         invoiceStatus="closed_awaiting_payment"

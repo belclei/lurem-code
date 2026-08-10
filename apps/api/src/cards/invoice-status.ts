@@ -29,7 +29,16 @@ function nextYearMonth(
     : { year, month: month + 1 };
 }
 
-/** The period whose closing date has not happened yet — always exactly one. */
+/**
+ * The period whose closing date has not happened yet — always exactly one.
+ *
+ * Strictly-after (`> 0`, not `>= 0`): `faturaPeriodo`'s window is
+ * `(previous closing, this closing]` — inclusive of the closing date itself
+ * (invoice.ts). So on the closing day, that period is already closed (and
+ * `findClosedNotDueInvoiceMonth` picks it up) — treating it as still "open"
+ * here too double-counted every transaction dated on the closing day itself
+ * (once via the closed sum, once via the open sum).
+ */
 function findOpenInvoiceMonth(
   card: CreditCardLike,
   today: Date,
@@ -38,7 +47,7 @@ function findOpenInvoiceMonth(
   const candidates = [base, nextYearMonth(base.year, base.month)];
   for (const candidate of candidates) {
     if (
-      compareDates(closingDate(card, candidate.year, candidate.month), today) >=
+      compareDates(closingDate(card, candidate.year, candidate.month), today) >
       0
     ) {
       return candidate;

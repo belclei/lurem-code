@@ -57,7 +57,7 @@ export function toAccountResponse(
     id: account.id,
     institutionId: account.institutionId,
     institutionName:
-      account.type === "cash" ? "Carteira" : (institution?.name ?? ""),
+      account.type === "cash" ? "Em Espécie" : (institution?.name ?? ""),
     logoUrl: institutionLogoUrl(institution),
     name: account.name,
     type: account.type,

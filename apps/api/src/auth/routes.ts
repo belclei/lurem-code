@@ -297,6 +297,7 @@ export async function registerAuthRoutes(
         avatarMode: user.avatarMode,
         avatarUrls: computeAvatarUrls(user),
         themePref: user.themePref,
+        createdAt: user.createdAt.toISOString(),
         flags,
       };
     },

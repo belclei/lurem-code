@@ -108,29 +108,22 @@ export function longDayMonth(dateYmd: string): string {
 
 export const GOOGLE_PLACEHOLDER_BIRTH_DATE = "1970-01-01";
 
-/** True when `dateYmd` falls in the 7-day run-up to `birthDate`'s next
- * anniversary (inclusive of the day itself) — compares month/day only, so
- * the year on `birthDate` (and any year mismatch between the two) never
- * matters. Checks both "this year" and "next year" candidates for the
- * anniversary so a birthday in early January still lights up during the
- * last week of December. `birthDate` is the Google-signup placeholder
+/** True when `dateYmd` is the user's actual birthday (month/day match,
+ * year ignored). `birthDate` is the Google-signup placeholder
  * (`apps/api/src/auth/routes.ts`) for accounts that never filled in a real
  * one — never treated as a real birthday. */
-export function isBirthdayWindow(dateYmd: string, birthDate: string): boolean {
+export function isBirthday(dateYmd: string, birthDate: string): boolean {
   const iso = birthDate.slice(0, 10);
   if (!iso || iso === GOOGLE_PLACEHOLDER_BIRTH_DATE) return false;
-  const birthMonth = Number(iso.slice(5, 7));
-  const birthDay = Number(iso.slice(8, 10));
-  const year = Number(dateYmd.slice(0, 4));
-  const month = Number(dateYmd.slice(5, 7));
-  const day = Number(dateYmd.slice(8, 10));
-  const current = new Date(year, month - 1, day);
-  for (const candidateYear of [year, year + 1]) {
-    const anniversary = new Date(candidateYear, birthMonth - 1, birthDay);
-    const diffDays = Math.round(
-      (anniversary.getTime() - current.getTime()) / 86_400_000,
-    );
-    if (diffDays >= 0 && diffDays <= 7) return true;
-  }
-  return false;
+  return dateYmd.slice(5, 10) === iso.slice(5, 10);
+}
+
+/** True when `dateYmd` is the calendar day the user's account was created,
+ * in America/Sao_Paulo (canonical zone, §0) — never `.slice(0, 10)` on the
+ * raw UTC `createdAt` timestamp, which would misdate a late-night signup. */
+export function isJoinDay(dateYmd: string, createdAt: string): boolean {
+  const joinYmd = new Date(createdAt).toLocaleDateString("en-CA", {
+    timeZone: "America/Sao_Paulo",
+  });
+  return dateYmd === joinYmd;
 }

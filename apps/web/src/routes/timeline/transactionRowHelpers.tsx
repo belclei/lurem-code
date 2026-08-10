@@ -69,12 +69,16 @@ export function transactionRowProps(
     );
   }
   if (tx.kind === "transfer") {
+    // PATCH /v1/transactions/:id atualiza as duas pernas (out+in) juntas e
+    // atomicamente quando a transação tem transferPairId — editar por aqui
+    // não desincroniza o par.
     return (
       <TransactionRow
         key={tx.id}
         {...common}
         variant="transfer"
         transferToLabel={tx.transferDirection === "out" ? "Saída" : "Entrada"}
+        onClick={() => onEditTransaction(tx)}
       />
     );
   }
@@ -96,7 +100,14 @@ export function transactionRowProps(
       />
     );
   }
-  return <TransactionRow key={tx.id} {...common} variant="default" />;
+  return (
+    <TransactionRow
+      key={tx.id}
+      {...common}
+      variant="default"
+      onClick={() => onEditTransaction(tx)}
+    />
+  );
 }
 
 /** US-6.1's paired-transfer rendering (§6.12): a transfer is 2 Transaction
@@ -158,6 +169,7 @@ export function resolveTransferParty(
       institution: account?.institutionName ?? "",
       logoUrl: account?.logoUrl,
       balanceAfterCents: account?.balanceCents ?? 0,
+      isCash: account?.type === "cash",
     };
   }
   if (tx.creditCardId) {
