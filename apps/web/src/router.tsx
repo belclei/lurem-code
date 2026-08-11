@@ -16,9 +16,11 @@ import { AccountsPage } from "./routes/AccountsPage";
 import { AdminPage } from "./routes/AdminPage";
 import { ConnectionsPage } from "./routes/ConnectionsPage";
 import { DashboardPage } from "./routes/DashboardPage";
+import { ForgotPasswordPage } from "./routes/ForgotPasswordPage";
 import { LoginPage } from "./routes/LoginPage";
 import { RecurringPage } from "./routes/RecurringPage";
 import { RegisterPage } from "./routes/RegisterPage";
+import { ResetPasswordPage } from "./routes/ResetPasswordPage";
 import { SettingsPage } from "./routes/SettingsPage";
 import { TimelinePage } from "./routes/TimelinePage";
 import { TransactionsPage } from "./routes/TransactionsPage";
@@ -118,12 +120,26 @@ const registerRoute = createRoute({
   component: RegisterPage,
 });
 
+const forgotPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/forgot-password",
+  component: ForgotPasswordPage,
+});
+
+const resetPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/reset-password",
+  component: ResetPasswordPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   transactionsRoute,
   waitlistRoute,
   registerRoute,
+  forgotPasswordRoute,
+  resetPasswordRoute,
   appLayoutRoute.addChildren([
     timelineRoute,
     dashboardRoute,
