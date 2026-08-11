@@ -72,7 +72,7 @@ describe("sendPasswordResetEmail", () => {
       text: string;
     };
     expect(call.to).toBe("user@example.com");
-    expect(call.subject).toBe("Redefina sua senha no Lurem");
+    expect(call.subject).toBe("Defina sua senha no Lurem");
     expect(call.html).toContain(
       "https://lurem.fasolo.tech/reset-password?token=xyz",
     );
