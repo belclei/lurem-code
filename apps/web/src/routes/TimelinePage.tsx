@@ -37,6 +37,17 @@ import type {
   TimelinePageDto,
   TransactionDto,
 } from "../auth/types";
+import {
+  deserializeDate,
+  deserializeDateRange,
+  deserializeNullableString,
+  deserializeStringSet,
+  serializeDate,
+  serializeDateRange,
+  serializeNullableString,
+  serializeStringSet,
+  useSessionState,
+} from "../lib/sessionState";
 import type { DashboardInsights } from "./DashboardView";
 import { EditAccountDialog } from "./timeline/EditAccountDialog";
 import { EditCardDialog } from "./timeline/EditCardDialog";
@@ -57,21 +68,51 @@ export function TimelinePage() {
   const { isBooting, user } = useAuth();
   const navigate = useNavigate();
   const hasSession = !isBooting && Boolean(user);
-  const [hiddenChipIds, setHiddenChipIds] = useState<Set<string>>(new Set());
+  // issues.md: filtros sobrevivem a trocar de tela e voltar — só resetam
+  // num reload de verdade (sessionStorage, ver lib/sessionState.ts). Os
+  // estados de popover aberto/fechado abaixo (periodOpen/eventTypesOpen/
+  // categoryOpen/accountsOpen) NÃO são filtro, são só UI transitória —
+  // continuam em useState normal, de propósito.
+  const [hiddenChipIds, setHiddenChipIds] = useSessionState<Set<string>>(
+    "timeline.hiddenChipIds",
+    () => new Set(),
+    serializeStringSet,
+    deserializeStringSet,
+  );
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [cardDialogOpen, setCardDialogOpen] = useState(false);
   const [txDialogOpen, setTxDialogOpen] = useState(false);
-  const [periodRange, setPeriodRange] = useState<CalendarRange>(() =>
-    thisMonthRange(),
+  const [periodRange, setPeriodRange] = useSessionState<CalendarRange>(
+    "timeline.periodRange",
+    thisMonthRange,
+    serializeDateRange,
+    deserializeDateRange,
   );
-  const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
+  const [calendarMonth, setCalendarMonth] = useSessionState<Date>(
+    "timeline.calendarMonth",
+    () => new Date(),
+    serializeDate,
+    deserializeDate,
+  );
   const [periodOpen, setPeriodOpen] = useState(false);
   const [eventTypesOpen, setEventTypesOpen] = useState(false);
-  const [hiddenEventGroupIds, setHiddenEventGroupIds] = useState<Set<string>>(
-    new Set(),
+  const [hiddenEventGroupIds, setHiddenEventGroupIds] = useSessionState<
+    Set<string>
+  >(
+    "timeline.hiddenEventGroupIds",
+    () => new Set(),
+    serializeStringSet,
+    deserializeStringSet,
   );
-  const [categoryFilterId, setCategoryFilterId] = useState<string | null>(null);
+  const [categoryFilterId, setCategoryFilterId] = useSessionState<
+    string | null
+  >(
+    "timeline.categoryFilterId",
+    () => null,
+    serializeNullableString,
+    deserializeNullableString,
+  );
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [accountsOpen, setAccountsOpen] = useState(false);
   // Task 10 (§6.12) — per-row "ver todas as parcelas" toggle for the
