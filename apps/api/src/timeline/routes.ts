@@ -528,14 +528,14 @@ export async function registerTimelineRoutes(
           } else if (tx.kind === "expense") {
             dayImpact -= tx.amountBRLCents;
           } else if (tx.kind === "transfer") {
-            // Transfer out to another account: no net impact on total balance
-            // (money moves from one account to another, both user-owned)
-            // Transfer out to card (paying bill): expense from source account
-            if (tx.creditCardId) {
-              // Payment to credit card: reduce balance (expense)
+            // Transfers between accounts have direction: track direction to correctly update balance
+            if (tx.transferDirection === "out") {
+              // Money leaving this account
               dayImpact -= tx.amountBRLCents;
+            } else if (tx.transferDirection === "in") {
+              // Money entering this account
+              dayImpact += tx.amountBRLCents;
             }
-            // else: transfer between accounts, no net impact
           }
         }
 
