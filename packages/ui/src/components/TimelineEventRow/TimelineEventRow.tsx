@@ -34,6 +34,7 @@ export type DomainEventType =
   | "recurring.created"
   | "recurring.paused"
   | "recurring.ended"
+  | "recurring.occurrence_upcoming"
   | "import.completed"
   | "invite.created"
   | "invite.deleted"
@@ -140,6 +141,7 @@ const EVENT_TEXT: Record<DomainEventType, (p: DomainEventPayload) => string> = {
   "recurring.created": () => "Você cadastrou uma nova recorrência",
   "recurring.paused": () => "Você pausou uma recorrência",
   "recurring.ended": () => "Você encerrou uma recorrência",
+  "recurring.occurrence_upcoming": () => "Próxima ocorrência de recorrência",
   "import.completed": (p) =>
     `Você importou a fatura ${p.institutionName ?? ""} — ${p.count ?? 0} transações`,
   "invite.created": (p) => `Você enviou convite para ${p.inviteeEmail ?? ""}`,
