@@ -31,6 +31,8 @@ const UpdateCardBody = z.object({
   dueDay: z.number().int().min(1).max(31).optional(),
   autoDebitAccountId: z.string().min(1).nullable().optional(),
   isActive: z.boolean().optional(),
+  // See accounts/routes.ts's UpdateAccountBody.archived — same rationale.
+  archived: z.boolean().optional(),
 });
 
 const InvoiceQuery = z.object({
@@ -208,6 +210,9 @@ export async function registerCardRoutes(
             ? { autoDebitAccountId: body.autoDebitAccountId }
             : {}),
           ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+          ...(body.archived !== undefined
+            ? { archivedAt: body.archived ? new Date() : null }
+            : {}),
         },
       });
       const institution = await fastify.prisma.institution.findUnique({
@@ -225,6 +230,7 @@ export async function registerCardRoutes(
           "dueDay",
           "autoDebitAccountId",
           "isActive",
+          "archived",
         ] as const
       ).filter((field) => body[field] !== undefined);
       if (changed.length > 0) {
@@ -263,10 +269,19 @@ export async function registerCardRoutes(
       if (!existing) {
         throw NOT_FOUND();
       }
-      await fastify.prisma.creditCard.update({
-        where: { id },
-        data: { isActive: false },
+      // See accounts/routes.ts's DELETE handler — same hard-delete-when-no-
+      // history / soft-delete-otherwise rule (BACKLOG.md "Arquivar conta/cartão").
+      const transactionCount = await fastify.prisma.transaction.count({
+        where: { creditCardId: id },
       });
+      if (transactionCount === 0) {
+        await fastify.prisma.creditCard.delete({ where: { id } });
+      } else {
+        await fastify.prisma.creditCard.update({
+          where: { id },
+          data: { isActive: false },
+        });
+      }
       return { ok: true };
     },
   );

@@ -31,6 +31,12 @@ export interface AccountResponse {
   overdraftLimitCents: number;
   isOverLimit: boolean;
   isActive: boolean;
+  archivedAt: string | null;
+  /** Derived from the same `transactions` the caller already scoped to this
+   * account (§2.1 pattern) — lets the frontend gate the "Excluir" (hard
+   * delete) action without an extra round trip: DELETE only hard-deletes
+   * when there's no history to lose (BACKLOG.md "Arquivar conta/cartão"). */
+  hasTransactions: boolean;
 }
 
 // Since Sprint 5 (US-3.5) transactions exist; the caller passes the rows scoped
@@ -66,5 +72,7 @@ export function toAccountResponse(
     overdraftLimitCents: account.overdraftLimitCents,
     isOverLimit: money.valueCents < -account.overdraftLimitCents,
     isActive: account.isActive,
+    archivedAt: account.archivedAt ? account.archivedAt.toISOString() : null,
+    hasTransactions: transactions.length > 0,
   };
 }
