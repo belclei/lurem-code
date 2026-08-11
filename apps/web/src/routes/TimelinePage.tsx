@@ -132,12 +132,20 @@ export function TimelinePage() {
       invalidateTimeline();
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       queryClient.invalidateQueries({ queryKey: ["insights"] });
+      // Closes the confirm → RecurringFulfillment loop (see
+      // apps/api/src/transactions/routes.ts's recordFulfillment): a series
+      // that was showing up under "pendente de aprovação" may not be
+      // anymore.
+      queryClient.invalidateQueries({ queryKey: ["recurring"] });
     },
   });
   const skipMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/transactions/${id}/skip`, { method: "POST" }),
-    onSuccess: invalidateTimeline,
+    onSuccess: () => {
+      invalidateTimeline();
+      queryClient.invalidateQueries({ queryKey: ["recurring"] });
+    },
   });
   const deleteMutation = useMutation({
     mutationFn: (id: string) =>
@@ -387,6 +395,11 @@ export function TimelinePage() {
               queryClient.invalidateQueries({ queryKey: ["accounts"] });
               queryClient.invalidateQueries({ queryKey: ["cards"] });
               queryClient.invalidateQueries({ queryKey: ["insights"] });
+              // Confirm/skip (both possible from this dialog now) can change
+              // whether a variable-amount series still counts as "pendente
+              // de aprovação" — see apps/api/src/transactions/routes.ts's
+              // recordFulfillment.
+              queryClient.invalidateQueries({ queryKey: ["recurring"] });
             }}
             onDelete={(t) =>
               deleteMutation.mutate(t.id, {
@@ -526,7 +539,9 @@ export function TimelinePage() {
             onEditTransaction={(t) => setEditingTx(t)}
             onEditAccount={(a) => setEditingAccount(a)}
             onEditCard={(c) => setEditingCard(c)}
-            onManageRecurring={() => navigate({ to: "/recurring" })}
+            onManageRecurring={(id) =>
+              navigate({ to: "/recurring", search: { edit: id } })
+            }
           />
         </div>
 
