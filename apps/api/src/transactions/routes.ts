@@ -13,6 +13,7 @@ import {
   TRANSACTION_ACCOUNT_XOR_CARD,
   VALIDATION_FAILED,
 } from "../errors.js";
+import { createRecurringTransactionSeries } from "../recurring-transactions/create.js";
 import { toTransactionResponse } from "./serialize.js";
 
 const IsoDate = z
@@ -41,6 +42,12 @@ const CreateTransactionBody = z
     // recorrência (§6.7): marca a transação como primeira ocorrência de uma série
     recurring: z.boolean().optional(),
     recurringDayOfMonth: z.number().int().min(1).max(31).optional(),
+    // "Confirmar todo mês" (isVariableAmount no schema — nome do campo
+    // mantido por não forçar migration, ver create.ts/CLAUDE.md comment em
+    // RecurringPage.tsx): quando true, a ocorrência do mês só conta como
+    // confirmada depois que o usuário aprovar o valor real (§6.7 item 3).
+    recurringConfirmMonthly: z.boolean().optional(),
+    recurringEndDate: IsoDate.nullable().optional(),
   })
   .strict()
   .refine((data) => data.kind === "transfer" || Boolean(data.description), {
@@ -124,6 +131,24 @@ export async function registerTransactionRoutes(
       const amountBRLCents = body.amountCents;
       const transactionDate = parseDate(body.transactionDate);
       await validateCategory(userId, body.categoryId);
+
+      // Parcelamento e recorrência são mutuamente exclusivos (§6.6/§6.7): uma
+      // compra parcelada já é uma série de N linhas fixas (o "parcelamento"
+      // dela); recorrer significaria criar uma nova série todo mês a partir
+      // de uma transação que já É uma série — não existe uma regra explícita
+      // pra isso no schema (nada impede tecnicamente as duas colunas juntas),
+      // mas a natureza dos dois conceitos não permite combiná-los, então a
+      // API recusa explicitamente em vez de deixar o comportamento
+      // indefinido (ver NewTransactionDialog.tsx, que já torna os checkboxes
+      // mutuamente exclusivos na UI).
+      if (body.recurring === true && body.installmentTotal != null) {
+        throw VALIDATION_FAILED([
+          {
+            field: "recurring",
+            message: "Não é possível parcelar e recorrer na mesma transação.",
+          },
+        ]);
+      }
 
       // ---- Transferência (§6.6): par out/in com transferPairId comum ----
       if (body.kind === "transfer") {
@@ -281,21 +306,21 @@ export async function registerTransactionRoutes(
       // ---- Recorrência na criação (US-3.8): série com esta tx como 1ª ocorrência ----
       // (transfer/parcelada já retornaram acima — aqui kind é income|expense simples)
       if (body.recurring === true) {
-        const series = await prisma.recurringTransaction.create({
-          data: {
-            userId,
-            description,
-            kind: body.kind,
-            accountId: hasAccount ? body.accountId : null,
-            creditCardId: hasCard ? body.creditCardId : null,
-            categoryId: body.categoryId ?? null,
-            referenceAmountCents: body.amountCents,
-            referenceAmountBRLCents: amountBRLCents,
-            currency: "BRL",
-            dayOfMonth:
-              body.recurringDayOfMonth ?? transactionDate.getUTCDate(),
-            startDate: transactionDate,
-          },
+        // Shared with POST /v1/recurring-transactions (create.ts) — never
+        // duplicate the series-creation logic between the two call sites.
+        const series = await createRecurringTransactionSeries(prisma, userId, {
+          description,
+          kind: body.kind,
+          accountId: hasAccount ? body.accountId : null,
+          creditCardId: hasCard ? body.creditCardId : null,
+          categoryId: body.categoryId ?? null,
+          referenceAmountCents: body.amountCents,
+          dayOfMonth: body.recurringDayOfMonth ?? transactionDate.getUTCDate(),
+          isVariableAmount: body.recurringConfirmMonthly ?? false,
+          startDate: transactionDate,
+          endDate: body.recurringEndDate
+            ? parseDate(body.recurringEndDate)
+            : null,
         });
         const linked = await prisma.transaction.update({
           where: { id: tx.id },

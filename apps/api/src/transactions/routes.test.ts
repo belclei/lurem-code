@@ -430,4 +430,75 @@ describe("recurrence on creation (US-3.8)", () => {
     expect(series?.dayOfMonth).toBe(5);
     expect(series?.referenceAmountCents).toBe(150_000);
   });
+
+  // Backlog "Recorrência integrada ao dialog": a criação de série a partir
+  // de /v1/transactions passou a usar a mesma função compartilhada de
+  // /v1/recurring-transactions (create.ts) — antes desta extração, este
+  // call site nunca escrevia o DomainEvent, então a série não aparecia na
+  // Timeline (mesmo bug que routes.test.ts já cobre pro outro call site).
+  it("emits recurring.created when the series is created via /v1/transactions", async () => {
+    const { userId, accessToken } = await authedUser();
+    const acc = await account(userId, { openingBalanceCents: 1_000_000 });
+    const res = await post(accessToken, {
+      kind: "expense",
+      accountId: acc.id,
+      description: "Netflix",
+      transactionDate: "2026-07-05",
+      amountCents: 5_590,
+      recurring: true,
+    });
+    const tx = res.json();
+    const events = await server.prisma.domainEvent.findMany({
+      where: {
+        aggregateId: tx.recurringTransactionId,
+        type: "recurring.created",
+      },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]?.userId).toBe(userId);
+  });
+
+  // "Confirmar todo mês" (isVariableAmount) e data de encerramento também
+  // passam pelo dialog de nova transação (NewTransactionDialog.tsx), não só
+  // pela tela dedicada de Recorrências.
+  it("passes recurringConfirmMonthly/recurringEndDate through to the series", async () => {
+    const { userId, accessToken } = await authedUser();
+    const acc = await account(userId, { openingBalanceCents: 1_000_000 });
+    const res = await post(accessToken, {
+      kind: "expense",
+      accountId: acc.id,
+      description: "Conta de luz",
+      transactionDate: "2026-07-05",
+      amountCents: 20_000,
+      recurring: true,
+      recurringDayOfMonth: 10,
+      recurringConfirmMonthly: true,
+      recurringEndDate: "2027-01-01",
+    });
+    const tx = res.json();
+    const series = await server.prisma.recurringTransaction.findUnique({
+      where: { id: tx.recurringTransactionId },
+    });
+    expect(series?.dayOfMonth).toBe(10);
+    expect(series?.isVariableAmount).toBe(true);
+    expect(series?.endDate?.toISOString().slice(0, 10)).toBe("2027-01-01");
+  });
+
+  // §6.6/§6.7: parcelamento e recorrência não combinam — uma compra
+  // parcelada já É a série (N linhas fixas); recorrer a partir dela criaria
+  // uma segunda série redundante.
+  it("rejects recurring + installmentTotal on the same transaction", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    const res = await post(accessToken, {
+      kind: "expense",
+      creditCardId: c.id,
+      description: "Compra parcelada",
+      transactionDate: "2026-07-05",
+      amountCents: 30_000,
+      installmentTotal: 3,
+      recurring: true,
+    });
+    expect(res.statusCode).toBe(400);
+  });
 });
