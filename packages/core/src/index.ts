@@ -1,6 +1,8 @@
 export { balance } from "./balance.js";
 export type { BalanceParams } from "./balance.js";
 
+export { splitInstallments } from "./installments.js";
+
 export {
   faturaFechadaNaoVencida,
   sumCardTransactionsForInvoiceMonth,

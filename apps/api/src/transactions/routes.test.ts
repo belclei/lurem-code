@@ -265,7 +265,7 @@ describe("POST /v1/transactions — transfer & installment (US-3.6)", () => {
     const rows = res.json();
     expect(rows).toHaveLength(3);
     expect(rows.map((r: { amountCents: number }) => r.amountCents)).toEqual([
-      3_334, 3_333, 3_333,
+      3_333, 3_333, 3_334,
     ]);
     expect(
       rows.every((r: { installmentTotal: number }) => r.installmentTotal === 3),

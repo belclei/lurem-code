@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 // BACKLOG.md US-3.5–3.9 — POST/GET /v1/transactions, ações de agendada
 // (confirm/skip), PATCH/DELETE. Regra de dinheiro determinística vive em
 // @lurem/core; aqui só orquestra I/O + validação de contrato.
-import { addMonths, clampDay, makeDate } from "@lurem/core";
+import { addMonths, clampDay, makeDate, splitInstallments } from "@lurem/core";
 import type { Prisma, Transaction } from "@lurem/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -62,13 +62,6 @@ const UpdateTransactionBody = z
 function parseDate(ymd: string): Date {
   const [y, m, d] = ymd.split("-");
   return makeDate(Number(y), Number(m), Number(d));
-}
-
-/** Divide um total em N parcelas inteiras; o resto (centavos) vai na primeira. */
-function splitInstallments(totalCents: number, n: number): number[] {
-  const base = Math.floor(totalCents / n);
-  const remainder = totalCents - base * n;
-  return Array.from({ length: n }, (_, i) => base + (i === 0 ? remainder : 0));
 }
 
 export async function registerTransactionRoutes(
