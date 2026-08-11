@@ -375,6 +375,47 @@ export async function registerTransactionRoutes(
     return tx;
   }
 
+  // Confirm/skip on a scheduled occurrence of a recurring series is also the
+  // ONLY place that closes the loop back to RecurringFulfillment — the
+  // record `/recurring-transactions/pending` and `isFulfilledThisMonth`
+  // (@lurem/core) check to know a month was actually handled. Without this,
+  // a series stayed "pending" forever after the user confirmed it (see
+  // report). Upserted (not created) because @@unique([recurringTransactionId,
+  // year, month]) means a second confirm/skip in the same month — e.g. the
+  // cron already created one fulfillment record some other way in the
+  // future — must overwrite, not throw.
+  async function recordFulfillment(
+    tx: Transaction,
+    outcome: {
+      transactionId: string | null;
+      method: "scheduled_confirm" | "manual";
+    },
+  ): Promise<void> {
+    if (!tx.recurringTransactionId) return;
+    const year = tx.transactionDate.getUTCFullYear();
+    const month = tx.transactionDate.getUTCMonth() + 1;
+    await prisma.recurringFulfillment.upsert({
+      where: {
+        recurringTransactionId_year_month: {
+          recurringTransactionId: tx.recurringTransactionId,
+          year,
+          month,
+        },
+      },
+      create: {
+        recurringTransactionId: tx.recurringTransactionId,
+        year,
+        month,
+        transactionId: outcome.transactionId,
+        method: outcome.method,
+      },
+      update: {
+        transactionId: outcome.transactionId,
+        method: outcome.method,
+      },
+    });
+  }
+
   // US-3.7 — confirma agendada → real (sai da linha "agendadas").
   fastify.post(
     "/v1/transactions/:id/confirm",
@@ -392,6 +433,10 @@ export async function registerTransactionRoutes(
       const confirmed = await prisma.transaction.update({
         where: { id: tx.id },
         data: { isScheduled: false },
+      });
+      await recordFulfillment(confirmed, {
+        transactionId: confirmed.id,
+        method: "scheduled_confirm",
       });
       return toTransactionResponse(confirmed);
     },
@@ -411,6 +456,9 @@ export async function registerTransactionRoutes(
           { field: "id", message: "Só dá para pular uma agendada." },
         ]);
       }
+      // Recorded before the delete: once the row is gone, tx.transactionDate
+      // (needed to derive year/month) is gone with it.
+      await recordFulfillment(tx, { transactionId: null, method: "manual" });
       await prisma.transaction.delete({ where: { id: tx.id } });
       return reply.code(204).send();
     },

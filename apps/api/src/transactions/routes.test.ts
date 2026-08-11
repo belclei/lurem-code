@@ -325,6 +325,126 @@ describe("scheduled actions & list (US-3.7)", () => {
     expect(await server.prisma.transaction.count({ where: { id } })).toBe(0);
   });
 
+  it("confirming a scheduled transaction with no recurring series does not create a RecurringFulfillment", async () => {
+    const { userId, accessToken } = await authedUser();
+    const acc = await account(userId, { openingBalanceCents: 0 });
+    const created = await post(accessToken, {
+      kind: "income",
+      accountId: acc.id,
+      description: "Avulsa (previsto)",
+      transactionDate: "2026-08-05",
+      amountCents: 500_000,
+      isScheduled: true,
+    });
+    const id = created.json().id;
+    await server.inject({
+      method: "POST",
+      url: `/v1/transactions/${id}/confirm`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(await server.prisma.recurringFulfillment.count()).toBe(0);
+  });
+
+  it("confirming a scheduled occurrence of a recurring series records a RecurringFulfillment (closes /pending's loop)", async () => {
+    const { userId, accessToken } = await authedUser();
+    const acc = await account(userId, { openingBalanceCents: 0 });
+    const series = await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Aluguel",
+        kind: "expense",
+        accountId: acc.id,
+        referenceAmountCents: 150_000,
+        referenceAmountBRLCents: 150_000,
+        dayOfMonth: 5,
+        startDate: new Date("2020-01-01"),
+      },
+    });
+    const tx = await server.prisma.transaction.create({
+      data: {
+        userId,
+        accountId: acc.id,
+        kind: "expense",
+        source: "manual",
+        description: "Aluguel",
+        transactionDate: new Date("2026-08-05"),
+        currency: "BRL",
+        amountCents: 150_000,
+        amountBRLCents: 150_000,
+        isScheduled: true,
+        recurringTransactionId: series.id,
+      },
+    });
+    const res = await server.inject({
+      method: "POST",
+      url: `/v1/transactions/${tx.id}/confirm`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const fulfillment = await server.prisma.recurringFulfillment.findUnique({
+      where: {
+        recurringTransactionId_year_month: {
+          recurringTransactionId: series.id,
+          year: 2026,
+          month: 8,
+        },
+      },
+    });
+    expect(fulfillment).not.toBeNull();
+    expect(fulfillment?.transactionId).toBe(tx.id);
+    expect(fulfillment?.method).toBe("scheduled_confirm");
+  });
+
+  it("skipping a scheduled occurrence of a recurring series records a RecurringFulfillment with no transactionId", async () => {
+    const { userId, accessToken } = await authedUser();
+    const acc = await account(userId, { openingBalanceCents: 0 });
+    const series = await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Aluguel",
+        kind: "expense",
+        accountId: acc.id,
+        referenceAmountCents: 150_000,
+        referenceAmountBRLCents: 150_000,
+        dayOfMonth: 5,
+        startDate: new Date("2020-01-01"),
+      },
+    });
+    const tx = await server.prisma.transaction.create({
+      data: {
+        userId,
+        accountId: acc.id,
+        kind: "expense",
+        source: "manual",
+        description: "Aluguel",
+        transactionDate: new Date("2026-08-05"),
+        currency: "BRL",
+        amountCents: 150_000,
+        amountBRLCents: 150_000,
+        isScheduled: true,
+        recurringTransactionId: series.id,
+      },
+    });
+    const res = await server.inject({
+      method: "POST",
+      url: `/v1/transactions/${tx.id}/skip`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(res.statusCode).toBe(204);
+    const fulfillment = await server.prisma.recurringFulfillment.findUnique({
+      where: {
+        recurringTransactionId_year_month: {
+          recurringTransactionId: series.id,
+          year: 2026,
+          month: 8,
+        },
+      },
+    });
+    expect(fulfillment).not.toBeNull();
+    expect(fulfillment?.transactionId).toBeNull();
+    expect(fulfillment?.method).toBe("manual");
+  });
+
   it("lists transactions filtered by scheduled flag", async () => {
     const { userId, accessToken } = await authedUser();
     const acc = await account(userId, { openingBalanceCents: 1_000_000 });
