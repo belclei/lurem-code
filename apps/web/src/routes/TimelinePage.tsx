@@ -7,7 +7,17 @@
 // banner reativo de "conta além do limite" foi removido daqui — o aviso
 // agora acontece no momento do cadastro da transação (NewTransactionDialog),
 // não como um lembrete permanente no topo da página.
-import { Body, Button, PlusIcon, ProfileIncompleteAlert } from "@lurem/ui";
+import {
+  Alert,
+  Body,
+  Button,
+  Card,
+  Mono,
+  PlusIcon,
+  ProfileIncompleteAlert,
+  formatDate,
+  formatMoney,
+} from "@lurem/ui";
 import type { CalendarRange } from "@lurem/ui";
 import {
   useInfiniteQuery,
@@ -23,6 +33,7 @@ import type {
   AccountDto,
   CardDto,
   InstitutionDto,
+  PendingRecurringDto,
   TimelinePageDto,
   TransactionDto,
 } from "../auth/types";
@@ -167,6 +178,17 @@ export function TimelinePage() {
   const insightsQuery = useQuery({
     queryKey: ["insights", "dashboard"],
     queryFn: () => apiFetchJson<DashboardInsights>("/insights/dashboard"),
+    enabled: hasSession,
+  });
+  // Backlog "fila de pendência de aprovação" (§6.7 item 3, "Confirmar todo
+  // mês"): séries isVariableAmount cujo mês corrente já venceu sem
+  // confirmação. Banner acima dos filtros, não um item por dia na Timeline —
+  // é uma fila de pendências, não um evento histórico do dia em que
+  // venceu.
+  const pendingRecurringQuery = useQuery({
+    queryKey: ["recurring", "pending"],
+    queryFn: () =>
+      apiFetchJson<PendingRecurringDto[]>("/recurring-transactions/pending"),
     enabled: hasSession,
   });
 
@@ -429,6 +451,36 @@ export function TimelinePage() {
             }}
           />
 
+          {(pendingRecurringQuery.data ?? []).length > 0 ? (
+            <Card className="mb-4">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <Body weight="medium">
+                  {pendingRecurringQuery.data?.length === 1
+                    ? "1 recorrência pendente de aprovação"
+                    : `${pendingRecurringQuery.data?.length} recorrências pendentes de aprovação`}
+                </Body>
+                <Button
+                  variant="tertiary"
+                  size="sm"
+                  onClick={() => navigate({ to: "/recurring" })}
+                >
+                  Revisar
+                </Button>
+              </div>
+              <div className="flex flex-col gap-2">
+                {(pendingRecurringQuery.data ?? []).map((p) => (
+                  <Alert
+                    key={p.id}
+                    variant="warning"
+                    layout="inline"
+                    title={p.description}
+                    description={`Vencida em ${formatDate(p.dueDate)} · valor de referência ${formatMoney(p.referenceAmountCents)} · confirme o valor real`}
+                  />
+                ))}
+              </div>
+            </Card>
+          ) : null}
+
           <TimelineFilterBar
             chips={chips}
             hiddenChipIds={hiddenChipIds}
@@ -471,6 +523,7 @@ export function TimelinePage() {
             onEditTransaction={(t) => setEditingTx(t)}
             onEditAccount={(a) => setEditingAccount(a)}
             onEditCard={(c) => setEditingCard(c)}
+            onManageRecurring={() => navigate({ to: "/recurring" })}
           />
         </div>
 

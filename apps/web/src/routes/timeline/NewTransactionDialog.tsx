@@ -43,6 +43,10 @@ interface CreateTxPayload {
   categoryId?: string;
   installmentTotal?: number;
   installmentHasInterest?: boolean;
+  recurring?: boolean;
+  recurringDayOfMonth?: number;
+  recurringConfirmMonthly?: boolean;
+  recurringEndDate?: string | null;
 }
 
 export function NewTransactionDialog({
@@ -68,12 +72,26 @@ export function NewTransactionDialog({
   const [installmentEnabled, setInstallmentEnabled] = useState(false);
   const [installmentTotalStr, setInstallmentTotalStr] = useState("2");
   const [installmentHasInterest, setInstallmentHasInterest] = useState(false);
+  // Backlog "Recorrência integrada ao dialog": checkbox "Recorrente",
+  // mutuamente exclusivo com "Parcelar" (§6.6/§6.7 — uma compra parcelada já
+  // É uma série fixa de N linhas; recorrer criaria uma segunda série a
+  // partir de uma série, o que não faz sentido — ver validação irmã no
+  // backend, apps/api/src/transactions/routes.ts).
+  const [recurringEnabled, setRecurringEnabled] = useState(false);
+  const [recurringDayOfMonthStr, setRecurringDayOfMonthStr] = useState("");
+  const [recurringConfirmMonthly, setRecurringConfirmMonthly] = useState(false);
+  const [recurringEndDate, setRecurringEndDate] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Parcelamento (§6.6) só existe em despesa de cartão de crédito.
   const isCardExpense = kind === "expense" && sourceValue?.startsWith("card:");
   const showInstallments = isCardExpense && installmentEnabled;
+  // Recorrência (§6.7) é só para receita/despesa simples — transferência não
+  // recorre (schema comment: "transfer não recorre"), e não combina com
+  // parcelamento (ver comentário acima).
+  const canRecur = kind !== "transfer" && !installmentEnabled;
+  const showRecurring = canRecur && recurringEnabled;
 
   const installmentTotalCount = Number(installmentTotalStr);
   const installmentTotalValid =
@@ -175,6 +193,10 @@ export function NewTransactionDialog({
       setInstallmentEnabled(false);
       setInstallmentTotalStr("2");
       setInstallmentHasInterest(false);
+      setRecurringEnabled(false);
+      setRecurringDayOfMonthStr("");
+      setRecurringConfirmMonthly(false);
+      setRecurringEndDate("");
       setFormError(null);
       setFieldErrors({});
       onCreated();
@@ -219,6 +241,26 @@ export function NewTransactionDialog({
       });
       return;
     }
+    let recurringDayOfMonth: number | undefined;
+    if (showRecurring) {
+      if (recurringDayOfMonthStr.trim()) {
+        const day = Number(recurringDayOfMonthStr);
+        if (!Number.isInteger(day) || day < 1 || day > 31) {
+          setFormError("Dia do mês da recorrência entre 1 e 31.");
+          setFieldErrors({
+            recurringDayOfMonth: "Dia do mês entre 1 e 31.",
+          });
+          return;
+        }
+        recurringDayOfMonth = day;
+      } else {
+        // Sem dia informado, usa o dia da própria data da transação —
+        // mesma regra que a API já aplicava antes deste checkbox existir no
+        // dialog (transactions/routes.ts: `body.recurringDayOfMonth ??
+        // transactionDate.getUTCDate()`).
+        recurringDayOfMonth = Number(date.slice(8, 10));
+      }
+    }
     const source = resolveTarget(sourceValue);
     // Vazio (transferência sem descrição) precisa virar `undefined`, não "" —
     // o backend valida `description` com min(1) quando o campo está
@@ -233,6 +275,14 @@ export function NewTransactionDialog({
         ? {
             installmentTotal: installmentTotalCount,
             installmentHasInterest,
+          }
+        : {}),
+      ...(showRecurring
+        ? {
+            recurring: true,
+            recurringDayOfMonth,
+            recurringConfirmMonthly,
+            recurringEndDate: recurringEndDate.trim() || null,
           }
         : {}),
     };
@@ -383,6 +433,41 @@ export function NewTransactionDialog({
                     divisão.
                   </p>
                 )}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {canRecur ? (
+          <div className="flex flex-col gap-3">
+            <Checkbox
+              label="Recorrente"
+              checked={recurringEnabled}
+              onChange={(e) => setRecurringEnabled(e.target.checked)}
+            />
+            {recurringEnabled ? (
+              <div className="flex flex-col gap-3 rounded-[var(--lr-r-md)] border border-[var(--lr-border)] p-3">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Input
+                    type="number"
+                    label="Dia do mês (opcional)"
+                    value={recurringDayOfMonthStr}
+                    onChange={(e) => setRecurringDayOfMonthStr(e.target.value)}
+                    min={1}
+                    max={31}
+                    placeholder={date.slice(8, 10)}
+                    error={fieldErrors.recurringDayOfMonth}
+                  />
+                  <DateField
+                    label="Encerra em (opcional)"
+                    value={recurringEndDate}
+                    onChange={setRecurringEndDate}
+                  />
+                </div>
+                <Checkbox
+                  label="Confirmar todo mês (ex.: conta de luz)"
+                  checked={recurringConfirmMonthly}
+                  onChange={(e) => setRecurringConfirmMonthly(e.target.checked)}
+                />
               </div>
             ) : null}
           </div>
