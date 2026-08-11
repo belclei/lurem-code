@@ -266,3 +266,95 @@ describe("recurring-transactions (US-3.9b)", () => {
     expect(still?.recurringTransactionId).toBeNull();
   });
 });
+
+// Backlog "Confirmar todo mês" + fila de pendência de aprovação (§6.7 item
+// 3): isVariableAmount === true e o mês corrente já venceu sem
+// RecurringFulfillment.
+describe("GET /v1/recurring-transactions/pending", () => {
+  it("lists a variable-amount series whose current month is overdue and unconfirmed", async () => {
+    const { userId, accessToken } = await authedUser();
+    const acc = await account(userId);
+    // dayOfMonth=1 garante que já venceu neste mês em qualquer dia de teste
+    // (exceto o dia 1 exatamente — aceitável para um teste que não controla
+    // o relógio; ver dueDay clampado no endpoint).
+    await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Conta de luz",
+        kind: "expense",
+        accountId: acc.id,
+        referenceAmountCents: 20_000,
+        referenceAmountBRLCents: 20_000,
+        dayOfMonth: 1,
+        isVariableAmount: true,
+        startDate: new Date("2020-01-01"),
+      },
+    });
+    const res = await server.inject({
+      method: "GET",
+      url: "/v1/recurring-transactions/pending",
+      headers: auth(accessToken),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].description).toBe("Conta de luz");
+  });
+
+  it("does not list a series once a RecurringFulfillment exists for the current month", async () => {
+    const { userId, accessToken } = await authedUser();
+    const acc = await account(userId);
+    const series = await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Conta de luz",
+        kind: "expense",
+        accountId: acc.id,
+        referenceAmountCents: 20_000,
+        referenceAmountBRLCents: 20_000,
+        dayOfMonth: 1,
+        isVariableAmount: true,
+        startDate: new Date("2020-01-01"),
+      },
+    });
+    const now = new Date();
+    await server.prisma.recurringFulfillment.create({
+      data: {
+        recurringTransactionId: series.id,
+        year: now.getUTCFullYear(),
+        month: now.getUTCMonth() + 1,
+        method: "manual",
+      },
+    });
+    const res = await server.inject({
+      method: "GET",
+      url: "/v1/recurring-transactions/pending",
+      headers: auth(accessToken),
+    });
+    expect(res.json()).toHaveLength(0);
+  });
+
+  it("does not list a fixed-amount series (isVariableAmount=false) even if overdue", async () => {
+    const { userId, accessToken } = await authedUser();
+    const acc = await account(userId);
+    await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Aluguel",
+        kind: "expense",
+        accountId: acc.id,
+        referenceAmountCents: 150_000,
+        referenceAmountBRLCents: 150_000,
+        dayOfMonth: 1,
+        isVariableAmount: false,
+        startDate: new Date("2020-01-01"),
+      },
+    });
+    const res = await server.inject({
+      method: "GET",
+      url: "/v1/recurring-transactions/pending",
+      headers: auth(accessToken),
+    });
+    expect(res.json()).toHaveLength(0);
+  });
+});

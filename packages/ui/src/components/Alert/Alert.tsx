@@ -18,7 +18,8 @@ export interface AlertAction {
   /**
    * index.html id="alerta": an alert's action is always discreet — ghost or
    * secondary — never a filled/primary button, which would compete with the
-   * screen's own primary action. Defaults to "ghost".
+   * screen's own primary action. Defaults to "secondary" (bordered) instead
+   * of "ghost" (borderless) so the action reads as clickable at a glance.
    */
   variant?: "ghost" | "secondary";
 }
@@ -280,7 +281,7 @@ export function Alert({
                 key={action.label}
                 type="button"
                 size="sm"
-                variant={ACTION_VARIANT_MAP[action.variant ?? "ghost"]}
+                variant={ACTION_VARIANT_MAP[action.variant ?? "secondary"]}
                 onClick={action.onClick}
                 // Button's "tertiary"/ghost text color (--lr-text-secondary) was only
                 // ever AA-checked against the plain page surface, not against

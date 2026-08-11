@@ -1,0 +1,16 @@
+LUREM · SENHA
+
+Defina sua senha.
+
+Recebemos um pedido para trocar a senha da sua conta Lurem. Acesse o link
+abaixo para escolher uma nova.
+
+Escolher nova senha: {{link}}
+
+Não pediu isso? Ignore este e-mail — sua senha atual continua valendo e
+nada foi alterado. Este link foi gerado agora e expira em 1 hora, só
+podendo ser usado uma vez.
+
+--
+Você não precisa de mais dados. Precisa de distância.
+Este é um e-mail de segurança da sua conta Lurem.

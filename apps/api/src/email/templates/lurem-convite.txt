@@ -6,6 +6,10 @@ Você entrou na lista e agora tem acesso. O Lurem organiza seus extratos,
 recorrências e agendamentos numa timeline única — e responde a única
 pergunta que importa: quanto dinheiro você realmente pode gastar hoje?
 
+Disponível hoje (exemplo): R$ 4.182,35
+É assim que fica depois que você conecta suas contas — determinístico,
+explicável linha por linha.
+
 Crie sua conta: {{link}}
 
 Este convite é pessoal e expira em 7 dias. Se você não pediu acesso ao

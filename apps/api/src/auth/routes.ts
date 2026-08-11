@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 // apps/api/src/auth/routes.ts
 import { z } from "zod";
 import { assertUsable, findByToken } from "../access/tokens.js";
+import { sendPasswordResetEmail } from "../email/templates.js";
 import { AUTH_INVALID_CREDENTIALS, AUTH_TOKEN_INVALID } from "../errors.js";
 import { resolveFlags } from "../flags/resolve.js";
 import { isUserActive } from "./active-user.js";
@@ -12,12 +13,17 @@ import {
   signAccessToken,
   verifyAccessToken,
 } from "./jwt.js";
-import { verifyPassword } from "./password.js";
+import {
+  consumePasswordResetToken,
+  issuePasswordResetToken,
+} from "./password-reset-tokens.js";
+import { hashPassword, verifyPassword } from "./password.js";
 import { registerAuthRateLimit } from "./rate-limit.js";
 import {
   REFRESH_COOKIE_NAME,
   hashToken,
   issueRefreshTokenFamily,
+  revokeAllRefreshTokensForUser,
   revokeRefreshFamily,
   rotateRefreshToken,
   setRefreshCookie,
@@ -32,6 +38,27 @@ const GoogleAuthBody = z.object({
   idToken: z.string().min(1),
   token: z.string().min(1).optional(),
 });
+
+const ForgotPasswordBody = z.object({ email: z.string().email() }).strict();
+
+const ResetPasswordBody = z
+  .object({
+    token: z.string().min(1),
+    // Mesmo mínimo de access/routes.ts (RegisterBody) e settings/routes.ts
+    // (ChangePasswordBody) — não existe um PasswordSchema compartilhado no
+    // projeto hoje; introduzir um agora seria refatorar 3 rotas fora do
+    // escopo deste fluxo só pra remover uma duplicação de uma linha.
+    newPassword: z.string().min(8),
+  })
+  .strict();
+
+// Mesma mensagem genérica sempre, exista ou não a conta — proteção contra
+// enumeração de contas (§ boas práticas já conhecidas; ver comentário na
+// rota abaixo para o porquê da resposta ser idêntica em todo caminho).
+const NEUTRAL_FORGOT_PASSWORD_RESPONSE = {
+  message:
+    "Se este e-mail tiver uma conta no Lurem, enviamos um link para redefinir a senha.",
+};
 
 export async function registerAuthRoutes(
   fastify: FastifyInstance,
@@ -89,6 +116,72 @@ export async function registerAuthRoutes(
 
       setRefreshCookie(reply, refreshToken);
       return { accessToken };
+    },
+  );
+
+  fastify.post(
+    "/v1/auth/forgot-password",
+    {
+      schema: { body: ForgotPasswordBody },
+      // Mesmo opt-in de /v1/auth/login: keyGenerator do rate-limit
+      // (rate-limit.ts) já chaveia por e-mail quando o body tem um — 5
+      // pedidos / 15min por e-mail. Sensível a abuso (spam de e-mail pro
+      // Resend, custo por envio), não só a força-bruta como o login.
+      config: { rateLimit: {} },
+    },
+    async (request) => {
+      const { email } = request.body as z.infer<typeof ForgotPasswordBody>;
+
+      const user = await fastify.prisma.user.findUnique({ where: { email } });
+      // Resposta idêntica em qualquer um destes dois casos — e-mail
+      // inexistente ou conta desativada — nunca revela qual deles é. (Mesmo
+      // padrão do login/AUTH_INVALID_CREDENTIALS e da waitlist neutra em
+      // access/routes.ts.)
+      //
+      // Contas Google-only (passwordHash nulo) passam por aqui também, de
+      // propósito: usuário quer poder autenticar pelas duas vias (Google OU
+      // senha), então este mesmo link serve tanto pra "esqueci minha senha"
+      // quanto pra "cadastrar uma senha pela primeira vez" numa conta que só
+      // tinha Google. reset-password (abaixo) não distingue os dois casos —
+      // é sempre um UPDATE de passwordHash, seja de null pra um valor ou de
+      // um hash antigo pro novo.
+      if (user && isUserActive(user)) {
+        const rawToken = await issuePasswordResetToken(fastify.prisma, user.id);
+        await sendPasswordResetEmail(fastify.resend, {
+          to: user.email,
+          link: `${fastify.env.WEB_APP_URL}/reset-password?token=${rawToken}`,
+        });
+      }
+
+      return NEUTRAL_FORGOT_PASSWORD_RESPONSE;
+    },
+  );
+
+  fastify.post(
+    "/v1/auth/reset-password",
+    { schema: { body: ResetPasswordBody } },
+    async (request) => {
+      const { token, newPassword } = request.body as z.infer<
+        typeof ResetPasswordBody
+      >;
+
+      // consumePasswordResetToken já lança AUTH_TOKEN_INVALID (inexistente
+      // ou já usado) / AUTH_TOKEN_EXPIRED — mesmos códigos que o fluxo de
+      // cadastro via convite (access/tokens.ts), sem detalhar mais que isso.
+      const userId = await consumePasswordResetToken(fastify.prisma, token);
+
+      const passwordHash = await hashPassword(newPassword);
+      await fastify.prisma.user.update({
+        where: { id: userId },
+        data: { passwordHash },
+      });
+
+      // Prática padrão após troca de senha: encerra TODA sessão ativa, não
+      // só a família de refresh token da sessão que pediu o reset — quem
+      // trocou a senha nem precisa estar logado neste navegador.
+      await revokeAllRefreshTokensForUser(fastify.prisma, userId);
+
+      return { ok: true };
     },
   );
 

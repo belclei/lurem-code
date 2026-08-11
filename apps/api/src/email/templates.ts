@@ -31,6 +31,18 @@ export function sendInviteEmail(
   });
 }
 
+export function sendPasswordResetEmail(
+  resend: Resend,
+  params: { to: string; link: string },
+): Promise<{ id: string }> {
+  return send(resend, {
+    to: params.to,
+    subject: "Defina sua senha no Lurem",
+    html: renderTemplate("lurem-reset-senha.html", { link: params.link }),
+    text: renderTemplate("lurem-reset-senha.txt", { link: params.link }),
+  });
+}
+
 export function sendConnectionRequestEmail(
   resend: Resend,
   params: { to: string; requesterName: string; link: string },

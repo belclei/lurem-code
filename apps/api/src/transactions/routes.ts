@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 // BACKLOG.md US-3.5–3.9 — POST/GET /v1/transactions, ações de agendada
 // (confirm/skip), PATCH/DELETE. Regra de dinheiro determinística vive em
 // @lurem/core; aqui só orquestra I/O + validação de contrato.
-import { addMonths, clampDay, makeDate } from "@lurem/core";
+import { addMonths, clampDay, makeDate, splitInstallments } from "@lurem/core";
 import type { Prisma, Transaction } from "@lurem/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -13,6 +13,7 @@ import {
   TRANSACTION_ACCOUNT_XOR_CARD,
   VALIDATION_FAILED,
 } from "../errors.js";
+import { createRecurringTransactionSeries } from "../recurring-transactions/create.js";
 import { toTransactionResponse } from "./serialize.js";
 
 const IsoDate = z
@@ -41,6 +42,12 @@ const CreateTransactionBody = z
     // recorrência (§6.7): marca a transação como primeira ocorrência de uma série
     recurring: z.boolean().optional(),
     recurringDayOfMonth: z.number().int().min(1).max(31).optional(),
+    // "Confirmar todo mês" (isVariableAmount no schema — nome do campo
+    // mantido por não forçar migration, ver create.ts/CLAUDE.md comment em
+    // RecurringPage.tsx): quando true, a ocorrência do mês só conta como
+    // confirmada depois que o usuário aprovar o valor real (§6.7 item 3).
+    recurringConfirmMonthly: z.boolean().optional(),
+    recurringEndDate: IsoDate.nullable().optional(),
   })
   .strict()
   .refine((data) => data.kind === "transfer" || Boolean(data.description), {
@@ -62,13 +69,6 @@ const UpdateTransactionBody = z
 function parseDate(ymd: string): Date {
   const [y, m, d] = ymd.split("-");
   return makeDate(Number(y), Number(m), Number(d));
-}
-
-/** Divide um total em N parcelas inteiras; o resto (centavos) vai na primeira. */
-function splitInstallments(totalCents: number, n: number): number[] {
-  const base = Math.floor(totalCents / n);
-  const remainder = totalCents - base * n;
-  return Array.from({ length: n }, (_, i) => base + (i === 0 ? remainder : 0));
 }
 
 export async function registerTransactionRoutes(
@@ -131,6 +131,24 @@ export async function registerTransactionRoutes(
       const amountBRLCents = body.amountCents;
       const transactionDate = parseDate(body.transactionDate);
       await validateCategory(userId, body.categoryId);
+
+      // Parcelamento e recorrência são mutuamente exclusivos (§6.6/§6.7): uma
+      // compra parcelada já é uma série de N linhas fixas (o "parcelamento"
+      // dela); recorrer significaria criar uma nova série todo mês a partir
+      // de uma transação que já É uma série — não existe uma regra explícita
+      // pra isso no schema (nada impede tecnicamente as duas colunas juntas),
+      // mas a natureza dos dois conceitos não permite combiná-los, então a
+      // API recusa explicitamente em vez de deixar o comportamento
+      // indefinido (ver NewTransactionDialog.tsx, que já torna os checkboxes
+      // mutuamente exclusivos na UI).
+      if (body.recurring === true && body.installmentTotal != null) {
+        throw VALIDATION_FAILED([
+          {
+            field: "recurring",
+            message: "Não é possível parcelar e recorrer na mesma transação.",
+          },
+        ]);
+      }
 
       // ---- Transferência (§6.6): par out/in com transferPairId comum ----
       if (body.kind === "transfer") {
@@ -288,21 +306,21 @@ export async function registerTransactionRoutes(
       // ---- Recorrência na criação (US-3.8): série com esta tx como 1ª ocorrência ----
       // (transfer/parcelada já retornaram acima — aqui kind é income|expense simples)
       if (body.recurring === true) {
-        const series = await prisma.recurringTransaction.create({
-          data: {
-            userId,
-            description,
-            kind: body.kind,
-            accountId: hasAccount ? body.accountId : null,
-            creditCardId: hasCard ? body.creditCardId : null,
-            categoryId: body.categoryId ?? null,
-            referenceAmountCents: body.amountCents,
-            referenceAmountBRLCents: amountBRLCents,
-            currency: "BRL",
-            dayOfMonth:
-              body.recurringDayOfMonth ?? transactionDate.getUTCDate(),
-            startDate: transactionDate,
-          },
+        // Shared with POST /v1/recurring-transactions (create.ts) — never
+        // duplicate the series-creation logic between the two call sites.
+        const series = await createRecurringTransactionSeries(prisma, userId, {
+          description,
+          kind: body.kind,
+          accountId: hasAccount ? body.accountId : null,
+          creditCardId: hasCard ? body.creditCardId : null,
+          categoryId: body.categoryId ?? null,
+          referenceAmountCents: body.amountCents,
+          dayOfMonth: body.recurringDayOfMonth ?? transactionDate.getUTCDate(),
+          isVariableAmount: body.recurringConfirmMonthly ?? false,
+          startDate: transactionDate,
+          endDate: body.recurringEndDate
+            ? parseDate(body.recurringEndDate)
+            : null,
         });
         const linked = await prisma.transaction.update({
           where: { id: tx.id },
@@ -357,6 +375,47 @@ export async function registerTransactionRoutes(
     return tx;
   }
 
+  // Confirm/skip on a scheduled occurrence of a recurring series is also the
+  // ONLY place that closes the loop back to RecurringFulfillment — the
+  // record `/recurring-transactions/pending` and `isFulfilledThisMonth`
+  // (@lurem/core) check to know a month was actually handled. Without this,
+  // a series stayed "pending" forever after the user confirmed it (see
+  // report). Upserted (not created) because @@unique([recurringTransactionId,
+  // year, month]) means a second confirm/skip in the same month — e.g. the
+  // cron already created one fulfillment record some other way in the
+  // future — must overwrite, not throw.
+  async function recordFulfillment(
+    tx: Transaction,
+    outcome: {
+      transactionId: string | null;
+      method: "scheduled_confirm" | "manual";
+    },
+  ): Promise<void> {
+    if (!tx.recurringTransactionId) return;
+    const year = tx.transactionDate.getUTCFullYear();
+    const month = tx.transactionDate.getUTCMonth() + 1;
+    await prisma.recurringFulfillment.upsert({
+      where: {
+        recurringTransactionId_year_month: {
+          recurringTransactionId: tx.recurringTransactionId,
+          year,
+          month,
+        },
+      },
+      create: {
+        recurringTransactionId: tx.recurringTransactionId,
+        year,
+        month,
+        transactionId: outcome.transactionId,
+        method: outcome.method,
+      },
+      update: {
+        transactionId: outcome.transactionId,
+        method: outcome.method,
+      },
+    });
+  }
+
   // US-3.7 — confirma agendada → real (sai da linha "agendadas").
   fastify.post(
     "/v1/transactions/:id/confirm",
@@ -374,6 +433,10 @@ export async function registerTransactionRoutes(
       const confirmed = await prisma.transaction.update({
         where: { id: tx.id },
         data: { isScheduled: false },
+      });
+      await recordFulfillment(confirmed, {
+        transactionId: confirmed.id,
+        method: "scheduled_confirm",
       });
       return toTransactionResponse(confirmed);
     },
@@ -393,6 +456,9 @@ export async function registerTransactionRoutes(
           { field: "id", message: "Só dá para pular uma agendada." },
         ]);
       }
+      // Recorded before the delete: once the row is gone, tx.transactionDate
+      // (needed to derive year/month) is gone with it.
+      await recordFulfillment(tx, { transactionId: null, method: "manual" });
       await prisma.transaction.delete({ where: { id: tx.id } });
       return reply.code(204).send();
     },

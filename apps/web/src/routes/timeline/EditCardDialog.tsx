@@ -1,6 +1,9 @@
 // apps/web/src/routes/timeline/EditCardDialog.tsx
 // issues.md: clicar no evento "Você adicionou o cartão X" na timeline deve
 // abrir a edição deste cartão.
+//
+// BACKLOG.md "Arquivar conta/cartão" — see EditAccountDialog.tsx's header
+// note for the archive/delete rationale, mirrored here for cards.
 import { Alert, Button, Dialog, Input, Select } from "@lurem/ui";
 import { useMutation } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
@@ -14,11 +17,15 @@ export function EditCardDialog({
   accounts,
   onClose,
   onSaved,
+  onArchiveToggled,
+  onDeleted,
 }: {
   card: CardDto | null;
   accounts: AccountDto[];
   onClose: () => void;
   onSaved: () => void;
+  onArchiveToggled?: (archived: boolean) => void;
+  onDeleted?: () => void;
 }) {
   const [name, setName] = useState(card?.name ?? "");
   const [limit, setLimit] = useState(
@@ -31,6 +38,45 @@ export function EditCardDialog({
   );
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  const archiveMutation = useMutation({
+    mutationFn: (archived: boolean) =>
+      apiFetchJson<CardDto>(`/cards/${card?.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ archived }),
+      }),
+    onSuccess: (_data, archived) => {
+      onArchiveToggled?.(archived);
+      onClose();
+    },
+    onError: (error: unknown) => {
+      setFormError(
+        error instanceof ApiError
+          ? error.message
+          : "Não foi possível arquivar o cartão.",
+      );
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () =>
+      apiFetchJson<{ ok: true }>(`/cards/${card?.id}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      onDeleted?.();
+      onClose();
+    },
+    onError: (error: unknown) => {
+      setConfirmingDelete(false);
+      setFormError(
+        error instanceof ApiError
+          ? error.message
+          : "Não foi possível excluir o cartão.",
+      );
+    },
+  });
 
   const updateMutation = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
@@ -136,13 +182,56 @@ export function EditCardDialog({
         {formError ? (
           <Alert variant="error" layout="inline" title={formError} />
         ) : null}
-        <div className="flex justify-end gap-2.5">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button type="submit" loading={updateMutation.isPending}>
-            Salvar
-          </Button>
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex flex-wrap gap-2.5">
+            {onArchiveToggled && card ? (
+              <Button
+                type="button"
+                variant="secondary"
+                loading={archiveMutation.isPending}
+                onClick={() => archiveMutation.mutate(!card.archivedAt)}
+              >
+                {card.archivedAt ? "Desarquivar" : "Arquivar"}
+              </Button>
+            ) : null}
+            {onDeleted && card && !card.hasTransactions ? (
+              confirmingDelete ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    loading={deleteMutation.isPending}
+                    onClick={() => deleteMutation.mutate()}
+                  >
+                    Confirmar exclusão
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setConfirmingDelete(false)}
+                  >
+                    Cancelar exclusão
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={() => setConfirmingDelete(true)}
+                >
+                  Excluir
+                </Button>
+              )
+            ) : null}
+          </div>
+          <div className="flex gap-2.5">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" loading={updateMutation.isPending}>
+              Salvar
+            </Button>
+          </div>
         </div>
       </form>
     </Dialog>

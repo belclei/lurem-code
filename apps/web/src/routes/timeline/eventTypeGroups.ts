@@ -1,6 +1,6 @@
 // apps/web/src/routes/timeline/eventTypeGroups.ts
 // ARQUITETURA.md §6.12 item 3: a Timeline filtra por tipo de evento além de
-// conta/cartão. `DomainEvent.type` tem 34 valores concretos (TimelineEventRow's
+// conta/cartão. `DomainEvent.type` tem 35 valores concretos (TimelineEventRow's
 // catalog) — granular demais pra um filtro; agrupados nas mesmas famílias que
 // TimelineEventRow já usa pra ícone (eventIcon()), então o rótulo do filtro e o
 // ícone que o usuário vê na lista sempre concordam. "transaction" é o
@@ -46,6 +46,7 @@ export const EVENT_TYPE_GROUPS: EventTypeGroup[] = [
     id: "connections",
     label: "Conexões e portador",
     types: [
+      "invite.created",
       "invite.deleted",
       "invite.resent",
       "connection.requested",

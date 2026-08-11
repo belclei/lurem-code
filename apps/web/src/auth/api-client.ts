@@ -100,6 +100,28 @@ export async function loginWithGoogle(
   return data.accessToken;
 }
 
+/**
+ * Always resolves with the same generic message, whether or not the e-mail
+ * belongs to an account — the API itself never reveals which (account
+ * enumeration protection); this helper just forwards that response as-is.
+ */
+export function forgotPassword(email: string): Promise<{ message: string }> {
+  return apiFetchJson<{ message: string }>("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function resetPassword(
+  token: string,
+  newPassword: string,
+): Promise<{ ok: boolean }> {
+  return apiFetchJson<{ ok: boolean }>("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, newPassword }),
+  });
+}
+
 export async function logout(): Promise<void> {
   const token = getAccessToken();
   try {

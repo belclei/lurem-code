@@ -244,7 +244,7 @@ describe("PATCH/DELETE /v1/accounts/:id", () => {
     expect(response.statusCode).toBe(404);
   });
 
-  it("soft-deletes (deactivates) rather than removing the row", async () => {
+  it("hard-deletes an account with no transactions", async () => {
     const { accessToken, userId } = await authedUser();
     const institution = await createInstitution();
     const account = await server.prisma.account.create({
@@ -258,9 +258,99 @@ describe("PATCH/DELETE /v1/accounts/:id", () => {
     });
 
     expect(response.statusCode).toBe(200);
+    const stored = await server.prisma.account.findUnique({
+      where: { id: account.id },
+    });
+    expect(stored).toBeNull();
+  });
+
+  it("soft-deletes (deactivates) rather than removing the row when the account has transactions", async () => {
+    const { accessToken, userId } = await authedUser();
+    const institution = await createInstitution();
+    const account = await server.prisma.account.create({
+      data: { userId, type: "checking", institutionId: institution.id },
+    });
+    await server.prisma.transaction.create({
+      data: {
+        userId,
+        accountId: account.id,
+        kind: "expense",
+        description: "Mercado",
+        transactionDate: new Date(),
+        amountCents: 1_000,
+        amountBRLCents: 1_000,
+      },
+    });
+
+    const response = await server.inject({
+      method: "DELETE",
+      url: `/v1/accounts/${account.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
     const stored = await server.prisma.account.findUniqueOrThrow({
       where: { id: account.id },
     });
     expect(stored.isActive).toBe(false);
+  });
+
+  it("archives and unarchives via PATCH { archived }", async () => {
+    const { accessToken, userId } = await authedUser();
+    const institution = await createInstitution();
+    const account = await server.prisma.account.create({
+      data: { userId, type: "checking", institutionId: institution.id },
+    });
+
+    const archived = await server.inject({
+      method: "PATCH",
+      url: `/v1/accounts/${account.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { archived: true },
+    });
+    expect(archived.statusCode).toBe(200);
+    expect(archived.json().archivedAt).not.toBeNull();
+
+    const stored = await server.prisma.account.findUniqueOrThrow({
+      where: { id: account.id },
+    });
+    expect(stored.archivedAt).not.toBeNull();
+
+    const unarchived = await server.inject({
+      method: "PATCH",
+      url: `/v1/accounts/${account.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { archived: false },
+    });
+    expect(unarchived.statusCode).toBe(200);
+    expect(unarchived.json().archivedAt).toBeNull();
+  });
+
+  it("exposes hasTransactions on GET", async () => {
+    const { accessToken, userId } = await authedUser();
+    const institution = await createInstitution();
+    const account = await server.prisma.account.create({
+      data: { userId, type: "checking", institutionId: institution.id },
+    });
+    await server.prisma.transaction.create({
+      data: {
+        userId,
+        accountId: account.id,
+        kind: "expense",
+        description: "Mercado",
+        transactionDate: new Date(),
+        amountCents: 1_000,
+        amountBRLCents: 1_000,
+      },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/v1/accounts",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()[0].hasTransactions).toBe(true);
   });
 });

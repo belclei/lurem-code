@@ -77,6 +77,34 @@ interface SortableItem {
 const GOOGLE_PLACEHOLDER_BIRTH_DATE = "1970-01-01";
 
 /**
+ * One synthetic "known future/structural day" contributed by a source (see
+ * `synthesizeStructuralDates` below). `dates` alone (no `event`) is the
+ * original birthday/join-day case: the day must exist in the page, but the
+ * client renders its own Alert for it (dateHelpers.ts's
+ * `isBirthday`/`isJoinDay`) instead of a catalog event. `event` is the
+ * generalization added for card invoice projections and the global
+ * calendar (Item A/B): it renders as a normal `TimelineEventRow` even
+ * though no real `DomainEvent` row exists yet for that day.
+ */
+export interface StructuralDateSource {
+  dates: string[];
+  event?: {
+    type: string;
+    payload: unknown;
+    aggregateType: string;
+    aggregateId: string;
+  };
+}
+
+export interface SyntheticStructuralItem {
+  date: string;
+  type: string;
+  payload: unknown;
+  aggregateType: string;
+  aggregateId: string;
+}
+
+/**
  * Days with no transaction/event but that still must appear (issues.md: "Se
  * o dia não tem transação, mas tem algum outro evento, tipo, aniversário,
  * ainda assim você deve exibir este dia") — birthday (every year since the
@@ -91,10 +119,10 @@ const GOOGLE_PLACEHOLDER_BIRTH_DATE = "1970-01-01";
  * `today`'s year at most, so this can't spiral into showing every future
  * year's birthday — just the next upcoming one.
  */
-export function synthesizeStructuralDates(
+export function birthdayJoinSource(
   user: { birthDate: Date | null; createdAt: Date },
   today: Date = new Date(),
-): string[] {
+): StructuralDateSource {
   const todayYmd = SAO_PAULO_DAY.format(today);
   const joinYmd = SAO_PAULO_DAY.format(user.createdAt);
   const dates = new Set<string>([joinYmd]);
@@ -113,13 +141,54 @@ export function synthesizeStructuralDates(
 
   // Never before the user existed — a birthday the same calendar year they
   // joined, but before the join date, isn't a real timeline day for them.
-  return [...dates].filter((date) => date >= joinYmd);
+  return { dates: [...dates].filter((date) => date >= joinYmd) };
+}
+
+/**
+ * Generalized "known future/structural day" projection (BACKLOG: calendário
+ * global + fechamento/vencimento de fatura com antecedência). Takes any
+ * number of independent sources — each just a list of dates plus an
+ * optional event to render on them — and merges them into the set of dates
+ * that must exist in the page (`dates`) and the synthetic timeline items to
+ * inject on those dates (`items`). Callers build one source per
+ * "known-in-advance" thing: `birthdayJoinSource` above (no event), one pair
+ * per credit card (closing/due projection, invoice-status.ts's
+ * `nextInvoiceMilestones`), one per `GlobalCalendarEntry`.
+ */
+export function synthesizeStructuralDates(sources: StructuralDateSource[]): {
+  dates: string[];
+  items: SyntheticStructuralItem[];
+} {
+  const dateSet = new Set<string>();
+  const items: SyntheticStructuralItem[] = [];
+
+  for (const source of sources) {
+    for (const date of source.dates) {
+      dateSet.add(date);
+      if (source.event) {
+        items.push({
+          date,
+          type: source.event.type,
+          payload: source.event.payload,
+          aggregateType: source.event.aggregateType,
+          aggregateId: source.event.aggregateId,
+        });
+      }
+    }
+  }
+
+  return { dates: [...dateSet], items };
 }
 
 export function buildTimelinePage(
   transactions: Transaction[],
   events: DomainEvent[],
-  opts: { cursor?: string; limit: number; structuralDates?: string[] },
+  opts: {
+    cursor?: string;
+    limit: number;
+    structuralDates?: string[];
+    structuralItems?: SyntheticStructuralItem[];
+  },
 ): TimelinePageWithoutBalance {
   const installmentsByGroupId = new Map<string, Transaction[]>();
   for (const tx of transactions) {
@@ -169,6 +238,26 @@ export function buildTimelinePage(
     const list = byDay.get(entry.date) ?? [];
     list.push(entry.item);
     byDay.set(entry.date, list);
+  }
+  // Synthetic items (card invoice/global calendar projection) land in the
+  // future, ahead of `today` — same "mais recente primeiro" ordering as
+  // everything else below, so they surface at the top of the very first
+  // page (no cursor) and never resurface once the cursor has moved past
+  // them (§ cursor caution: this paginates back in time from `today`, it
+  // never re-walks forward into dates already shown on an earlier page).
+  for (const item of opts.structuralItems ?? []) {
+    if (opts.cursor && item.date >= opts.cursor) continue;
+    const list = byDay.get(item.date) ?? [];
+    list.push({
+      itemType: "event",
+      id: `synthetic:${item.type}:${item.aggregateId}:${item.date}`,
+      type: item.type,
+      payload: item.payload,
+      createdAt: `${item.date}T00:00:00.000Z`,
+      aggregateType: item.aggregateType,
+      aggregateId: item.aggregateId,
+    });
+    byDay.set(item.date, list);
   }
   for (const date of opts.structuralDates ?? []) {
     if (opts.cursor && date >= opts.cursor) continue;

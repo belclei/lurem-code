@@ -7,7 +7,17 @@
 // banner reativo de "conta além do limite" foi removido daqui — o aviso
 // agora acontece no momento do cadastro da transação (NewTransactionDialog),
 // não como um lembrete permanente no topo da página.
-import { Body, Button, PlusIcon, ProfileIncompleteAlert } from "@lurem/ui";
+import {
+  Alert,
+  Body,
+  Button,
+  Card,
+  Mono,
+  PlusIcon,
+  ProfileIncompleteAlert,
+  formatDate,
+  formatMoney,
+} from "@lurem/ui";
 import type { CalendarRange } from "@lurem/ui";
 import {
   useInfiniteQuery,
@@ -23,9 +33,21 @@ import type {
   AccountDto,
   CardDto,
   InstitutionDto,
+  PendingRecurringDto,
   TimelinePageDto,
   TransactionDto,
 } from "../auth/types";
+import {
+  deserializeDate,
+  deserializeDateRange,
+  deserializeNullableString,
+  deserializeStringSet,
+  serializeDate,
+  serializeDateRange,
+  serializeNullableString,
+  serializeStringSet,
+  useSessionState,
+} from "../lib/sessionState";
 import type { DashboardInsights } from "./DashboardView";
 import { EditAccountDialog } from "./timeline/EditAccountDialog";
 import { EditCardDialog } from "./timeline/EditCardDialog";
@@ -46,21 +68,51 @@ export function TimelinePage() {
   const { isBooting, user } = useAuth();
   const navigate = useNavigate();
   const hasSession = !isBooting && Boolean(user);
-  const [hiddenChipIds, setHiddenChipIds] = useState<Set<string>>(new Set());
+  // issues.md: filtros sobrevivem a trocar de tela e voltar — só resetam
+  // num reload de verdade (sessionStorage, ver lib/sessionState.ts). Os
+  // estados de popover aberto/fechado abaixo (periodOpen/eventTypesOpen/
+  // categoryOpen/accountsOpen) NÃO são filtro, são só UI transitória —
+  // continuam em useState normal, de propósito.
+  const [hiddenChipIds, setHiddenChipIds] = useSessionState<Set<string>>(
+    "timeline.hiddenChipIds",
+    () => new Set(),
+    serializeStringSet,
+    deserializeStringSet,
+  );
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [cardDialogOpen, setCardDialogOpen] = useState(false);
   const [txDialogOpen, setTxDialogOpen] = useState(false);
-  const [periodRange, setPeriodRange] = useState<CalendarRange>(() =>
-    thisMonthRange(),
+  const [periodRange, setPeriodRange] = useSessionState<CalendarRange>(
+    "timeline.periodRange",
+    thisMonthRange,
+    serializeDateRange,
+    deserializeDateRange,
   );
-  const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
+  const [calendarMonth, setCalendarMonth] = useSessionState<Date>(
+    "timeline.calendarMonth",
+    () => new Date(),
+    serializeDate,
+    deserializeDate,
+  );
   const [periodOpen, setPeriodOpen] = useState(false);
   const [eventTypesOpen, setEventTypesOpen] = useState(false);
-  const [hiddenEventGroupIds, setHiddenEventGroupIds] = useState<Set<string>>(
-    new Set(),
+  const [hiddenEventGroupIds, setHiddenEventGroupIds] = useSessionState<
+    Set<string>
+  >(
+    "timeline.hiddenEventGroupIds",
+    () => new Set(),
+    serializeStringSet,
+    deserializeStringSet,
   );
-  const [categoryFilterId, setCategoryFilterId] = useState<string | null>(null);
+  const [categoryFilterId, setCategoryFilterId] = useSessionState<
+    string | null
+  >(
+    "timeline.categoryFilterId",
+    () => null,
+    serializeNullableString,
+    deserializeNullableString,
+  );
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [accountsOpen, setAccountsOpen] = useState(false);
   // Task 10 (§6.12) — per-row "ver todas as parcelas" toggle for the
@@ -121,12 +173,20 @@ export function TimelinePage() {
       invalidateTimeline();
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       queryClient.invalidateQueries({ queryKey: ["insights"] });
+      // Closes the confirm → RecurringFulfillment loop (see
+      // apps/api/src/transactions/routes.ts's recordFulfillment): a series
+      // that was showing up under "pendente de aprovação" may not be
+      // anymore.
+      queryClient.invalidateQueries({ queryKey: ["recurring"] });
     },
   });
   const skipMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/transactions/${id}/skip`, { method: "POST" }),
-    onSuccess: invalidateTimeline,
+    onSuccess: () => {
+      invalidateTimeline();
+      queryClient.invalidateQueries({ queryKey: ["recurring"] });
+    },
   });
   const deleteMutation = useMutation({
     mutationFn: (id: string) =>
@@ -167,6 +227,17 @@ export function TimelinePage() {
   const insightsQuery = useQuery({
     queryKey: ["insights", "dashboard"],
     queryFn: () => apiFetchJson<DashboardInsights>("/insights/dashboard"),
+    enabled: hasSession,
+  });
+  // Backlog "fila de pendência de aprovação" (§6.7 item 3, "Confirmar todo
+  // mês"): séries isVariableAmount cujo mês corrente já venceu sem
+  // confirmação. Banner acima dos filtros, não um item por dia na Timeline —
+  // é uma fila de pendências, não um evento histórico do dia em que
+  // venceu.
+  const pendingRecurringQuery = useQuery({
+    queryKey: ["recurring", "pending"],
+    queryFn: () =>
+      apiFetchJson<PendingRecurringDto[]>("/recurring-transactions/pending"),
     enabled: hasSession,
   });
 
@@ -315,7 +386,10 @@ export function TimelinePage() {
       ) : null}
 
       <div className="grid items-start gap-6 lg:grid-cols-[1fr_320px] lg:gap-8">
-        <div>
+        {/* overflow-x-hidden scoped to the feed column only, not to any
+            ancestor of the sticky balance aside below — see AppLayout.tsx's
+            comment on <main> for why that ancestor scoping breaks sticky. */}
+        <div className="overflow-x-hidden">
           <div className="mb-7 flex flex-col items-start gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
             <div className="min-w-0">
               <p className="lr-label mb-2">{dateLabel}</p>
@@ -362,6 +436,11 @@ export function TimelinePage() {
               queryClient.invalidateQueries({ queryKey: ["accounts"] });
               queryClient.invalidateQueries({ queryKey: ["cards"] });
               queryClient.invalidateQueries({ queryKey: ["insights"] });
+              // Confirm/skip (both possible from this dialog now) can change
+              // whether a variable-amount series still counts as "pendente
+              // de aprovação" — see apps/api/src/transactions/routes.ts's
+              // recordFulfillment.
+              queryClient.invalidateQueries({ queryKey: ["recurring"] });
             }}
             onDelete={(t) =>
               deleteMutation.mutate(t.id, {
@@ -429,6 +508,36 @@ export function TimelinePage() {
             }}
           />
 
+          {(pendingRecurringQuery.data ?? []).length > 0 ? (
+            <Card className="mb-4">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <Body weight="medium">
+                  {pendingRecurringQuery.data?.length === 1
+                    ? "1 recorrência pendente de aprovação"
+                    : `${pendingRecurringQuery.data?.length} recorrências pendentes de aprovação`}
+                </Body>
+                <Button
+                  variant="tertiary"
+                  size="sm"
+                  onClick={() => navigate({ to: "/recurring" })}
+                >
+                  Revisar
+                </Button>
+              </div>
+              <div className="flex flex-col gap-2">
+                {(pendingRecurringQuery.data ?? []).map((p) => (
+                  <Alert
+                    key={p.id}
+                    variant="warning"
+                    layout="inline"
+                    title={p.description}
+                    description={`Vencida em ${formatDate(p.dueDate)} · valor de referência ${formatMoney(p.referenceAmountCents)} · confirme o valor real`}
+                  />
+                ))}
+              </div>
+            </Card>
+          ) : null}
+
           <TimelineFilterBar
             chips={chips}
             hiddenChipIds={hiddenChipIds}
@@ -471,6 +580,9 @@ export function TimelinePage() {
             onEditTransaction={(t) => setEditingTx(t)}
             onEditAccount={(a) => setEditingAccount(a)}
             onEditCard={(c) => setEditingCard(c)}
+            onManageRecurring={(id) =>
+              navigate({ to: "/recurring", search: { edit: id } })
+            }
           />
         </div>
 
