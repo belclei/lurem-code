@@ -257,10 +257,15 @@ export function RecurringPage() {
           placeholder="Selecione…"
           error={fieldErrors.accountId}
         />
+        {/* Backend/DB field name stays `isVariableAmount` (schema comment:
+            "conta de luz (§6.7)") — only the visible label changed, to avoid
+            a migration for a rename that's purely cosmetic. See
+            packages/ui/src/components/RecurringRow/RecurringRow.tsx for the
+            matching badge label. */}
         <Checkbox
           checked={isVariable}
           onChange={(e) => setIsVariable(e.target.checked)}
-          label="Valor variável (ex.: conta de luz)"
+          label="Confirmar todo mês (ex.: conta de luz)"
         />
 
         {formError ? (
