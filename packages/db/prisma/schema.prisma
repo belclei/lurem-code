@@ -532,3 +532,25 @@ model InvestmentMovement {
   movementDate   DateTime @db.Date
   createdAt      DateTime @default(now())
 }
+
+// ---------------------------------------------------------------------------
+// Calendário global administrado (backlog: "Natal", "prazo pra declarar IR"…)
+// ---------------------------------------------------------------------------
+
+// Recorrência anual simples (month+day) em vez de RRULE/data única: todo caso
+// de uso do backlog ("Natal", "prazo de IR") é "todo ano, mesmo dia" — uma
+// data-calendário fixa exigiria o admin recadastrar a entrada todo ano.
+enum CalendarEntryDisplayStyle {
+  box
+  inline
+}
+
+model GlobalCalendarEntry {
+  id           String                    @id @default(cuid())
+  title        String
+  month        Int // 1..12
+  day          Int // 1..31 (clamp ao último dia do mês, mesma convenção de CreditCard.closingDay)
+  displayStyle CalendarEntryDisplayStyle @default(inline)
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+}
