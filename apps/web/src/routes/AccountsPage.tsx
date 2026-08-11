@@ -224,7 +224,14 @@ export function AccountsPage() {
 
       <section className="mb-9">
         <h2 className="mb-3.5 text-[.6875rem] tracking-[.16em] text-[var(--lr-text-secondary)] uppercase">
-          Contas · saldo líquido {formatMoney(netBalanceCents)}
+          Contas · saldo líquido{" "}
+          <span
+            className={
+              netBalanceCents < 0 ? "text-[var(--lr-negative)]" : undefined
+            }
+          >
+            {formatMoney(netBalanceCents)}
+          </span>
         </h2>
         {accountsQuery.isLoading ? (
           <p className="text-[var(--lr-text-secondary)]">Carregando…</p>

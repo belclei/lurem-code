@@ -26,7 +26,11 @@ function HeroCard({ money }: { money: Money }) {
       <Body muted className="text-[.8125rem]">
         Disponível Hoje
       </Body>
-      <Mono variant="number" className="mt-1 block lr-money--hero">
+      <Mono
+        variant="number"
+        tone={money.valueCents < 0 ? "out" : "default"}
+        className="mt-1 block lr-money--hero"
+      >
         {formatMoney(money.valueCents)}
       </Mono>
       <Button

@@ -32,7 +32,11 @@ export function InsightCard({
       <Body muted className="text-[.8125rem]">
         {title}
       </Body>
-      <Mono variant="number" className="mt-1 block text-[2rem]">
+      <Mono
+        variant="number"
+        tone={money.valueCents < 0 ? "out" : "default"}
+        className="mt-1 block text-[2rem]"
+      >
         {formatMoney(money.valueCents)}
       </Mono>
       <Button
