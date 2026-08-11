@@ -403,4 +403,104 @@ describe("GET /v1/timeline", () => {
     expect(entryItem).toBeDefined();
     expect(entryItem.payload.title).toBe("Feriado de teste");
   });
+
+  // Backlog "Recorrência integrada ao dialog": a próxima ocorrência de uma
+  // série ativa ainda não vencida aparece com antecedência (mesma ideia da
+  // projeção de fatura acima), mesmo sem nenhuma Transaction real criada —
+  // o cron só materializa a Transaction no próprio dia do vencimento.
+  it("projects the next not-yet-due occurrence of an active recurring series (BACKLOG: recorrência com antecedência)", async () => {
+    const { userId, accessToken } = await authedUser();
+    const account = await createAccount(userId);
+    const now = new Date();
+    const { year, month, day } = {
+      year: now.getUTCFullYear(),
+      month: now.getUTCMonth() + 1,
+      day: now.getUTCDate(),
+    };
+    // dayOfMonth 28 falls in the future for any day of the month up to 27 —
+    // acceptable date-dependence, same pattern as this file's other "today"
+    // based tests above.
+    const dueDay = 28;
+    void year;
+    void month;
+    void day;
+    await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Aluguel",
+        kind: "expense",
+        accountId: account.id,
+        referenceAmountCents: 150_000,
+        referenceAmountBRLCents: 150_000,
+        dayOfMonth: dueDay,
+        startDate: new Date("2020-01-01"),
+      },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/v1/timeline",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    const allItems = body.days.flatMap(
+      (d: { items: Array<{ type?: string; payload?: unknown }> }) => d.items,
+    );
+    const upcoming = allItems.find(
+      (i: { type?: string }) => i.type === "recurring.occurrence_upcoming",
+    ) as { payload: { description: string; amountCents: number } } | undefined;
+    expect(upcoming).toBeDefined();
+    expect(upcoming?.payload.description).toBe("Aluguel");
+    expect(upcoming?.payload.amountCents).toBe(150_000);
+  });
+
+  it("does not project an upcoming occurrence once a real Transaction already covers this month", async () => {
+    const { userId, accessToken } = await authedUser();
+    const account = await createAccount(userId);
+    const series = await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Aluguel",
+        kind: "expense",
+        accountId: account.id,
+        referenceAmountCents: 150_000,
+        referenceAmountBRLCents: 150_000,
+        dayOfMonth: 28,
+        startDate: new Date("2020-01-01"),
+      },
+    });
+    const now = new Date();
+    await server.prisma.transaction.create({
+      data: {
+        userId,
+        accountId: account.id,
+        kind: "expense",
+        description: "Aluguel",
+        transactionDate: new Date(
+          Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 15),
+        ),
+        amountCents: 150_000,
+        amountBRLCents: 150_000,
+        isScheduled: true,
+        recurringTransactionId: series.id,
+      },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/v1/timeline",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    const body = response.json();
+    const allItems = body.days.flatMap(
+      (d: { items: Array<{ type?: string }> }) => d.items,
+    );
+    const upcoming = allItems.find(
+      (i: { type?: string }) => i.type === "recurring.occurrence_upcoming",
+    );
+    expect(upcoming).toBeUndefined();
+  });
 });

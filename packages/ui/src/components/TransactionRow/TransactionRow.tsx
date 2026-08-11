@@ -59,6 +59,17 @@ export type TransactionRowProps =
       onEdit: () => void;
       onSkip: () => void;
       onDelete: () => void;
+    })
+  | (TransactionRowCommon & {
+      // Backlog "Recorrência integrada ao dialog": a próxima ocorrência de
+      // uma série recorrente ainda não vencida (nenhuma Transaction real
+      // existe pra ela ainda — ver apps/api/src/timeline/routes.ts's
+      // `recurringOccurrenceSource`). Visually distinct from "scheduled"
+      // (that variant IS a real Transaction row, isScheduled=true) — this
+      // one is a pure preview, so it never exposes
+      // confirm/skip/delete actions, only a click-through to manage the
+      // series.
+      variant: "recurringPreview";
     });
 
 const KIND_TONE: Record<TransactionKind, "in" | "out" | "default"> = {
@@ -129,12 +140,19 @@ function RowHeader(props: TransactionRowProps) {
               Agendada
             </Badge>
           ) : null}
+          {props.variant === "recurringPreview" ? (
+            <Badge kind="status" status="pending">
+              Recorrência pendente
+            </Badge>
+          ) : null}
         </div>
         <Body muted className="text-[.8125rem]">
           {props.categoryLabel ? `${props.categoryLabel} · ` : ""}
           {props.variant === "scheduled"
             ? scheduledMetaText(props.date)
-            : formatDate(props.date)}
+            : props.variant === "recurringPreview"
+              ? `Prevista para ${formatDate(props.date)} · aguardando confirmação`
+              : formatDate(props.date)}
           {props.variant === "transfer" ? ` · ${props.transferToLabel}` : ""}
         </Body>
       </div>
@@ -142,7 +160,10 @@ function RowHeader(props: TransactionRowProps) {
         <Mono
           variant="number"
           tone={
-            props.variant === "scheduled" ? "estimate" : KIND_TONE[props.kind]
+            props.variant === "scheduled" ||
+            props.variant === "recurringPreview"
+              ? "estimate"
+              : KIND_TONE[props.kind]
           }
         >
           {KIND_SIGN[props.kind]}
@@ -276,7 +297,9 @@ export function TransactionRow(props: TransactionRowProps) {
     <Card
       interactive={clickable}
       onClick={clickable ? props.onClick : undefined}
-      dashed={props.variant === "scheduled"}
+      dashed={
+        props.variant === "scheduled" || props.variant === "recurringPreview"
+      }
     >
       <RowHeader {...props} />
       {props.variant === "installment" && props.expanded ? (

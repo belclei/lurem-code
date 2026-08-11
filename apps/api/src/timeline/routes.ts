@@ -7,8 +7,14 @@
 // própria aqui — ambos derivam de GET /v1/accounts e GET /v1/cards, que já
 // expõem isOverLimit/balanceCents/usedCents; duplicar esse cálculo numa rota
 // nova seria uma segunda fonte de verdade para o mesmo número (§0).
-import { balance, sumCardTransactionsForInvoiceMonth } from "@lurem/core";
-import type { Prisma, Transaction } from "@lurem/db";
+import {
+  balance,
+  clampDay,
+  makeDate,
+  saoPauloYMD,
+  sumCardTransactionsForInvoiceMonth,
+} from "@lurem/core";
+import type { Prisma, RecurringTransaction, Transaction } from "@lurem/db";
 import type { CreditCardLike, TransactionLike } from "@lurem/domain";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -105,6 +111,59 @@ function cardInvoiceSources(
       },
     },
   ];
+}
+
+/**
+ * Backlog "Recorrência integrada ao dialog": a ocorrência real (Transaction,
+ * isScheduled=true) só é materializada pelo cron diário
+ * (fulfillment.ts's `fulfillDueRecurrences`) exatamente no dia previsto —
+ * antes disso não existe nenhuma linha para aquele mês. Sem isto, uma série
+ * recém-criada só apareceria na Timeline no próprio dia do vencimento, nunca
+ * "com antecedência" (mesma ideia de `cardInvoiceSources` acima, para a
+ * próxima fatura). Gera no máximo UM item — a próxima ocorrência ainda não
+ * vencida da série — e nunca duplica uma linha real: se o mês já tem uma
+ * Transaction ligada a esta série (cron já rodou, ou o usuário já
+ * confirmou/importou manualmente), a série não entra aqui.
+ */
+function recurringOccurrenceSource(
+  series: RecurringTransaction,
+  allTransactions: Transaction[],
+  asOf: Date,
+): StructuralDateSource | null {
+  const { year, month, day } = saoPauloYMD(asOf);
+  const dueDay = clampDay(year, month, series.dayOfMonth);
+  const dueDate = makeDate(year, month, dueDay);
+  const today = makeDate(year, month, day);
+
+  if (series.startDate > dueDate) return null;
+  if (series.endDate && series.endDate < dueDate) return null;
+  // Já venceu (ou vence hoje) — o cron cuida disso, ou já é uma Transaction
+  // real; não é mais uma "ocorrência futura" para pré-visualizar.
+  if (today >= dueDate) return null;
+
+  const alreadyMaterialized = allTransactions.some(
+    (tx) =>
+      tx.recurringTransactionId === series.id &&
+      tx.transactionDate.getUTCFullYear() === year &&
+      tx.transactionDate.getUTCMonth() + 1 === month,
+  );
+  if (alreadyMaterialized) return null;
+
+  return {
+    dates: [ymd(dueDate)],
+    event: {
+      type: "recurring.occurrence_upcoming",
+      payload: {
+        recurringTransactionId: series.id,
+        description: series.description,
+        kind: series.kind,
+        amountCents: series.referenceAmountCents,
+        isVariableAmount: series.isVariableAmount,
+      },
+      aggregateType: "RecurringTransaction",
+      aggregateId: series.id,
+    },
+  };
 }
 
 /**
@@ -261,6 +320,7 @@ export async function registerTimelineRoutes(
         user,
         activeCards,
         calendarEntries,
+        activeRecurringSeries,
       ] = await Promise.all([
         includeTransactions
           ? fastify.prisma.transaction.findMany({ where: txWhere })
@@ -280,6 +340,11 @@ export async function registerTimelineRoutes(
         }),
         // Calendário global — administrado, não tem userId (aparece pra todos).
         fastify.prisma.globalCalendarEntry.findMany(),
+        // Projeção de próxima ocorrência ainda não vencida (ver
+        // recurringOccurrenceSource acima) — só séries ativas importam.
+        fastify.prisma.recurringTransaction.findMany({
+          where: { userId, isActive: true },
+        }),
       ]);
 
       const institutionById = new Map(
@@ -314,6 +379,11 @@ export async function registerTimelineRoutes(
       const calendarSources = calendarEntries.map((entry) =>
         globalCalendarSource(entry, now),
       );
+      const recurringSources = activeRecurringSeries
+        .map((series) =>
+          recurringOccurrenceSource(series, allTransactions, now),
+        )
+        .filter((source): source is StructuralDateSource => source !== null);
 
       // issues.md: aniversário/dia de cadastro devem aparecer mesmo sem
       // transação/evento naquele dia — mas ainda respeitando from/to. Mesmo
@@ -325,6 +395,7 @@ export async function registerTimelineRoutes(
         birthdayJoinSource(user),
         ...cardSources,
         ...calendarSources,
+        ...recurringSources,
       ]);
       const structuralDates = structural.dates.filter(inRange);
       const structuralItems = structural.items.filter((item) =>
