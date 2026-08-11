@@ -8,6 +8,7 @@
 // expõem isOverLimit/balanceCents/usedCents; duplicar esse cálculo numa rota
 // nova seria uma segunda fonte de verdade para o mesmo número (§0).
 import {
+  addMonths,
   balance,
   clampDay,
   makeDate,
@@ -113,6 +114,17 @@ function cardInvoiceSources(
   ];
 }
 
+// Pragmatic ceilings for the loop below. When the caller bounds the range
+// with `to`, we trust it (a period filter picked in the UI) but still cap at
+// 5 years so a pathological range can't spin the loop forever. When `to` is
+// open-ended, there's no caller-given bound at all — 6 months ahead is the
+// same "alguns meses à frente" horizon used elsewhere in the app (e.g. card
+// invoice projection only ever looks at the next milestone), a reasonable
+// amount of look-ahead without projecting an active no-end-date series into
+// the indefinite future.
+const OPEN_RANGE_PROJECTION_MONTHS = 6;
+const MAX_PROJECTION_MONTHS = 60;
+
 /**
  * Backlog "Recorrência integrada ao dialog": a ocorrência real (Transaction,
  * isScheduled=true) só é materializada pelo cron diário
@@ -120,50 +132,86 @@ function cardInvoiceSources(
  * antes disso não existe nenhuma linha para aquele mês. Sem isto, uma série
  * recém-criada só apareceria na Timeline no próprio dia do vencimento, nunca
  * "com antecedência" (mesma ideia de `cardInvoiceSources` acima, para a
- * próxima fatura). Gera no máximo UM item — a próxima ocorrência ainda não
- * vencida da série — e nunca duplica uma linha real: se o mês já tem uma
+ * próxima fatura). Gera um item por mês dentro de [from, to] (ou até
+ * OPEN_RANGE_PROJECTION_MONTHS à frente se `to` não foi informado) em que a
+ * série ainda não venceu e ainda não tem uma linha real: se o mês já tem uma
  * Transaction ligada a esta série (cron já rodou, ou o usuário já
- * confirmou/importou manualmente), a série não entra aqui.
+ * confirmou/importou manualmente), aquele mês não entra aqui.
  */
-function recurringOccurrenceSource(
+function recurringOccurrenceSources(
   series: RecurringTransaction,
   allTransactions: Transaction[],
   asOf: Date,
-): StructuralDateSource | null {
-  const { year, month, day } = saoPauloYMD(asOf);
-  const dueDay = clampDay(year, month, series.dayOfMonth);
-  const dueDate = makeDate(year, month, dueDay);
-  const today = makeDate(year, month, day);
+  from: Date | undefined,
+  to: Date | undefined,
+): StructuralDateSource[] {
+  const {
+    year: todayYear,
+    month: todayMonth,
+    day: todayDay,
+  } = saoPauloYMD(asOf);
+  const today = makeDate(todayYear, todayMonth, todayDay);
 
-  if (series.startDate > dueDate) return null;
-  if (series.endDate && series.endDate < dueDate) return null;
-  // Já venceu (ou vence hoje) — o cron cuida disso, ou já é uma Transaction
-  // real; não é mais uma "ocorrência futura" para pré-visualizar.
-  if (today >= dueDate) return null;
+  // Never project before today's month — a due date that's already past (or
+  // today) isn't an "upcoming preview" anymore, it's the cron/confirm/skip
+  // flow's job (checked per-month below too, since the loop can start in the
+  // current month). Starting from `from`'s month when it's later than today
+  // just narrows how soon the projection begins; it never reaches into the
+  // past relative to `today`.
+  let cursor =
+    from && from > today
+      ? { year: from.getUTCFullYear(), month: from.getUTCMonth() + 1 }
+      : { year: todayYear, month: todayMonth };
 
-  const alreadyMaterialized = allTransactions.some(
-    (tx) =>
-      tx.recurringTransactionId === series.id &&
-      tx.transactionDate.getUTCFullYear() === year &&
-      tx.transactionDate.getUTCMonth() + 1 === month,
-  );
-  if (alreadyMaterialized) return null;
+  const monthCap = to ? MAX_PROJECTION_MONTHS : OPEN_RANGE_PROJECTION_MONTHS;
+  const sources: StructuralDateSource[] = [];
 
-  return {
-    dates: [ymd(dueDate)],
-    event: {
-      type: "recurring.occurrence_upcoming",
-      payload: {
-        recurringTransactionId: series.id,
-        description: series.description,
-        kind: series.kind,
-        amountCents: series.referenceAmountCents,
-        isVariableAmount: series.isVariableAmount,
-      },
-      aggregateType: "RecurringTransaction",
-      aggregateId: series.id,
-    },
-  };
+  for (let i = 0; i < monthCap; i++) {
+    const { year, month } = cursor;
+    const dueDay = clampDay(year, month, series.dayOfMonth);
+    const dueDate = makeDate(year, month, dueDay);
+
+    if (to && dueDate > to) break;
+    // Once a month's due date is past the series' end, every later month is
+    // too (months only move forward) — safe to stop scanning.
+    if (series.endDate && dueDate > series.endDate) break;
+
+    if (series.startDate <= dueDate && today < dueDate) {
+      const alreadyMaterialized = allTransactions.some(
+        (tx) =>
+          tx.recurringTransactionId === series.id &&
+          tx.transactionDate.getUTCFullYear() === year &&
+          tx.transactionDate.getUTCMonth() + 1 === month,
+      );
+      if (!alreadyMaterialized) {
+        sources.push({
+          dates: [ymd(dueDate)],
+          event: {
+            type: "recurring.occurrence_upcoming",
+            payload: {
+              recurringTransactionId: series.id,
+              description: series.description,
+              kind: series.kind,
+              amountCents: series.referenceAmountCents,
+              isVariableAmount: series.isVariableAmount,
+            },
+            aggregateType: "RecurringTransaction",
+            // Suffixed by month (unlike every other single-item structural
+            // source in this file): a series can now contribute more than
+            // one item per Timeline response, and the synthetic id
+            // (`synthesizeStructuralDates`/`buildTimelinePage`) is built
+            // from this aggregateId — keeping it per-month makes that
+            // explicit instead of relying on the date suffix alone.
+            aggregateId: `${series.id}:${year}-${String(month).padStart(2, "0")}`,
+          },
+        });
+      }
+    }
+
+    cursor = addMonths(cursor, 1);
+  }
+
+  return sources;
 }
 
 /**
@@ -379,11 +427,15 @@ export async function registerTimelineRoutes(
       const calendarSources = calendarEntries.map((entry) =>
         globalCalendarSource(entry, now),
       );
-      const recurringSources = activeRecurringSeries
-        .map((series) =>
-          recurringOccurrenceSource(series, allTransactions, now),
-        )
-        .filter((source): source is StructuralDateSource => source !== null);
+      const recurringSources = activeRecurringSeries.flatMap((series) =>
+        recurringOccurrenceSources(
+          series,
+          allTransactions,
+          now,
+          fromDate,
+          toDate,
+        ),
+      );
 
       // issues.md: aniversário/dia de cadastro devem aparecer mesmo sem
       // transação/evento naquele dia — mas ainda respeitando from/to. Mesmo

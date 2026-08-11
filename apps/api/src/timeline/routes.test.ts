@@ -488,9 +488,18 @@ describe("GET /v1/timeline", () => {
       },
     });
 
+    // Bounded to just this month: with the open-ended default (no `to`) the
+    // projection now looks several months ahead (see the multi-month tests
+    // below), and later months genuinely have nothing materialized yet —
+    // this test is specifically about the *current* month not duplicating.
+    const to = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0),
+    )
+      .toISOString()
+      .slice(0, 10);
     const response = await server.inject({
       method: "GET",
-      url: "/v1/timeline",
+      url: `/v1/timeline?to=${to}`,
       headers: { authorization: `Bearer ${accessToken}` },
     });
 
@@ -502,5 +511,149 @@ describe("GET /v1/timeline", () => {
       (i: { type?: string }) => i.type === "recurring.occurrence_upcoming",
     );
     expect(upcoming).toBeUndefined();
+  });
+
+  // Backlog item 3 (issues.md): expanding the Timeline's period filter to
+  // several months ahead must show every expected future occurrence of an
+  // active series, not just the current month's — recurringOccurrenceSources
+  // (routes.ts) now projects one item per month inside [from, to].
+  it("projects one upcoming occurrence per month across a multi-month from/to range (BACKLOG item 3)", async () => {
+    const { userId, accessToken } = await authedUser();
+    const account = await createAccount(userId);
+    const now = new Date();
+    // dayOfMonth 28 falls in the future for any day of the month up to 27 —
+    // same date-dependence accepted by this file's other "today" based
+    // tests above.
+    const dueDay = 28;
+    await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Aluguel",
+        kind: "expense",
+        accountId: account.id,
+        referenceAmountCents: 150_000,
+        referenceAmountBRLCents: 150_000,
+        dayOfMonth: dueDay,
+        startDate: new Date("2020-01-01"),
+      },
+    });
+
+    const from = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+    // Last day of (current month + 2) — a 3-month window: this month, next,
+    // and the one after.
+    const toDate = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 3, 0),
+    );
+    const to = toDate.toISOString().slice(0, 10);
+
+    const response = await server.inject({
+      method: "GET",
+      url: `/v1/timeline?from=${from}&to=${to}&limit=90`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    const allItems = body.days.flatMap(
+      (d: { items: Array<{ type?: string }> }) => d.items,
+    );
+    const upcoming = allItems.filter(
+      (i: { type?: string }) => i.type === "recurring.occurrence_upcoming",
+    );
+    expect(upcoming).toHaveLength(3);
+  });
+
+  it("does not duplicate a month already covered by a real Transaction within a multi-month range", async () => {
+    const { userId, accessToken } = await authedUser();
+    const account = await createAccount(userId);
+    const now = new Date();
+    const dueDay = 28;
+    const series = await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Aluguel",
+        kind: "expense",
+        accountId: account.id,
+        referenceAmountCents: 150_000,
+        referenceAmountBRLCents: 150_000,
+        dayOfMonth: dueDay,
+        startDate: new Date("2020-01-01"),
+      },
+    });
+    // Current month already has a real (materialized) occurrence.
+    await server.prisma.transaction.create({
+      data: {
+        userId,
+        accountId: account.id,
+        kind: "expense",
+        description: "Aluguel",
+        transactionDate: new Date(
+          Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 15),
+        ),
+        amountCents: 150_000,
+        amountBRLCents: 150_000,
+        isScheduled: true,
+        recurringTransactionId: series.id,
+      },
+    });
+
+    const from = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+    const toDate = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 3, 0),
+    );
+    const to = toDate.toISOString().slice(0, 10);
+
+    const response = await server.inject({
+      method: "GET",
+      url: `/v1/timeline?from=${from}&to=${to}&limit=90`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    const body = response.json();
+    const allItems = body.days.flatMap(
+      (d: { items: Array<{ type?: string }> }) => d.items,
+    );
+    const upcoming = allItems.filter(
+      (i: { type?: string }) => i.type === "recurring.occurrence_upcoming",
+    );
+    // 3-month window, current month already materialized → only 2 previews left.
+    expect(upcoming).toHaveLength(2);
+  });
+
+  it("caps projection at a pragmatic ceiling when `to` is left open", async () => {
+    const { userId, accessToken } = await authedUser();
+    const account = await createAccount(userId);
+    const dueDay = 28;
+    await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Aluguel",
+        kind: "expense",
+        accountId: account.id,
+        referenceAmountCents: 150_000,
+        referenceAmountBRLCents: 150_000,
+        dayOfMonth: dueDay,
+        startDate: new Date("2020-01-01"),
+        // No endDate — an always-active series with no bound of its own;
+        // without the cap this would try to project forever.
+      },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/v1/timeline?limit=90",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    const allItems = body.days.flatMap(
+      (d: { items: Array<{ type?: string }> }) => d.items,
+    );
+    const upcoming = allItems.filter(
+      (i: { type?: string }) => i.type === "recurring.occurrence_upcoming",
+    );
+    expect(upcoming.length).toBeGreaterThan(0);
+    expect(upcoming.length).toBeLessThanOrEqual(6);
   });
 });
