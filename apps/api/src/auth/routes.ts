@@ -133,12 +133,19 @@ export async function registerAuthRoutes(
       const { email } = request.body as z.infer<typeof ForgotPasswordBody>;
 
       const user = await fastify.prisma.user.findUnique({ where: { email } });
-      // Resposta idêntica em qualquer um destes três casos — e-mail
-      // inexistente, conta desativada, ou conta Google-only (passwordHash
-      // nulo, não há senha pra redefinir) — nunca revela qual deles é.
-      // (Mesmo padrão do login/AUTH_INVALID_CREDENTIALS e da waitlist
-      // neutra em access/routes.ts.)
-      if (user && isUserActive(user) && user.passwordHash) {
+      // Resposta idêntica em qualquer um destes dois casos — e-mail
+      // inexistente ou conta desativada — nunca revela qual deles é. (Mesmo
+      // padrão do login/AUTH_INVALID_CREDENTIALS e da waitlist neutra em
+      // access/routes.ts.)
+      //
+      // Contas Google-only (passwordHash nulo) passam por aqui também, de
+      // propósito: usuário quer poder autenticar pelas duas vias (Google OU
+      // senha), então este mesmo link serve tanto pra "esqueci minha senha"
+      // quanto pra "cadastrar uma senha pela primeira vez" numa conta que só
+      // tinha Google. reset-password (abaixo) não distingue os dois casos —
+      // é sempre um UPDATE de passwordHash, seja de null pra um valor ou de
+      // um hash antigo pro novo.
+      if (user && isUserActive(user)) {
         const rawToken = await issuePasswordResetToken(fastify.prisma, user.id);
         await sendPasswordResetEmail(fastify.resend, {
           to: user.email,

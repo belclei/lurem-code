@@ -49,7 +49,7 @@ export function ResetPasswordPage() {
       setFormError(
         error instanceof ApiError
           ? error.message
-          : "Não foi possível redefinir sua senha. Tente novamente.",
+          : "Não foi possível salvar sua senha. Tente novamente.",
       );
     } finally {
       setSubmitting(false);
@@ -83,7 +83,7 @@ export function ResetPasswordPage() {
           <Alert variant="error" layout="inline" title={formError} />
         ) : null}
         <Button type="submit" loading={submitting}>
-          Redefinir senha
+          Salvar senha
         </Button>
       </form>
     </div>

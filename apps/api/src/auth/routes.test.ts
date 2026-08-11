@@ -255,7 +255,10 @@ describe("POST /v1/auth/forgot-password", () => {
     expect(sendMock).not.toHaveBeenCalled();
   });
 
-  it("returns the same generic response for a Google-only account (no password to reset) and sends no e-mail", async () => {
+  it("sends the e-mail for a Google-only account too, so it can set a password for the first time", async () => {
+    // Emenda: usuário quer poder autenticar pelas duas vias (Google OU
+    // senha), então forgot-password também serve pra "cadastrar senha pela
+    // primeira vez" numa conta que só tinha Google — não é mais pulado.
     await server.prisma.user.create({
       data: {
         email: "google-only-forgot@harmon.dev",
@@ -272,7 +275,7 @@ describe("POST /v1/auth/forgot-password", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(sendMock).not.toHaveBeenCalled();
+    expect(sendMock).toHaveBeenCalledTimes(1);
   });
 
   it("gives an identical body for an existing account and a nonexistent one", async () => {

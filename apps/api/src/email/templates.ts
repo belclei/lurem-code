@@ -37,7 +37,7 @@ export function sendPasswordResetEmail(
 ): Promise<{ id: string }> {
   return send(resend, {
     to: params.to,
-    subject: "Redefina sua senha no Lurem",
+    subject: "Defina sua senha no Lurem",
     html: renderTemplate("lurem-reset-senha.html", { link: params.link }),
     text: renderTemplate("lurem-reset-senha.txt", { link: params.link }),
   });

@@ -36,13 +36,13 @@ export function ForgotPasswordPage() {
         <Alert
           variant="success"
           title="Verifique seu e-mail"
-          description="Se este e-mail tiver uma conta no Lurem, enviamos um link para redefinir a senha."
+          description="Se este e-mail tiver uma conta no Lurem, enviamos um link para você criar ou trocar sua senha."
         />
       ) : (
         <form className="grid gap-4" onSubmit={onSubmit} noValidate>
           <p className="text-sm text-[var(--lr-text-secondary)]">
-            Informe o e-mail da sua conta e enviaremos um link para redefinir
-            sua senha.
+            Informe o e-mail da sua conta e enviaremos um link para você criar
+            ou trocar sua senha — inclusive se hoje você só entra pelo Google.
           </p>
           <Input
             type="email"
