@@ -49,6 +49,8 @@ export interface AccountDto {
   overdraftLimitCents: number;
   isOverLimit: boolean;
   isActive: boolean;
+  archivedAt: string | null;
+  hasTransactions: boolean;
 }
 
 export type TxKind = "income" | "expense" | "transfer";
@@ -132,6 +134,8 @@ export interface CardDto {
   autoDebitAccountId?: string | null;
   currency: string;
   isActive: boolean;
+  archivedAt: string | null;
+  hasTransactions: boolean;
   usedCents: number;
   isOverLimit: boolean;
   invoiceStatus: InvoiceStatus;
