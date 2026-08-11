@@ -1,5 +1,6 @@
 // apps/web/src/routes/timeline/TimelineActivationSection.tsx
 import { Alert } from "@lurem/ui";
+import { useState } from "react";
 import { WalletDialog } from "./WalletDialog";
 
 export interface TimelineActivationSectionProps {
@@ -30,6 +31,13 @@ export function TimelineActivationSection({
   onOpenCardDialog,
   onWalletCreated,
 }: TimelineActivationSectionProps) {
+  // Fechável (issues.md): dispensar o lembrete de contas/cartões não marca a
+  // etapa como concluída — só some da vista até a próxima vez que a página
+  // remontar. Nenhuma etapa "concluída" (variant="success") precisa disso,
+  // só as pendentes, que são as que o usuário pode achar repetitivas.
+  const [dismissed, setDismissed] = useState<Set<"contas" | "cartoes">>(
+    new Set(),
+  );
   return (
     <div>
       <p className="mb-4 text-[.9375rem] text-[var(--lr-text-secondary)]">
@@ -55,7 +63,7 @@ export function TimelineActivationSection({
             <Alert
               variant="warning"
               title="Carteira"
-              description="Quanto de dinheiro físico você tem hoje? Não sabe por onde começar? Um chute vale — dá pra ajustar depois."
+              description="Não sabe por onde começar? Comece registrando quanto dinheiro físico você tem."
               actions={[
                 {
                   label: "Adicionar",
@@ -70,7 +78,7 @@ export function TimelineActivationSection({
               title="Contas registradas"
               description="Suas contas já aparecem na Timeline."
             />
-          ) : (
+          ) : dismissed.has("contas") ? null : (
             <Alert
               variant="info"
               title="Contas"
@@ -81,6 +89,9 @@ export function TimelineActivationSection({
                   onClick: onOpenAccountDialog,
                 },
               ]}
+              onClose={() =>
+                setDismissed((prev) => new Set(prev).add("contas"))
+              }
             />
           )}
           {hasCard ? (
@@ -89,7 +100,7 @@ export function TimelineActivationSection({
               title="Cartões registrados"
               description="Seus cartões já aparecem na Timeline."
             />
-          ) : (
+          ) : dismissed.has("cartoes") ? null : (
             <Alert
               variant="info"
               title="Cartões"
@@ -100,6 +111,9 @@ export function TimelineActivationSection({
                   onClick: onOpenCardDialog,
                 },
               ]}
+              onClose={() =>
+                setDismissed((prev) => new Set(prev).add("cartoes"))
+              }
             />
           )}
         </div>

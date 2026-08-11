@@ -3,12 +3,13 @@
 // (sem depender de uma transação existente), edição/pausa/encerramento/exclusão.
 // Nunca cascateia sobre ocorrências passadas: as ocorrências são Transactions
 // ligadas por recurringTransactionId — mexer na série não toca nelas.
-import { makeDate } from "@lurem/core";
+import { clampDay, makeDate, saoPauloYMD } from "@lurem/core";
 import type { Prisma, RecurringTransaction } from "@lurem/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireUser } from "../auth/authenticate.js";
-import { NOT_FOUND, VALIDATION_FAILED } from "../errors.js";
+import { NOT_FOUND } from "../errors.js";
+import { createRecurringTransactionSeries } from "./create.js";
 
 const IsoDate = z
   .string()
@@ -101,35 +102,17 @@ export async function registerRecurringTransactionRoutes(
       // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler
       const userId = request.userId!;
       const body = request.body as z.infer<typeof CreateBody>;
-      const hasAccount = body.accountId != null;
-      const hasCard = body.creditCardId != null;
-      if (hasAccount === hasCard) {
-        throw VALIDATION_FAILED([
-          {
-            field: "accountId",
-            message: "A série pertence a uma conta ou a um cartão.",
-          },
-        ]);
-      }
-      const series = await prisma.recurringTransaction.create({
-        data: {
-          userId,
-          description: body.description,
-          kind: body.kind,
-          accountId: body.accountId ?? null,
-          creditCardId: body.creditCardId ?? null,
-          categoryId: body.categoryId ?? null,
-          referenceAmountCents: body.referenceAmountCents,
-          referenceAmountBRLCents: body.referenceAmountCents,
-          currency: "BRL",
-          dayOfMonth: body.dayOfMonth,
-          isVariableAmount: body.isVariableAmount,
-          startDate: parseDate(body.startDate),
-          endDate: body.endDate ? parseDate(body.endDate) : null,
-        },
-      });
-      await fireEvent(fastify, userId, "recurring.created", series.id, {
-        itemLabel: series.description,
+      const series = await createRecurringTransactionSeries(prisma, userId, {
+        description: body.description,
+        kind: body.kind,
+        accountId: body.accountId,
+        creditCardId: body.creditCardId,
+        categoryId: body.categoryId,
+        referenceAmountCents: body.referenceAmountCents,
+        dayOfMonth: body.dayOfMonth,
+        isVariableAmount: body.isVariableAmount,
+        startDate: parseDate(body.startDate),
+        endDate: body.endDate ? parseDate(body.endDate) : null,
       });
       return reply.code(201).send(serialize(series));
     },
@@ -146,6 +129,70 @@ export async function registerRecurringTransactionRoutes(
         orderBy: { createdAt: "asc" },
       });
       return series.map(serialize);
+    },
+  );
+
+  // Backlog: "Confirmar todo mês" (isVariableAmount, §6.7 comment "conta de
+  // luz") — quando marcado, a ocorrência do mês NÃO é considerada confirmada
+  // automaticamente (diferente do padrão): a partir do dia seguinte à data
+  // prevista, se ainda não existe um RecurringFulfillment para (série,
+  // ano, mês), a ocorrência fica "pendente de aprovação". Só olha o mês
+  // corrente — uma série que ficou pendente há vários meses reaparece aqui
+  // igual (não acumula um item por mês em atraso), recorte pragmático para
+  // não precisar varrer todo o histórico da série a cada request.
+  fastify.get(
+    "/v1/recurring-transactions/pending",
+    { preHandler: requireUser(fastify) },
+    async (request) => {
+      // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler
+      const userId = request.userId!;
+      const now = new Date();
+      const { year, month, day } = saoPauloYMD(now);
+      const todayDate = makeDate(year, month, day);
+
+      const series = await prisma.recurringTransaction.findMany({
+        where: { userId, isActive: true, isVariableAmount: true },
+      });
+
+      const pending: Array<{
+        id: string;
+        description: string;
+        referenceAmountCents: number;
+        dueDate: string;
+        kind: string;
+        accountId: string | null;
+        creditCardId: string | null;
+      }> = [];
+
+      for (const s of series) {
+        const dueDay = clampDay(year, month, s.dayOfMonth);
+        const dueDate = makeDate(year, month, dueDay);
+        if (s.startDate > dueDate) continue;
+        if (s.endDate && s.endDate < dueDate) continue;
+        // "A partir do dia seguinte à data de ocorrência" — estritamente
+        // depois, não no próprio dia (ainda não venceu = não é pendente).
+        if (todayDate <= dueDate) continue;
+        const fulfilled = await prisma.recurringFulfillment.findUnique({
+          where: {
+            recurringTransactionId_year_month: {
+              recurringTransactionId: s.id,
+              year,
+              month,
+            },
+          },
+        });
+        if (fulfilled) continue;
+        pending.push({
+          id: s.id,
+          description: s.description,
+          referenceAmountCents: s.referenceAmountCents,
+          dueDate: dueDate.toISOString().slice(0, 10),
+          kind: s.kind,
+          accountId: s.accountId,
+          creditCardId: s.creditCardId,
+        });
+      }
+      return pending;
     },
   );
 

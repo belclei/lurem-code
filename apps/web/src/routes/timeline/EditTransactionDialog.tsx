@@ -23,7 +23,14 @@ interface UpdateTxPayload {
  * accounts retroactively? re-run overdraft checks?) is a bigger product
  * decision than this conformance pass covers. Opened from the "default",
  * "scheduled" and "installment" TransactionRow variants' click/"Editar"
- * — see this task's judgment-call note above. */
+ * — see this task's judgment-call note above.
+ *
+ * Backlog "recorrência: não consigo confirmar" — when `tx.isScheduled`, this
+ * also exposes Confirmar/Pular (POST /transactions/:id/confirm|skip), the
+ * same actions already available inline on the "scheduled" TransactionRow
+ * variant. Having them here too lets the natural flow be "edit the real
+ * amount first, then confirm" in one dialog instead of two separate
+ * interactions. */
 export function EditTransactionDialog({
   tx,
   onClose,
@@ -98,6 +105,70 @@ export function EditTransactionDialog({
     },
   });
 
+  // Confirmar saves whatever's currently in the form first (the natural
+  // flow is "editar o valor real → Confirmar", not two separate steps) and
+  // only then calls POST .../confirm — a scheduled occurrence's amount is
+  // usually just a reference/estimate (§6.7) that needs correcting before
+  // it becomes real.
+  const confirmMutation = useMutation({
+    mutationFn: async () => {
+      if (!tx) return;
+      const cents = reaisToCentsPositive(amount);
+      if (tx.kind !== "transfer" && !description.trim()) {
+        throw new Error("Descreva a transação.");
+      }
+      if (cents === null) {
+        throw new Error("Informe um valor válido.");
+      }
+      await apiFetchJson<TransactionDto>(`/transactions/${tx.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: description.trim() || undefined,
+          categoryId,
+          transactionDate: date,
+          amountCents: cents,
+        }),
+      });
+      await apiFetchJson<TransactionDto>(`/transactions/${tx.id}/confirm`, {
+        method: "POST",
+      });
+    },
+    onSuccess: () => {
+      setFormError(null);
+      setFieldErrors({});
+      onSaved();
+      onClose();
+    },
+    onError: (err: unknown) => {
+      setFieldErrors(fieldErrorsFrom(err));
+      setFormError(
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Não foi possível confirmar a transação.",
+      );
+    },
+  });
+
+  const skipMutation = useMutation({
+    mutationFn: () =>
+      apiFetchJson<void>(`/transactions/${tx?.id}/skip`, { method: "POST" }),
+    onSuccess: () => {
+      setFormError(null);
+      onSaved();
+      onClose();
+    },
+    onError: (err: unknown) => {
+      setFormError(
+        err instanceof ApiError
+          ? err.message
+          : "Não foi possível pular esta ocorrência.",
+      );
+    },
+  });
+
   function onSubmit(event: FormEvent) {
     event.preventDefault();
     setFormError(null);
@@ -161,6 +232,25 @@ export function EditTransactionDialog({
         />
         {formError ? (
           <Alert variant="error" layout="inline" title={formError} />
+        ) : null}
+        {tx?.isScheduled ? (
+          <div className="flex flex-wrap items-center gap-2.5 border-t border-[var(--lr-border)] pt-4">
+            <Button
+              type="button"
+              variant="secondary"
+              loading={skipMutation.isPending}
+              onClick={() => skipMutation.mutate()}
+            >
+              Pular esta vez
+            </Button>
+            <Button
+              type="button"
+              loading={confirmMutation.isPending}
+              onClick={() => confirmMutation.mutate()}
+            >
+              Confirmar
+            </Button>
+          </div>
         ) : null}
         <div className="flex items-center justify-between gap-2.5">
           <Button

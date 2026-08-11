@@ -300,7 +300,7 @@ describe("GET /v1/cards/:id/invoice", () => {
 });
 
 describe("DELETE /v1/cards/:id", () => {
-  it("soft-deletes (deactivates) rather than removing the row", async () => {
+  it("hard-deletes a card with no transactions", async () => {
     const { accessToken, userId } = await authedUser();
     const institution = await createInstitution();
     const card = await server.prisma.creditCard.create({
@@ -320,9 +320,78 @@ describe("DELETE /v1/cards/:id", () => {
     });
 
     expect(response.statusCode).toBe(200);
+    const stored = await server.prisma.creditCard.findUnique({
+      where: { id: card.id },
+    });
+    expect(stored).toBeNull();
+  });
+
+  it("soft-deletes (deactivates) rather than removing the row when the card has transactions", async () => {
+    const { accessToken, userId } = await authedUser();
+    const institution = await createInstitution();
+    const card = await server.prisma.creditCard.create({
+      data: {
+        userId,
+        institutionId: institution.id,
+        limitCents: 100_000,
+        closingDay: 10,
+        dueDay: 20,
+      },
+    });
+    await server.prisma.transaction.create({
+      data: {
+        userId,
+        creditCardId: card.id,
+        kind: "expense",
+        description: "Mercado",
+        transactionDate: new Date(),
+        amountCents: 1_000,
+        amountBRLCents: 1_000,
+      },
+    });
+
+    const response = await server.inject({
+      method: "DELETE",
+      url: `/v1/cards/${card.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
     const stored = await server.prisma.creditCard.findUniqueOrThrow({
       where: { id: card.id },
     });
     expect(stored.isActive).toBe(false);
+  });
+
+  it("archives and unarchives via PATCH { archived }", async () => {
+    const { accessToken, userId } = await authedUser();
+    const institution = await createInstitution();
+    const card = await server.prisma.creditCard.create({
+      data: {
+        userId,
+        institutionId: institution.id,
+        limitCents: 100_000,
+        closingDay: 10,
+        dueDay: 20,
+      },
+    });
+
+    const archived = await server.inject({
+      method: "PATCH",
+      url: `/v1/cards/${card.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { archived: true },
+    });
+    expect(archived.statusCode).toBe(200);
+    expect(archived.json().archivedAt).not.toBeNull();
+
+    const unarchived = await server.inject({
+      method: "PATCH",
+      url: `/v1/cards/${card.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { archived: false },
+    });
+    expect(unarchived.statusCode).toBe(200);
+    expect(unarchived.json().archivedAt).toBeNull();
   });
 });

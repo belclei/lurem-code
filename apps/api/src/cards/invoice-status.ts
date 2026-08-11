@@ -8,6 +8,7 @@
 import {
   closingDate,
   compareDates,
+  dueDate,
   faturaFechadaNaoVencida,
   findClosedNotDueInvoiceMonth,
   sumCardTransactionsForInvoiceMonth,
@@ -39,7 +40,7 @@ function nextYearMonth(
  * here too double-counted every transaction dated on the closing day itself
  * (once via the closed sum, once via the open sum).
  */
-function findOpenInvoiceMonth(
+export function findOpenInvoiceMonth(
   card: CreditCardLike,
   today: Date,
 ): { year: number; month: number } {
@@ -76,5 +77,48 @@ export function cardInvoiceStatus(
   return {
     usedCents: closed.valueCents + open.valueCents,
     invoiceStatus: closedMonth ? "closed_awaiting_payment" : "open",
+  };
+}
+
+export interface NextInvoiceMilestones {
+  nextClosingDate: Date;
+  /** (year, month) index whose `sumCardTransactionsForInvoiceMonth` total matches `nextClosingDate` — the period that is about to close. */
+  nextClosingMonth: { year: number; month: number };
+  nextDueDate: Date;
+  /** (year, month) index whose `sumCardTransactionsForInvoiceMonth` total matches `nextDueDate` — NOT necessarily the calendar month `nextDueDate` falls in (dueDate can land in the month after its own index, see dates.ts). */
+  nextDueMonth: { year: number; month: number };
+}
+
+/**
+ * Next occurrence of "invoice closes" / "invoice becomes due" for a card,
+ * strictly after `asOf` — feeds the Timeline's future-day projection
+ * (aggregate.ts's `synthesizeStructuralDates`), which needs to show these
+ * dates before invoice-events-job.ts fires the real `card.invoice_closed`/
+ * `card.invoice_due` DomainEvent on the day itself. Reuses the same
+ * closing/open-month resolution this file already does for `usedCents` —
+ * no second date-math implementation.
+ *
+ * `nextClosingDate` = closingDate of the currently open period
+ * (`findOpenInvoiceMonth` already guarantees this is strictly in the
+ * future — see its own doc comment). `nextDueDate` = the due date closest
+ * to `asOf`: the already-closed invoice's due date when one is awaiting
+ * payment (nearer), otherwise the open period's own due date (which only
+ * happens after `nextClosingDate`).
+ */
+export function nextInvoiceMilestones(
+  card: CreditCardLike,
+  asOf: Date = new Date(),
+): NextInvoiceMilestones {
+  const today = todayAsDate(asOf);
+  const closedMonth = findClosedNotDueInvoiceMonth(card, today);
+  const openMonth = findOpenInvoiceMonth(card, today);
+
+  const nextDueMonth = closedMonth ?? openMonth;
+
+  return {
+    nextClosingDate: closingDate(card, openMonth.year, openMonth.month),
+    nextClosingMonth: openMonth,
+    nextDueDate: dueDate(card, nextDueMonth.year, nextDueMonth.month),
+    nextDueMonth,
   };
 }

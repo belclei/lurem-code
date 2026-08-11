@@ -49,6 +49,8 @@ export interface AccountDto {
   overdraftLimitCents: number;
   isOverLimit: boolean;
   isActive: boolean;
+  archivedAt: string | null;
+  hasTransactions: boolean;
 }
 
 export type TxKind = "income" | "expense" | "transfer";
@@ -118,6 +120,21 @@ export interface RecurringDto {
   endDate: string | null;
 }
 
+// GET /v1/recurring-transactions/pending — série "Confirmar todo mês" cujo
+// mês corrente já venceu sem confirmação (§6.7 item 3, backlog "fila de
+// pendência de aprovação"). Kept separate from RecurringDto: this is a
+// derived/computed shape (dueDate is this month's occurrence, not the
+// series' own dayOfMonth), not the series record itself.
+export interface PendingRecurringDto {
+  id: string;
+  description: string;
+  referenceAmountCents: number;
+  dueDate: string;
+  kind: "income" | "expense";
+  accountId: string | null;
+  creditCardId: string | null;
+}
+
 export type InvoiceStatus = "open" | "closed_awaiting_payment";
 
 export interface CardDto {
@@ -132,6 +149,8 @@ export interface CardDto {
   autoDebitAccountId?: string | null;
   currency: string;
   isActive: boolean;
+  archivedAt: string | null;
+  hasTransactions: boolean;
   usedCents: number;
   isOverLimit: boolean;
   invoiceStatus: InvoiceStatus;

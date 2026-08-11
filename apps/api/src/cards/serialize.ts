@@ -15,6 +15,9 @@ export interface CardResponse {
   autoDebitAccountId: string | null;
   currency: string;
   isActive: boolean;
+  archivedAt: string | null;
+  /** Same rationale as accounts/serialize.ts's AccountResponse.hasTransactions. */
+  hasTransactions: boolean;
   usedCents: number;
   isOverLimit: boolean;
   invoiceStatus: "open" | "closed_awaiting_payment";
@@ -65,6 +68,8 @@ export function toCardResponse(
     autoDebitAccountId: card.autoDebitAccountId,
     currency: card.currency,
     isActive: card.isActive,
+    archivedAt: card.archivedAt ? card.archivedAt.toISOString() : null,
+    hasTransactions: transactions.length > 0,
     usedCents,
     isOverLimit: usedCents > card.limitCents,
     invoiceStatus,

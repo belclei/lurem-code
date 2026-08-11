@@ -325,4 +325,335 @@ describe("GET /v1/timeline", () => {
     expect(todayDay).toBeDefined();
     expect(todayDay.items).toEqual([]);
   });
+
+  it("projects the next invoice closing/due dates for an active card, ahead of the real card.invoice_closed/due event (BACKLOG: fechamento/vencimento com antecedência)", async () => {
+    const { userId, accessToken } = await authedUser();
+    const institution = await server.prisma.institution.create({
+      data: {
+        name: "Nubank",
+        compeCode: `260-${Math.random().toString(36).slice(2)}`,
+        logoAsset: "nubank.svg",
+      },
+    });
+    await server.prisma.creditCard.create({
+      data: {
+        userId,
+        institutionId: institution.id,
+        limitCents: 100_000,
+        closingDay: 10,
+        dueDay: 20,
+      },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/v1/timeline",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    const allItems = body.days.flatMap(
+      (d: { items: Array<{ type?: string }> }) => d.items,
+    );
+    const closing = allItems.find(
+      (i: { type?: string }) => i.type === "card.invoice_closing_upcoming",
+    );
+    const due = allItems.find(
+      (i: { type?: string }) => i.type === "card.invoice_due_upcoming",
+    );
+    expect(closing).toBeDefined();
+    expect(closing.payload.institutionName).toBe("Nubank");
+    expect(due).toBeDefined();
+    expect(due.payload.institutionName).toBe("Nubank");
+  });
+
+  it("shows a global calendar entry on its recurring month/day for any user (BACKLOG: calendário global administrado)", async () => {
+    const { accessToken } = await authedUser();
+    const today = new Date();
+    // São Paulo "today" — matches globalCalendarSource's own basis (`now`).
+    const todayYmd = today.toLocaleDateString("en-CA", {
+      timeZone: "America/Sao_Paulo",
+    });
+    const [year, month, day] = todayYmd.split("-").map(Number);
+    void year;
+    await server.prisma.globalCalendarEntry.create({
+      data: {
+        title: "Feriado de teste",
+        month: month as number,
+        day: day as number,
+      },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/v1/timeline",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    const todayDay = body.days.find(
+      (d: { date: string }) => d.date === todayYmd,
+    );
+    expect(todayDay).toBeDefined();
+    const entryItem = todayDay.items.find(
+      (i: { type?: string }) => i.type === "calendar.global_entry",
+    );
+    expect(entryItem).toBeDefined();
+    expect(entryItem.payload.title).toBe("Feriado de teste");
+  });
+
+  // Backlog "Recorrência integrada ao dialog": a próxima ocorrência de uma
+  // série ativa ainda não vencida aparece com antecedência (mesma ideia da
+  // projeção de fatura acima), mesmo sem nenhuma Transaction real criada —
+  // o cron só materializa a Transaction no próprio dia do vencimento.
+  it("projects the next not-yet-due occurrence of an active recurring series (BACKLOG: recorrência com antecedência)", async () => {
+    const { userId, accessToken } = await authedUser();
+    const account = await createAccount(userId);
+    const now = new Date();
+    const { year, month, day } = {
+      year: now.getUTCFullYear(),
+      month: now.getUTCMonth() + 1,
+      day: now.getUTCDate(),
+    };
+    // dayOfMonth 28 falls in the future for any day of the month up to 27 —
+    // acceptable date-dependence, same pattern as this file's other "today"
+    // based tests above.
+    const dueDay = 28;
+    void year;
+    void month;
+    void day;
+    await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Aluguel",
+        kind: "expense",
+        accountId: account.id,
+        referenceAmountCents: 150_000,
+        referenceAmountBRLCents: 150_000,
+        dayOfMonth: dueDay,
+        startDate: new Date("2020-01-01"),
+      },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/v1/timeline",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    const allItems = body.days.flatMap(
+      (d: { items: Array<{ type?: string; payload?: unknown }> }) => d.items,
+    );
+    const upcoming = allItems.find(
+      (i: { type?: string }) => i.type === "recurring.occurrence_upcoming",
+    ) as { payload: { description: string; amountCents: number } } | undefined;
+    expect(upcoming).toBeDefined();
+    expect(upcoming?.payload.description).toBe("Aluguel");
+    expect(upcoming?.payload.amountCents).toBe(150_000);
+  });
+
+  it("does not project an upcoming occurrence once a real Transaction already covers this month", async () => {
+    const { userId, accessToken } = await authedUser();
+    const account = await createAccount(userId);
+    const series = await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Aluguel",
+        kind: "expense",
+        accountId: account.id,
+        referenceAmountCents: 150_000,
+        referenceAmountBRLCents: 150_000,
+        dayOfMonth: 28,
+        startDate: new Date("2020-01-01"),
+      },
+    });
+    const now = new Date();
+    await server.prisma.transaction.create({
+      data: {
+        userId,
+        accountId: account.id,
+        kind: "expense",
+        description: "Aluguel",
+        transactionDate: new Date(
+          Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 15),
+        ),
+        amountCents: 150_000,
+        amountBRLCents: 150_000,
+        isScheduled: true,
+        recurringTransactionId: series.id,
+      },
+    });
+
+    // Bounded to just this month: with the open-ended default (no `to`) the
+    // projection now looks several months ahead (see the multi-month tests
+    // below), and later months genuinely have nothing materialized yet —
+    // this test is specifically about the *current* month not duplicating.
+    const to = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0),
+    )
+      .toISOString()
+      .slice(0, 10);
+    const response = await server.inject({
+      method: "GET",
+      url: `/v1/timeline?to=${to}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    const body = response.json();
+    const allItems = body.days.flatMap(
+      (d: { items: Array<{ type?: string }> }) => d.items,
+    );
+    const upcoming = allItems.find(
+      (i: { type?: string }) => i.type === "recurring.occurrence_upcoming",
+    );
+    expect(upcoming).toBeUndefined();
+  });
+
+  // Backlog item 3 (issues.md): expanding the Timeline's period filter to
+  // several months ahead must show every expected future occurrence of an
+  // active series, not just the current month's — recurringOccurrenceSources
+  // (routes.ts) now projects one item per month inside [from, to].
+  it("projects one upcoming occurrence per month across a multi-month from/to range (BACKLOG item 3)", async () => {
+    const { userId, accessToken } = await authedUser();
+    const account = await createAccount(userId);
+    const now = new Date();
+    // dayOfMonth 28 falls in the future for any day of the month up to 27 —
+    // same date-dependence accepted by this file's other "today" based
+    // tests above.
+    const dueDay = 28;
+    await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Aluguel",
+        kind: "expense",
+        accountId: account.id,
+        referenceAmountCents: 150_000,
+        referenceAmountBRLCents: 150_000,
+        dayOfMonth: dueDay,
+        startDate: new Date("2020-01-01"),
+      },
+    });
+
+    const from = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+    // Last day of (current month + 2) — a 3-month window: this month, next,
+    // and the one after.
+    const toDate = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 3, 0),
+    );
+    const to = toDate.toISOString().slice(0, 10);
+
+    const response = await server.inject({
+      method: "GET",
+      url: `/v1/timeline?from=${from}&to=${to}&limit=90`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    const allItems = body.days.flatMap(
+      (d: { items: Array<{ type?: string }> }) => d.items,
+    );
+    const upcoming = allItems.filter(
+      (i: { type?: string }) => i.type === "recurring.occurrence_upcoming",
+    );
+    expect(upcoming).toHaveLength(3);
+  });
+
+  it("does not duplicate a month already covered by a real Transaction within a multi-month range", async () => {
+    const { userId, accessToken } = await authedUser();
+    const account = await createAccount(userId);
+    const now = new Date();
+    const dueDay = 28;
+    const series = await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Aluguel",
+        kind: "expense",
+        accountId: account.id,
+        referenceAmountCents: 150_000,
+        referenceAmountBRLCents: 150_000,
+        dayOfMonth: dueDay,
+        startDate: new Date("2020-01-01"),
+      },
+    });
+    // Current month already has a real (materialized) occurrence.
+    await server.prisma.transaction.create({
+      data: {
+        userId,
+        accountId: account.id,
+        kind: "expense",
+        description: "Aluguel",
+        transactionDate: new Date(
+          Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 15),
+        ),
+        amountCents: 150_000,
+        amountBRLCents: 150_000,
+        isScheduled: true,
+        recurringTransactionId: series.id,
+      },
+    });
+
+    const from = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+    const toDate = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 3, 0),
+    );
+    const to = toDate.toISOString().slice(0, 10);
+
+    const response = await server.inject({
+      method: "GET",
+      url: `/v1/timeline?from=${from}&to=${to}&limit=90`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    const body = response.json();
+    const allItems = body.days.flatMap(
+      (d: { items: Array<{ type?: string }> }) => d.items,
+    );
+    const upcoming = allItems.filter(
+      (i: { type?: string }) => i.type === "recurring.occurrence_upcoming",
+    );
+    // 3-month window, current month already materialized → only 2 previews left.
+    expect(upcoming).toHaveLength(2);
+  });
+
+  it("caps projection at a pragmatic ceiling when `to` is left open", async () => {
+    const { userId, accessToken } = await authedUser();
+    const account = await createAccount(userId);
+    const dueDay = 28;
+    await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Aluguel",
+        kind: "expense",
+        accountId: account.id,
+        referenceAmountCents: 150_000,
+        referenceAmountBRLCents: 150_000,
+        dayOfMonth: dueDay,
+        startDate: new Date("2020-01-01"),
+        // No endDate — an always-active series with no bound of its own;
+        // without the cap this would try to project forever.
+      },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/v1/timeline?limit=90",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    const allItems = body.days.flatMap(
+      (d: { items: Array<{ type?: string }> }) => d.items,
+    );
+    const upcoming = allItems.filter(
+      (i: { type?: string }) => i.type === "recurring.occurrence_upcoming",
+    );
+    expect(upcoming.length).toBeGreaterThan(0);
+    expect(upcoming.length).toBeLessThanOrEqual(6);
+  });
 });

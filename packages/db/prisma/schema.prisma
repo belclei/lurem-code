@@ -126,6 +126,23 @@ model RefreshToken {
   @@index([familyId])
 }
 
+// "Esqueci minha senha" (§6.1 emenda 10/08/2026). TTL de 1h — bem mais curto
+// que os 7 dias de Invite/WaitlistEntry: uma sessão de e-mail comprometida
+// tem uma janela de exploração bem menor aqui (padrão de mercado). Modelo
+// dedicado em vez de campos no User: um usuário pode pedir reset várias
+// vezes (histórico de tokens), e User não devia carregar estado transitório
+// de fluxo de auth junto com seu perfil.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  usedAt    DateTime?
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
 // ⚠ Tokens sempre como hash. registrationTokenHash, tokenHash, qualquer token
 // de conexão: guarda-se sha256(token), nunca o valor. Vazamento de banco não
 // vira vazamento de acesso.
@@ -210,6 +227,13 @@ model Account {
   reconciledBalanceCents Int? // CACHE do saldo derivado — nunca é a verdade (§2.2)
   reconciledAt           DateTime?
   isActive               Boolean     @default(true)
+  // BACKLOG.md — "Arquivar conta/cartão": conceito distinto de isActive.
+  // isActive (pré-existente) governa se a conta entra nas projeções de
+  // fluxo de caixa/patrimônio (§ core cashflow/patrimonio.ts); archivedAt é
+  // puramente de organização de UI — esconde o item da lista principal de
+  // Contas e cartões, movendo-o para a seção "Arquivados" (reversível). Nulo
+  // = não arquivada.
+  archivedAt             DateTime?
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt
 
@@ -230,6 +254,8 @@ model CreditCard {
   autoDebitAccountId String? // débito automático (§6.4)
   currency           String   @default("BRL")
   isActive           Boolean  @default(true)
+  // Ver nota em Account.archivedAt — mesmo conceito, mesmo comportamento.
+  archivedAt         DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -522,4 +548,26 @@ model InvestmentMovement {
   amountBRLCents Int
   movementDate   DateTime @db.Date
   createdAt      DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Calendário global administrado (backlog: "Natal", "prazo pra declarar IR"…)
+// ---------------------------------------------------------------------------
+
+// Recorrência anual simples (month+day) em vez de RRULE/data única: todo caso
+// de uso do backlog ("Natal", "prazo de IR") é "todo ano, mesmo dia" — uma
+// data-calendário fixa exigiria o admin recadastrar a entrada todo ano.
+enum CalendarEntryDisplayStyle {
+  box
+  inline
+}
+
+model GlobalCalendarEntry {
+  id           String                    @id @default(cuid())
+  title        String
+  month        Int // 1..12
+  day          Int // 1..31 (clamp ao último dia do mês, mesma convenção de CreditCard.closingDay)
+  displayStyle CalendarEntryDisplayStyle @default(inline)
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
 }

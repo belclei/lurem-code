@@ -9,6 +9,7 @@ import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import type { Resend } from "resend";
 import { registerAccessRoutes } from "./access/routes.js";
 import { registerAccountRoutes } from "./accounts/routes.js";
+import { registerAdminCalendarRoutes } from "./admin/calendar-routes.js";
 import { registerAdminRoutes } from "./admin/routes.js";
 import { registerAdminUsageHealthRoutes } from "./admin/usage-health-routes.js";
 import {
@@ -78,6 +79,7 @@ export async function buildServer(
   await registerPortadorRoutes(fastify);
   await registerAdminRoutes(fastify);
   await registerAdminUsageHealthRoutes(fastify);
+  await registerAdminCalendarRoutes(fastify);
   await registerInviteRoutes(fastify);
   await registerAccessRoutes(fastify);
 

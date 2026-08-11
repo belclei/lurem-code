@@ -61,6 +61,10 @@ const UpdateAccountBody = z.object({
   name: z.string().min(1).nullable().optional(),
   overdraftLimitCents: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
+  // BACKLOG.md "Arquivar conta/cartão" — boolean toggle, not a client-supplied
+  // timestamp: the server owns archivedAt's value (avoids trusting client
+  // clocks) and this keeps the wire contract symmetric with `isActive`.
+  archived: z.boolean().optional(),
 });
 
 export async function registerAccountRoutes(
@@ -260,6 +264,9 @@ export async function registerAccountRoutes(
             ? { overdraftLimitCents: body.overdraftLimitCents }
             : {}),
           ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+          ...(body.archived !== undefined
+            ? { archivedAt: body.archived ? new Date() : null }
+            : {}),
         },
       });
       const institution = account.institutionId
@@ -269,7 +276,7 @@ export async function registerAccountRoutes(
         : null;
 
       const changed = (
-        ["name", "overdraftLimitCents", "isActive"] as const
+        ["name", "overdraftLimitCents", "isActive", "archived"] as const
       ).filter((field) => body[field] !== undefined);
       if (changed.length > 0) {
         await fastify.prisma.domainEvent.create({
@@ -310,11 +317,22 @@ export async function registerAccountRoutes(
       if (!existing) {
         throw NOT_FOUND();
       }
-      // DELETE = soft (§5.2 table) — never hard-delete an account with history.
-      await fastify.prisma.account.update({
-        where: { id },
-        data: { isActive: false },
+      // DELETE = soft (§5.2 table) when there's history to lose — never
+      // hard-delete an account with transactions attached. BACKLOG.md
+      // "Arquivar conta/cartão": when the account has NO transactions at
+      // all, there's nothing to protect — allow a real hard delete instead
+      // of leaving an empty, permanently-inactive row behind.
+      const transactionCount = await fastify.prisma.transaction.count({
+        where: { accountId: id },
       });
+      if (transactionCount === 0) {
+        await fastify.prisma.account.delete({ where: { id } });
+      } else {
+        await fastify.prisma.account.update({
+          where: { id },
+          data: { isActive: false },
+        });
+      }
       return { ok: true };
     },
   );

@@ -6,6 +6,7 @@ import {
   Mono,
   Skeleton,
   TimelineEventRow,
+  TransactionRow,
   TransferPairCard,
   formatMoney,
 } from "@lurem/ui";
@@ -61,6 +62,13 @@ export interface TimelineFeedProps {
   onEditTransaction: (tx: TransactionDto) => void;
   onEditAccount: (account: AccountDto) => void;
   onEditCard: (card: CardDto) => void;
+  /** Backlog "Recorrência integrada ao dialog": clicar numa ocorrência
+   * futura ainda não vencida (variant "recurringPreview") abre a série
+   * correspondente já em modo de edição em /recurring (RecurringPage's
+   * `?edit=<id>`) — pragmatic cut, ver report: um dialog de edição dedicado
+   * para "confirmar/alterar o valor" de uma ocorrência que ainda nem existe
+   * como Transaction ficou fora deste recorte. */
+  onManageRecurring: (recurringTransactionId: string) => void;
 }
 
 /** US-6.1's day-by-day feed (§6.12) — the Timeline's core concept once
@@ -86,6 +94,7 @@ export function TimelineFeed({
   onEditTransaction,
   onEditAccount,
   onEditCard,
+  onManageRecurring,
 }: TimelineFeedProps) {
   return (
     <>
@@ -133,7 +142,8 @@ export function TimelineFeed({
                     </span>
                     <Mono
                       variant="number"
-                      className="text-[.8125rem] text-[var(--lr-text)]"
+                      tone={day.balanceCents < 0 ? "out" : "default"}
+                      className="text-[.8125rem]"
                     >
                       {formatMoney(day.balanceCents)}
                     </Mono>
@@ -159,6 +169,41 @@ export function TimelineFeed({
                     />
                   ) : null}
                   {day.items.map((item) => {
+                    // Backlog "Recorrência integrada ao dialog": a próxima
+                    // ocorrência ainda não vencida de uma série recorrente
+                    // (não é uma Transaction real ainda — só um evento
+                    // sintético, ver timeline/routes.ts's
+                    // `recurringOccurrenceSource`). Renders through
+                    // TransactionRow's "recurringPreview" variant (dashed
+                    // card, "Recorrência pendente" badge) instead of
+                    // TimelineEventRow, matching TIMELINE.md's existing
+                    // "scheduled"/"installment" pattern for
+                    // not-yet-real transaction-shaped items.
+                    if (
+                      item.itemType === "event" &&
+                      item.type === "recurring.occurrence_upcoming"
+                    ) {
+                      const payload = item.payload as {
+                        recurringTransactionId: string;
+                        description: string;
+                        kind: "income" | "expense";
+                        amountCents: number;
+                      };
+                      return (
+                        <TransactionRow
+                          key={item.id}
+                          variant="recurringPreview"
+                          description={payload.description}
+                          date={item.createdAt}
+                          kind={payload.kind}
+                          amountCents={payload.amountCents}
+                          source="manual"
+                          onClick={() =>
+                            onManageRecurring(payload.recurringTransactionId)
+                          }
+                        />
+                      );
+                    }
                     if (item.itemType !== "transaction") {
                       const row = (
                         <TimelineEventRow

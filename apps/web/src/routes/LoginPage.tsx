@@ -1,6 +1,6 @@
 // apps/web/src/routes/LoginPage.tsx
 import { Alert, Button, Input } from "@lurem/ui";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError, loginWithGoogle } from "../auth/api-client";
@@ -105,6 +105,12 @@ export function LoginPage() {
           required
           autoComplete="current-password"
         />
+        <Link
+          to="/forgot-password"
+          className="text-right text-sm text-[var(--lr-text-secondary)] underline"
+        >
+          Esqueci minha senha
+        </Link>
         {formError ? (
           <Alert variant="error" layout="inline" title={formError} />
         ) : null}

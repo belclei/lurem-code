@@ -56,9 +56,12 @@ export function RecurringRow({
             <Badge kind="status" status={badge.status}>
               {badge.label}
             </Badge>
+            {/* Label renamed per backlog ("Valor variável" → "Confirmar todo
+                mês") — `isVariableAmount` (prop name / DB column) kept as-is,
+                only the visible copy changed. */}
             {isVariableAmount ? (
               <Badge kind="category" color="sand">
-                Valor variável
+                Confirmar todo mês
               </Badge>
             ) : null}
             {hasVariationAlert ? (

@@ -81,7 +81,14 @@ const SAMPLES: Array<{ type: DomainEventType; payload: DomainEventPayload }> = [
     type: "import.completed",
     payload: { institutionName: "Nubank de julho", count: 34 },
   },
-  { type: "invite.deleted", payload: {} },
+  {
+    type: "invite.created",
+    payload: { inviteeEmail: "maria@example.com" },
+  },
+  {
+    type: "invite.deleted",
+    payload: { inviteeEmail: "maria@example.com" },
+  },
   { type: "invite.resent", payload: {} },
   { type: "connection.requested", payload: { counterpartName: "Maria" } },
   { type: "connection.accepted", payload: { counterpartName: "Maria" } },
