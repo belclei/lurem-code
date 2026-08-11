@@ -55,7 +55,7 @@ export function TimelineActivationSection({
             <Alert
               variant="warning"
               title="Carteira"
-              description="Quanto de dinheiro físico você tem hoje? Não sabe por onde começar? Um chute vale — dá pra ajustar depois."
+              description="Não sabe por onde começar? Comece registrando quanto dinheiro físico você tem."
               actions={[
                 {
                   label: "Adicionar",

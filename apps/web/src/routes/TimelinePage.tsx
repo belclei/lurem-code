@@ -337,7 +337,10 @@ export function TimelinePage() {
       ) : null}
 
       <div className="grid items-start gap-6 lg:grid-cols-[1fr_320px] lg:gap-8">
-        <div>
+        {/* overflow-x-hidden scoped to the feed column only, not to any
+            ancestor of the sticky balance aside below — see AppLayout.tsx's
+            comment on <main> for why that ancestor scoping breaks sticky. */}
+        <div className="overflow-x-hidden">
           <div className="mb-7 flex flex-col items-start gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
             <div className="min-w-0">
               <p className="lr-label mb-2">{dateLabel}</p>

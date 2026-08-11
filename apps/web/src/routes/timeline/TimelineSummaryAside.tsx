@@ -72,7 +72,11 @@ export function TimelineSummaryAside({
                 >
                   {a.name || a.institutionName}
                 </Body>
-                <Mono variant="number" className="flex-none text-[.8125rem]">
+                <Mono
+                  variant="number"
+                  tone={a.balanceCents < 0 ? "out" : "default"}
+                  className="flex-none text-[.8125rem]"
+                >
                   {formatMoney(a.balanceCents)}
                 </Mono>
               </div>

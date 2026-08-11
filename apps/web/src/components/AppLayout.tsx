@@ -56,8 +56,8 @@ export function AppLayout() {
   return (
     <div className="flex min-h-screen bg-[var(--lr-bg)]">
       <aside className="sticky top-0 hidden h-screen w-[248px] flex-none flex-col bg-[#090F1A] px-4 py-6 text-[var(--lr-ivory-100)] md:flex">
-        <div className="px-2 pt-2 pb-7 w-full flex items-center justify-center">
-          <img src="/logo.svg" alt="Lurem" className="w-[120px]" />
+        <div className="w-full flex items-center justify-center pb-4">
+          <img src="/logo.svg" alt="Lurem" className="w-full" />
         </div>
 
         <nav className="flex flex-col gap-0.5">
@@ -128,7 +128,17 @@ export function AppLayout() {
         ) : null}
       </aside>
 
-      <main className="min-w-0 flex-1 overflow-x-hidden pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
+      {/* No overflow-x-hidden here (or on any wrapper around <Outlet />):
+          the CSS overflow-3 spec silently promotes the OTHER axis to "auto"
+          whenever one axis is set to a non-visible value, so an
+          overflow-x-hidden ancestor — even one that never actually shows a
+          scrollbar — registers as a scroll container and breaks any
+          `position: sticky` descendant (e.g. TimelinePage's balance
+          sidebar sticks to that ancestor instead of the window). Routes
+          that risk horizontal overflow (long tables, wide rows) should
+          scope overflow-x-hidden to their own non-sticky wrapper instead of
+          relying on the shell for it — see TimelinePage.tsx's feed column. */}
+      <main className="min-w-0 flex-1 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
         <Outlet />
       </main>
 
