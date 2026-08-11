@@ -91,3 +91,16 @@ export async function revokeRefreshFamily(
     data: { revokedAt: new Date() },
   });
 }
+
+/** Revoga TODAS as famílias de refresh token do usuário — usado após uma
+ * troca de senha (reset ou settings) para forçar logout de toda sessão
+ * ativa, não só a família da sessão atual (revokeRefreshFamily). */
+export async function revokeAllRefreshTokensForUser(
+  prisma: PrismaClient,
+  userId: string,
+): Promise<void> {
+  await prisma.refreshToken.updateMany({
+    where: { userId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+}

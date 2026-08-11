@@ -32,6 +32,7 @@ export async function resetTestDb(prisma: PrismaClient): Promise<void> {
     prisma.usageEvent.deleteMany(),
     prisma.usageDailyRollup.deleteMany(),
     prisma.refreshToken.deleteMany(),
+    prisma.passwordResetToken.deleteMany(),
     prisma.featureFlagOverride.deleteMany(),
     prisma.featureFlag.deleteMany(),
     prisma.waitlistEntry.deleteMany(),

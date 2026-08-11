@@ -1,10 +1,26 @@
 import type { FastifyInstance } from "fastify";
 // apps/api/src/auth/routes.test.ts
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { resetTestDb } from "../../test/db.js";
 import { buildServer } from "../server.js";
 import { hashPassword } from "./password.js";
 import { hashToken } from "./refresh-tokens.js";
+
+// Same dependency-injection pattern as invites/routes.test.ts — forgot-password
+// sends real e-mail via Resend; this fakes the one SDK method the route calls.
+const { sendMock } = vi.hoisted(() => ({ sendMock: vi.fn() }));
+vi.mock("resend", () => ({
+  Resend: vi.fn().mockImplementation(() => ({ emails: { send: sendMock } })),
+}));
 
 const TEST_ENV = {
   DATABASE_URL:
@@ -23,6 +39,10 @@ let server: FastifyInstance;
 
 beforeAll(async () => {
   server = await buildServer(TEST_ENV);
+});
+beforeEach(() => {
+  sendMock.mockReset();
+  sendMock.mockResolvedValue({ data: { id: "email_test" }, error: null });
 });
 afterEach(async () => {
   await resetTestDb(server.prisma);
@@ -191,6 +211,283 @@ describe("POST /v1/auth/login", () => {
     });
     expect(emailBAttempt.statusCode).toBe(401);
     expect(emailBAttempt.json().code).not.toBe("auth.rate_limited");
+  });
+});
+
+describe("POST /v1/auth/forgot-password", () => {
+  it("issues a token and sends the reset e-mail for an existing account", async () => {
+    const passwordHash = await hashPassword("supersecret123");
+    const user = await server.prisma.user.create({
+      data: {
+        email: "forgot-test@harmon.dev",
+        name: "Forgot Test",
+        birthDate: new Date("1990-01-01"),
+        passwordHash,
+      },
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/auth/forgot-password",
+      payload: { email: "forgot-test@harmon.dev" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const call = sendMock.mock.calls[0]?.[0] as { to: string; html: string };
+    expect(call.to).toBe("forgot-test@harmon.dev");
+    expect(call.html).toContain("/reset-password?token=");
+
+    const tokenRow = await server.prisma.passwordResetToken.findFirst({
+      where: { userId: user.id },
+    });
+    expect(tokenRow).not.toBeNull();
+  });
+
+  it("returns the same generic response for a nonexistent e-mail and sends no e-mail", async () => {
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/auth/forgot-password",
+      payload: { email: "nobody-forgot@harmon.dev" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it("returns the same generic response for a Google-only account (no password to reset) and sends no e-mail", async () => {
+    await server.prisma.user.create({
+      data: {
+        email: "google-only-forgot@harmon.dev",
+        name: "Google Only",
+        birthDate: new Date("1990-01-01"),
+        googleId: "google-sub-forgot",
+      },
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/auth/forgot-password",
+      payload: { email: "google-only-forgot@harmon.dev" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it("gives an identical body for an existing account and a nonexistent one", async () => {
+    const passwordHash = await hashPassword("supersecret123");
+    await server.prisma.user.create({
+      data: {
+        email: "forgot-neutral@harmon.dev",
+        name: "Forgot Neutral",
+        birthDate: new Date("1990-01-01"),
+        passwordHash,
+      },
+    });
+
+    const existing = await server.inject({
+      method: "POST",
+      url: "/v1/auth/forgot-password",
+      payload: { email: "forgot-neutral@harmon.dev" },
+    });
+    const missing = await server.inject({
+      method: "POST",
+      url: "/v1/auth/forgot-password",
+      payload: { email: "still-nobody@harmon.dev" },
+    });
+
+    expect(existing.json()).toEqual(missing.json());
+  });
+
+  it("invalidates a previous unused token when a second request is made", async () => {
+    const passwordHash = await hashPassword("supersecret123");
+    const user = await server.prisma.user.create({
+      data: {
+        email: "forgot-twice@harmon.dev",
+        name: "Forgot Twice",
+        birthDate: new Date("1990-01-01"),
+        passwordHash,
+      },
+    });
+
+    await server.inject({
+      method: "POST",
+      url: "/v1/auth/forgot-password",
+      payload: { email: "forgot-twice@harmon.dev" },
+    });
+    // The template also embeds the (unrelated, https) logo asset URL, so
+    // matching on the query param directly is more robust than trying to
+    // isolate "the" URL out of the whole html body.
+    const firstHtml = (sendMock.mock.calls[0]?.[0] as { html: string }).html;
+    const firstToken = firstHtml.match(/token=([a-f0-9]+)/)?.[1] ?? null;
+
+    await server.inject({
+      method: "POST",
+      url: "/v1/auth/forgot-password",
+      payload: { email: "forgot-twice@harmon.dev" },
+    });
+
+    if (!firstToken) {
+      throw new Error("expected a token to be embedded in the reset link");
+    }
+    const reuseFirst = await server.inject({
+      method: "POST",
+      url: "/v1/auth/reset-password",
+      payload: { token: firstToken, newPassword: "brandnewpassword123" },
+    });
+    expect(reuseFirst.statusCode).toBe(400);
+    expect(reuseFirst.json().code).toBe("auth.token_invalid");
+
+    const rows = await server.prisma.passwordResetToken.findMany({
+      where: { userId: user.id },
+    });
+    expect(rows).toHaveLength(2);
+  });
+});
+
+describe("POST /v1/auth/reset-password", () => {
+  async function createUserWithResetToken(email: string) {
+    const passwordHash = await hashPassword("originalpassword123");
+    const user = await server.prisma.user.create({
+      data: {
+        email,
+        name: "Reset Test",
+        birthDate: new Date("1990-01-01"),
+        passwordHash,
+      },
+    });
+    await server.inject({
+      method: "POST",
+      url: "/v1/auth/forgot-password",
+      payload: { email },
+    });
+    const html = (sendMock.mock.calls.at(-1)?.[0] as { html: string }).html;
+    // See the comment in the "invalidates a previous token" test above —
+    // matching on the query param avoids picking up the template's own
+    // (unrelated, https) logo asset URL instead of the reset link.
+    const token = html.match(/token=([a-f0-9]+)/)?.[1] ?? null;
+    if (!token) {
+      throw new Error("expected a token to be embedded in the reset link");
+    }
+    return { user, token };
+  }
+
+  it("resets the password with a valid token and logs in with the new password", async () => {
+    const { user, token } = await createUserWithResetToken(
+      "reset-valid@harmon.dev",
+    );
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/auth/reset-password",
+      payload: { token, newPassword: "brandnewpassword123" },
+    });
+    expect(response.statusCode).toBe(200);
+
+    const login = await server.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { email: user.email, password: "brandnewpassword123" },
+    });
+    expect(login.statusCode).toBe(200);
+
+    const oldLogin = await server.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { email: user.email, password: "originalpassword123" },
+    });
+    expect(oldLogin.statusCode).toBe(401);
+  });
+
+  it("revokes every active refresh token for the user after a successful reset", async () => {
+    const { user, token } = await createUserWithResetToken(
+      "reset-revoke@harmon.dev",
+    );
+    const login = await server.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { email: user.email, password: "originalpassword123" },
+    });
+    const cookie = login.cookies.find((c) => c.name === "refreshToken");
+    if (!cookie) throw new Error("expected a refreshToken cookie");
+
+    const reset = await server.inject({
+      method: "POST",
+      url: "/v1/auth/reset-password",
+      payload: { token, newPassword: "brandnewpassword123" },
+    });
+    expect(reset.statusCode).toBe(200);
+
+    const refreshAfterReset = await server.inject({
+      method: "POST",
+      url: "/v1/auth/refresh",
+      cookies: { refreshToken: cookie.value },
+    });
+    expect(refreshAfterReset.statusCode).toBe(400);
+  });
+
+  it("rejects an already-used token", async () => {
+    const { token } = await createUserWithResetToken("reset-used@harmon.dev");
+
+    await server.inject({
+      method: "POST",
+      url: "/v1/auth/reset-password",
+      payload: { token, newPassword: "brandnewpassword123" },
+    });
+    const secondUse = await server.inject({
+      method: "POST",
+      url: "/v1/auth/reset-password",
+      payload: { token, newPassword: "anotherpassword456" },
+    });
+
+    expect(secondUse.statusCode).toBe(400);
+    expect(secondUse.json().code).toBe("auth.token_invalid");
+  });
+
+  it("rejects an expired token", async () => {
+    const { user, token } = await createUserWithResetToken(
+      "reset-expired@harmon.dev",
+    );
+    await server.prisma.passwordResetToken.updateMany({
+      where: { userId: user.id },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/auth/reset-password",
+      payload: { token, newPassword: "brandnewpassword123" },
+    });
+
+    expect(response.statusCode).toBe(410);
+    expect(response.json().code).toBe("auth.token_expired");
+  });
+
+  it("rejects a token that never existed", async () => {
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/auth/reset-password",
+      payload: {
+        token: "not-a-real-token",
+        newPassword: "brandnewpassword123",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().code).toBe("auth.token_invalid");
+  });
+
+  it("rejects a password shorter than 8 characters", async () => {
+    const { token } = await createUserWithResetToken("reset-short@harmon.dev");
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/auth/reset-password",
+      payload: { token, newPassword: "short" },
+    });
+
+    expect(response.statusCode).toBe(400);
   });
 });
 

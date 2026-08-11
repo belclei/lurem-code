@@ -1,7 +1,11 @@
 // apps/api/src/email/templates.test.ts
 import type { Resend } from "resend";
 import { describe, expect, it, vi } from "vitest";
-import { sendConnectionRequestEmail, sendInviteEmail } from "./templates.js";
+import {
+  sendConnectionRequestEmail,
+  sendInviteEmail,
+  sendPasswordResetEmail,
+} from "./templates.js";
 
 // Same dependency-injection pattern as resend-client.test.ts — a fake
 // object shaped like the one SDK method we call, no live API key needed.
@@ -44,6 +48,37 @@ describe("sendInviteEmail", () => {
     await expect(
       sendInviteEmail(resend, { to: "x@example.com", link: "https://x" }),
     ).rejects.toThrow(/boom/);
+  });
+});
+
+describe("sendPasswordResetEmail", () => {
+  it("sends html+text with the reset link substituted", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValue({ data: { id: "email_3" }, error: null });
+    const resend = fakeResend(send);
+
+    const result = await sendPasswordResetEmail(resend, {
+      to: "user@example.com",
+      link: "https://lurem.fasolo.tech/reset-password?token=xyz",
+    });
+
+    expect(result).toEqual({ id: "email_3" });
+    // biome-ignore lint/style/noNonNullAssertion: awaited function call above guarantees send was called exactly once
+    const call = send.mock.calls[0]![0] as {
+      to: string;
+      subject: string;
+      html: string;
+      text: string;
+    };
+    expect(call.to).toBe("user@example.com");
+    expect(call.subject).toBe("Redefina sua senha no Lurem");
+    expect(call.html).toContain(
+      "https://lurem.fasolo.tech/reset-password?token=xyz",
+    );
+    expect(call.text).toContain(
+      "https://lurem.fasolo.tech/reset-password?token=xyz",
+    );
   });
 });
 
