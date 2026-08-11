@@ -14,6 +14,17 @@ export type DomainEventType =
   | "card.over_limit_cleared"
   | "card.invoice_closed"
   | "card.invoice_due"
+  // Projeção futura (BACKLOG: "fechamento/vencimento com antecedência") —
+  // sintetizados por timeline/aggregate.ts's `synthesizeStructuralDates`,
+  // não backed por um DomainEvent real (o real só nasce no dia exato, via
+  // invoice-events-job.ts). Tipos próprios (não reaproveitam
+  // card.invoice_closed/due) porque o total ainda é uma estimativa da
+  // fatura em andamento, não o valor final fechado.
+  | "card.invoice_closing_upcoming"
+  | "card.invoice_due_upcoming"
+  // Calendário global administrado (BACKLOG item A) — nunca backed por um
+  // DomainEvent real, sempre sintetizado (mesmo mecanismo acima).
+  | "calendar.global_entry"
   | "transaction.created"
   | "transaction.updated"
   | "transaction.deleted"
@@ -54,11 +65,17 @@ export interface DomainEventPayload {
   limitCents?: number;
   totalCents?: number;
   dueDate?: string;
+  /** card.invoice_closing_upcoming's own projected date (dueDate above is reused by card.invoice_closed/due). */
+  closingDate?: string;
   autoDebitAccountName?: string;
   count?: number;
   permission?: "view" | "edit";
   itemLabel?: string;
   inviteeEmail?: string;
+  /** calendar.global_entry — the admin-authored line itself (GlobalCalendarEntry.title), not composed from other fields. */
+  title?: string;
+  /** calendar.global_entry — GlobalCalendarEntry.displayStyle ("box" | "inline"); unused by this row today (both render as an inline Alert), kept so the payload round-trips the admin's choice for a future "box" treatment. */
+  displayStyle?: string;
 }
 
 export interface TimelineEventRowProps {
@@ -109,6 +126,11 @@ const EVENT_TEXT: Record<DomainEventType, (p: DomainEventPayload) => string> = {
         ? ` (descontada automaticamente de ${p.autoDebitAccountName})`
         : ""
     }`,
+  "card.invoice_closing_upcoming": (p) =>
+    `Sua fatura ${p.institutionName ?? ""} fecha em breve — dia ${p.closingDate ? formatDate(p.closingDate) : "—"}, ${formatMoney(p.totalCents ?? 0)} até agora`,
+  "card.invoice_due_upcoming": (p) =>
+    `Sua fatura ${p.institutionName ?? ""} vence dia ${p.dueDate ? formatDate(p.dueDate) : "—"} — ${formatMoney(p.totalCents ?? 0)}`,
+  "calendar.global_entry": (p) => p.title ?? "",
   "transaction.created": () => "Você registrou uma transação",
   "transaction.updated": () => "Você corrigiu uma transação",
   "transaction.deleted": () => "Você removeu uma transação",
@@ -170,6 +192,7 @@ const EVENT_TEXT: Record<DomainEventType, (p: DomainEventPayload) => string> = {
 function eventEmoji(type: DomainEventType): string {
   if (type.endsWith("over_limit_entered")) return "⚠️";
   if (type.endsWith("over_limit_cleared")) return "✅";
+  if (type === "calendar.global_entry") return "🗓️";
   if (type.startsWith("card.invoice")) return "🧾";
   if (type.startsWith("account") || type.startsWith("card")) return "🏦";
   if (type.startsWith("transaction")) return "💸";
@@ -189,9 +212,13 @@ function eventVariant(type: DomainEventType): AlertVariant {
 
 /**
  * Lurem's generic structural timeline event line. Dumb component: reads a
- * `type` + loosely-typed `payload` and renders one of the catalog's 36
+ * `type` + loosely-typed `payload` and renders one of the catalog's
  * pt-BR copy templates (IMPLEMENTACAO.md §6, BACKLOG US-2.4) as an inline
- * Alert — never decides which event happened.
+ * Alert — never decides which event happened. Three of those templates
+ * (`card.invoice_closing_upcoming`/`.due_upcoming`, `calendar.global_entry`)
+ * are never backed by a real `DomainEvent` row — the API synthesizes them
+ * ahead of time (timeline/aggregate.ts's `synthesizeStructuralDates`); this
+ * component can't tell the difference and doesn't need to.
  */
 export function TimelineEventRow({ type, payload }: TimelineEventRowProps) {
   return (
