@@ -2,8 +2,8 @@
 // Sidebar shell for authenticated routes (248px sticky). Tailwind
 // arbitrary-value utilities, matching how the rest of packages/ui already
 // consumes the CSS-variable tokens — except the sidebar background itself,
-// which is pinned to #090F1A (not --lr-night-900) to exactly match
-// logo.png's baked-in background so the image blends in seamlessly.
+// which is pinned to #090F1A (not --lr-night-900) to match the dark surface
+// logo.svg (transparent background) was designed against.
 //
 // issues.md #38 (responsivo): below `md` the 248px side rail has nowhere to
 // go, so it's replaced by a fixed bottom tab bar (`<nav>` at the end of this
@@ -57,7 +57,7 @@ export function AppLayout() {
     <div className="flex min-h-screen bg-[var(--lr-bg)]">
       <aside className="sticky top-0 hidden h-screen w-[248px] flex-none flex-col bg-[#090F1A] px-4 py-6 text-[var(--lr-ivory-100)] md:flex">
         <div className="px-2 pt-2 pb-7 w-full flex items-center justify-center">
-          <img src="/logo.png" alt="Lurem" className="w-[168px]" />
+          <img src="/logo.svg" alt="Lurem" className="w-[120px]" />
         </div>
 
         <nav className="flex flex-col gap-0.5">
