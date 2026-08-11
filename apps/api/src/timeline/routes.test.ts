@@ -325,4 +325,82 @@ describe("GET /v1/timeline", () => {
     expect(todayDay).toBeDefined();
     expect(todayDay.items).toEqual([]);
   });
+
+  it("projects the next invoice closing/due dates for an active card, ahead of the real card.invoice_closed/due event (BACKLOG: fechamento/vencimento com antecedência)", async () => {
+    const { userId, accessToken } = await authedUser();
+    const institution = await server.prisma.institution.create({
+      data: {
+        name: "Nubank",
+        compeCode: `260-${Math.random().toString(36).slice(2)}`,
+        logoAsset: "nubank.svg",
+      },
+    });
+    await server.prisma.creditCard.create({
+      data: {
+        userId,
+        institutionId: institution.id,
+        limitCents: 100_000,
+        closingDay: 10,
+        dueDay: 20,
+      },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/v1/timeline",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    const allItems = body.days.flatMap(
+      (d: { items: Array<{ type?: string }> }) => d.items,
+    );
+    const closing = allItems.find(
+      (i: { type?: string }) => i.type === "card.invoice_closing_upcoming",
+    );
+    const due = allItems.find(
+      (i: { type?: string }) => i.type === "card.invoice_due_upcoming",
+    );
+    expect(closing).toBeDefined();
+    expect(closing.payload.institutionName).toBe("Nubank");
+    expect(due).toBeDefined();
+    expect(due.payload.institutionName).toBe("Nubank");
+  });
+
+  it("shows a global calendar entry on its recurring month/day for any user (BACKLOG: calendário global administrado)", async () => {
+    const { accessToken } = await authedUser();
+    const today = new Date();
+    // São Paulo "today" — matches globalCalendarSource's own basis (`now`).
+    const todayYmd = today.toLocaleDateString("en-CA", {
+      timeZone: "America/Sao_Paulo",
+    });
+    const [year, month, day] = todayYmd.split("-").map(Number);
+    void year;
+    await server.prisma.globalCalendarEntry.create({
+      data: {
+        title: "Feriado de teste",
+        month: month as number,
+        day: day as number,
+      },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/v1/timeline",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    const todayDay = body.days.find(
+      (d: { date: string }) => d.date === todayYmd,
+    );
+    expect(todayDay).toBeDefined();
+    const entryItem = todayDay.items.find(
+      (i: { type?: string }) => i.type === "calendar.global_entry",
+    );
+    expect(entryItem).toBeDefined();
+    expect(entryItem.payload.title).toBe("Feriado de teste");
+  });
 });

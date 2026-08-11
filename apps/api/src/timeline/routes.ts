@@ -1,4 +1,3 @@
-import { balance } from "@lurem/core";
 // apps/api/src/timeline/routes.ts
 // BACKLOG.md US-6.1 — GET /v1/timeline: Transaction+DomainEvent interleaved,
 // agregado por dia, paginado por cursor, filtrável por período/conta-cartão
@@ -8,11 +7,148 @@ import { balance } from "@lurem/core";
 // própria aqui — ambos derivam de GET /v1/accounts e GET /v1/cards, que já
 // expõem isOverLimit/balanceCents/usedCents; duplicar esse cálculo numa rota
 // nova seria uma segunda fonte de verdade para o mesmo número (§0).
-import type { Prisma } from "@lurem/db";
+import { balance, sumCardTransactionsForInvoiceMonth } from "@lurem/core";
+import type { Prisma, Transaction } from "@lurem/db";
+import type { CreditCardLike, TransactionLike } from "@lurem/domain";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireUser } from "../auth/authenticate.js";
-import { buildTimelinePage, synthesizeStructuralDates } from "./aggregate.js";
+import { nextInvoiceMilestones } from "../cards/invoice-status.js";
+import {
+  type StructuralDateSource,
+  birthdayJoinSource,
+  buildTimelinePage,
+  synthesizeStructuralDates,
+} from "./aggregate.js";
+
+/** Ymd of a pure-calendar Date (midnight UTC — closingDate/dueDate/etc., same convention as `transactionDay` in aggregate.ts). */
+function ymd(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+// Same shape invoice-events-job.ts maps to before handing transactions to
+// packages/core's invoice math — duplicated here (not imported) because
+// that mapper isn't exported there; kept intentionally tiny to avoid a
+// cross-module dependency for four field reads.
+function toTransactionLike(tx: Transaction): TransactionLike {
+  return {
+    id: tx.id,
+    kind: tx.kind,
+    amountBRLCents: tx.amountBRLCents,
+    transactionDate: tx.transactionDate,
+    isScheduled: tx.isScheduled,
+    recurringTransactionId: tx.recurringTransactionId ?? undefined,
+  };
+}
+
+/**
+ * One source per (card, milestone) — feeds `synthesizeStructuralDates` so
+ * the Timeline shows the next fatura closing/due date ahead of time
+ * (BACKLOG: "fechamento/vencimento com antecedência"), reusing
+ * invoice-status.ts's `nextInvoiceMilestones` for the date math (no
+ * duplicate closing/due logic here) and `sumCardTransactionsForInvoiceMonth`
+ * (packages/core) for the projected total — same primitive
+ * invoice-events-job.ts uses for the real event's payload once the day
+ * arrives.
+ */
+function cardInvoiceSources(
+  card: CreditCardLike,
+  institutionName: string,
+  allTransactions: Transaction[],
+  asOf: Date,
+): StructuralDateSource[] {
+  const milestones = nextInvoiceMilestones(card, asOf);
+  // sumCardTransactionsForInvoiceMonth only filters by period, not by card
+  // (invoice-events-job.ts's own callsite pre-filters the same way) — pass
+  // only this card's transactions in.
+  const cardTransactions = allTransactions
+    .filter((tx) => tx.creditCardId === card.id)
+    .map(toTransactionLike);
+  const closingTotal = sumCardTransactionsForInvoiceMonth(
+    card,
+    cardTransactions,
+    milestones.nextClosingMonth.year,
+    milestones.nextClosingMonth.month,
+  );
+  const dueTotal = sumCardTransactionsForInvoiceMonth(
+    card,
+    cardTransactions,
+    milestones.nextDueMonth.year,
+    milestones.nextDueMonth.month,
+  );
+
+  return [
+    {
+      dates: [ymd(milestones.nextClosingDate)],
+      event: {
+        type: "card.invoice_closing_upcoming",
+        payload: {
+          institutionName,
+          totalCents: closingTotal.valueCents,
+          closingDate: ymd(milestones.nextClosingDate),
+        },
+        aggregateType: "CreditCard",
+        aggregateId: card.id,
+      },
+    },
+    {
+      dates: [ymd(milestones.nextDueDate)],
+      event: {
+        type: "card.invoice_due_upcoming",
+        payload: {
+          institutionName,
+          totalCents: dueTotal.valueCents,
+          dueDate: ymd(milestones.nextDueDate),
+        },
+        aggregateType: "CreditCard",
+        aggregateId: card.id,
+      },
+    },
+  ];
+}
+
+/**
+ * One source per `GlobalCalendarEntry` — the admin-managed calendar
+ * (BACKLOG item A) synthesizes onto every user's timeline, the current
+ * year's occurrence of its month/day (bounded the same way
+ * `birthdayJoinSource` bounds birthdays to "one occurrence near today", not
+ * every year in history — there's no join-date-style lower bound for a
+ * global entry, and nothing here is backed by a real DomainEvent, so
+ * without a bound this would need to scan every year ever, forever).
+ */
+const SAO_PAULO_YEAR = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Sao_Paulo",
+  year: "numeric",
+});
+
+function globalCalendarSource(
+  entry: {
+    id: string;
+    title: string;
+    month: number;
+    day: number;
+    displayStyle: string;
+  },
+  today: Date,
+): StructuralDateSource {
+  // §0: fuso America/Sao_Paulo para lógica de data — `today` is a real
+  // instant (`new Date()`), not a pure calendar date, so its calendar year
+  // must be read through that timezone, not UTC (a request near midnight
+  // could otherwise resolve to the wrong year in the entry's projected
+  // date).
+  const year = SAO_PAULO_YEAR.format(today);
+  const month = String(entry.month).padStart(2, "0");
+  const day = String(entry.day).padStart(2, "0");
+  return {
+    dates: [`${year}-${month}-${day}`],
+    event: {
+      type: "calendar.global_entry",
+      payload: { title: entry.title, displayStyle: entry.displayStyle },
+      aggregateType: "GlobalCalendarEntry",
+      aggregateId: entry.id,
+    },
+  };
+}
 
 const TimelineQuery = z.object({
   cursor: z
@@ -117,33 +253,89 @@ export async function registerTimelineRoutes(
       // "transaction" (pseudo-tipo) não está entre os selecionados.
       const includeTransactions = !types || types.includes("transaction");
 
-      const [transactions, events, allAccounts, allTransactions, user] =
-        await Promise.all([
-          includeTransactions
-            ? fastify.prisma.transaction.findMany({ where: txWhere })
-            : Promise.resolve([]),
-          // categoryId não filtra events — DomainEvent não tem esse conceito
-          // (§6 catalog); o filtro de categoria só restringe transações.
-          fastify.prisma.domainEvent.findMany({ where: eventWhere }),
-          // Fetch all accounts for current balance calculation
-          fastify.prisma.account.findMany({ where: { userId } }),
-          // Fetch all transactions (unfiltered) to calculate retroactive balances
-          fastify.prisma.transaction.findMany({ where: { userId } }),
-          fastify.prisma.user.findUniqueOrThrow({ where: { id: userId } }),
-        ]);
+      const [
+        transactions,
+        events,
+        allAccounts,
+        allTransactions,
+        user,
+        activeCards,
+        calendarEntries,
+      ] = await Promise.all([
+        includeTransactions
+          ? fastify.prisma.transaction.findMany({ where: txWhere })
+          : Promise.resolve([]),
+        // categoryId não filtra events — DomainEvent não tem esse conceito
+        // (§6 catalog); o filtro de categoria só restringe transações.
+        fastify.prisma.domainEvent.findMany({ where: eventWhere }),
+        // Fetch all accounts for current balance calculation
+        fastify.prisma.account.findMany({ where: { userId } }),
+        // Fetch all transactions (unfiltered) to calculate retroactive balances
+        fastify.prisma.transaction.findMany({ where: { userId } }),
+        fastify.prisma.user.findUniqueOrThrow({ where: { id: userId } }),
+        // Projeção de fechamento/vencimento futuro (BACKLOG: "com
+        // antecedência") só faz sentido para cartões ainda ativos.
+        fastify.prisma.creditCard.findMany({
+          where: { userId, isActive: true },
+        }),
+        // Calendário global — administrado, não tem userId (aparece pra todos).
+        fastify.prisma.globalCalendarEntry.findMany(),
+      ]);
+
+      const institutionById = new Map(
+        activeCards.length > 0
+          ? (
+              await fastify.prisma.institution.findMany({
+                where: {
+                  id: {
+                    in: [...new Set(activeCards.map((c) => c.institutionId))],
+                  },
+                },
+              })
+            ).map((i) => [i.id, i.name])
+          : [],
+      );
+
+      const now = new Date();
+      const cardSources = activeCards.flatMap((card) =>
+        cardInvoiceSources(
+          {
+            id: card.id,
+            closingDay: card.closingDay,
+            dueDay: card.dueDay,
+            autoDebitAccountId: card.autoDebitAccountId,
+            isActive: card.isActive,
+          },
+          institutionById.get(card.institutionId) ?? "",
+          allTransactions,
+          now,
+        ),
+      );
+      const calendarSources = calendarEntries.map((entry) =>
+        globalCalendarSource(entry, now),
+      );
 
       // issues.md: aniversário/dia de cadastro devem aparecer mesmo sem
-      // transação/evento naquele dia — mas ainda respeitando from/to.
-      const structuralDates = synthesizeStructuralDates(user).filter(
-        (date) =>
-          (!query.from || date >= query.from) &&
-          (!query.to || date <= query.to),
+      // transação/evento naquele dia — mas ainda respeitando from/to. Mesmo
+      // mecanismo agora alimenta a projeção de fatura e o calendário global
+      // (aggregate.ts's `synthesizeStructuralDates`, generalizado).
+      const inRange = (date: string) =>
+        (!query.from || date >= query.from) && (!query.to || date <= query.to);
+      const structural = synthesizeStructuralDates([
+        birthdayJoinSource(user),
+        ...cardSources,
+        ...calendarSources,
+      ]);
+      const structuralDates = structural.dates.filter(inRange);
+      const structuralItems = structural.items.filter((item) =>
+        inRange(item.date),
       );
 
       const page = buildTimelinePage(transactions, events, {
         cursor: query.cursor,
         limit: query.limit,
         structuralDates,
+        structuralItems,
       });
 
       // Calculate current balance by summing all accounts
