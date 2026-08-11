@@ -1,12 +1,20 @@
 // apps/web/src/routes/timeline/NewTransactionDialog.tsx
+import { splitInstallments } from "@lurem/core";
 import {
   Alert,
   Button,
+  Checkbox,
   DateField,
   Dialog,
   Input,
   Segmented,
   Select,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
   formatMoney,
 } from "@lurem/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -33,6 +41,8 @@ interface CreateTxPayload {
   toAccountId?: string;
   toCreditCardId?: string;
   categoryId?: string;
+  installmentTotal?: number;
+  installmentHasInterest?: boolean;
 }
 
 export function NewTransactionDialog({
@@ -55,8 +65,34 @@ export function NewTransactionDialog({
   const [sourceValue, setSourceValue] = useState<string | null>(null);
   const [destValue, setDestValue] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [installmentEnabled, setInstallmentEnabled] = useState(false);
+  const [installmentTotalStr, setInstallmentTotalStr] = useState("2");
+  const [installmentHasInterest, setInstallmentHasInterest] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  // Parcelamento (§6.6) só existe em despesa de cartão de crédito.
+  const isCardExpense = kind === "expense" && sourceValue?.startsWith("card:");
+  const showInstallments = isCardExpense && installmentEnabled;
+
+  const installmentTotalCount = Number(installmentTotalStr);
+  const installmentTotalValid =
+    Number.isInteger(installmentTotalCount) && installmentTotalCount >= 2;
+
+  // Pré-visualização da divisão em parcelas — MESMA função (@lurem/core)
+  // usada pelo backend ao criar as N linhas, para nunca divergir no
+  // arredondamento (resto vai na última parcela). Edições manuais nas
+  // linhas abaixo são só de conferência: o envio manda apenas o total e
+  // `installmentTotal`, deixando o backend recalcular do jeito padrão —
+  // aceitar valores editados linha a linha exigiria mudar a API de criação
+  // para receber um array de centavos por parcela, o que não compensa o
+  // ganho para este formulário.
+  const installmentPreview = useMemo(() => {
+    if (!showInstallments || !installmentTotalValid) return null;
+    const cents = reaisToCentsPositive(amount);
+    if (cents === null) return null;
+    return splitInstallments(cents, installmentTotalCount);
+  }, [showInstallments, installmentTotalValid, installmentTotalCount, amount]);
 
   const categoriesQuery = useQuery({
     queryKey: ["categories"],
@@ -136,6 +172,9 @@ export function NewTransactionDialog({
       setSourceValue(null);
       setDestValue(null);
       setCategoryId(null);
+      setInstallmentEnabled(false);
+      setInstallmentTotalStr("2");
+      setInstallmentHasInterest(false);
       setFormError(null);
       setFieldErrors({});
       onCreated();
@@ -173,6 +212,13 @@ export function NewTransactionDialog({
       setFieldErrors({ accountId: "Escolha a conta ou o cartão." });
       return;
     }
+    if (showInstallments && !installmentTotalValid) {
+      setFormError("Informe um número de parcelas válido (mínimo 2).");
+      setFieldErrors({
+        installmentTotal: "Mínimo de 2 parcelas.",
+      });
+      return;
+    }
     const source = resolveTarget(sourceValue);
     // Vazio (transferência sem descrição) precisa virar `undefined`, não "" —
     // o backend valida `description` com min(1) quando o campo está
@@ -183,6 +229,12 @@ export function NewTransactionDialog({
       transactionDate: date,
       amountCents: cents,
       categoryId: categoryId ?? undefined,
+      ...(showInstallments
+        ? {
+            installmentTotal: installmentTotalCount,
+            installmentHasInterest,
+          }
+        : {}),
     };
     if (kind === "transfer") {
       if (!source.accountId) {
@@ -228,7 +280,7 @@ export function NewTransactionDialog({
         />
         <div className="grid gap-4 sm:grid-cols-2">
           <Input
-            label="Valor"
+            label={showInstallments ? "Valor total da compra" : "Valor"}
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             money
@@ -252,6 +304,89 @@ export function NewTransactionDialog({
           placeholder="Selecione…"
           error={fieldErrors.accountId}
         />
+        {isCardExpense ? (
+          <div className="flex flex-col gap-3">
+            <Checkbox
+              label="Parcelar"
+              checked={installmentEnabled}
+              onChange={(e) => setInstallmentEnabled(e.target.checked)}
+            />
+            {installmentEnabled ? (
+              <div className="flex flex-col gap-3 rounded-[var(--lr-r-md)] border border-[var(--lr-border)] p-3">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Input
+                    type="number"
+                    label="Número de parcelas"
+                    value={installmentTotalStr}
+                    onChange={(e) => setInstallmentTotalStr(e.target.value)}
+                    min={2}
+                    step={1}
+                    error={fieldErrors.installmentTotal}
+                  />
+                  <div className="flex items-end pb-2.5">
+                    <Checkbox
+                      label="Compra com juros"
+                      checked={installmentHasInterest}
+                      onChange={(e) =>
+                        setInstallmentHasInterest(e.target.checked)
+                      }
+                    />
+                  </div>
+                </div>
+                {installmentPreview ? (
+                  <Table>
+                    <TableHead>
+                      <tr>
+                        <TableHeaderCell>Parcela</TableHeaderCell>
+                        <TableHeaderCell numeric>Valor</TableHeaderCell>
+                      </tr>
+                    </TableHead>
+                    <TableBody>
+                      {installmentPreview.map((cents, i) => {
+                        // Parcelas não têm id estável — são posicionais (1ª,
+                        // 2ª, ...). A chave inclui total/valor de propósito
+                        // (não é um índice "puro"): força o Input a remontar
+                        // — e repopular seu `defaultValue` não-controlado —
+                        // sempre que o usuário recalcula a divisão.
+                        const rowKey = `${installmentTotalCount}-${amount}-${i}`;
+                        return (
+                          <TableRow key={rowKey}>
+                            <TableCell>
+                              {i + 1}/{installmentPreview.length}
+                            </TableCell>
+                            <TableCell numeric>
+                              {/* Editável só para conferência do usuário — o
+                              envio manda o total + `installmentTotal` e
+                              deixa o backend recalcular com a mesma regra
+                              (@lurem/core#splitInstallments); ver comentário
+                              acima de `installmentPreview`. */}
+                              <Input
+                                label=""
+                                aria-label={`Valor da parcela ${i + 1}`}
+                                money
+                                affix="R$"
+                                inputMode="decimal"
+                                defaultValue={formatMoney(cents)
+                                  .replace("R$", "")
+                                  .trim()}
+                                className="text-right"
+                              />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <p className="text-[.8125rem] text-[var(--lr-label)]">
+                    Informe o valor total e o número de parcelas para ver a
+                    divisão.
+                  </p>
+                )}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {kind === "transfer" ? (
           <Select
             label="Para (destino)"
