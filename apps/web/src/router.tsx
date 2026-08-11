@@ -88,6 +88,13 @@ const recurringRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/recurring",
   component: RecurringPage,
+  // `?edit=<id>` — TimelineFeed's "recurringPreview" card (a not-yet-due
+  // occurrence with no real Transaction row to click into) deep-links here
+  // to open that series' edit form already focused, instead of just the
+  // bare list (see RecurringPage.tsx).
+  validateSearch: (search: Record<string, unknown>): { edit?: string } => ({
+    edit: typeof search.edit === "string" ? search.edit : undefined,
+  }),
 });
 
 const settingsRoute = createRoute({

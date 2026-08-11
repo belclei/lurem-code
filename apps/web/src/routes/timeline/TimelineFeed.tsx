@@ -63,11 +63,12 @@ export interface TimelineFeedProps {
   onEditAccount: (account: AccountDto) => void;
   onEditCard: (card: CardDto) => void;
   /** Backlog "Recorrência integrada ao dialog": clicar numa ocorrência
-   * futura ainda não vencida (variant "recurringPreview") abre a gestão da
-   * série — pragmatic cut, ver report: um dialog de edição dedicado para
-   * "confirmar/alterar o valor" de uma ocorrência que ainda nem existe como
-   * Transaction ficou fora deste recorte. */
-  onManageRecurring: () => void;
+   * futura ainda não vencida (variant "recurringPreview") abre a série
+   * correspondente já em modo de edição em /recurring (RecurringPage's
+   * `?edit=<id>`) — pragmatic cut, ver report: um dialog de edição dedicado
+   * para "confirmar/alterar o valor" de uma ocorrência que ainda nem existe
+   * como Transaction ficou fora deste recorte. */
+  onManageRecurring: (recurringTransactionId: string) => void;
 }
 
 /** US-6.1's day-by-day feed (§6.12) — the Timeline's core concept once
@@ -183,6 +184,7 @@ export function TimelineFeed({
                       item.type === "recurring.occurrence_upcoming"
                     ) {
                       const payload = item.payload as {
+                        recurringTransactionId: string;
                         description: string;
                         kind: "income" | "expense";
                         amountCents: number;
@@ -196,7 +198,9 @@ export function TimelineFeed({
                           kind={payload.kind}
                           amountCents={payload.amountCents}
                           source="manual"
-                          onClick={onManageRecurring}
+                          onClick={() =>
+                            onManageRecurring(payload.recurringTransactionId)
+                          }
                         />
                       );
                     }
