@@ -210,6 +210,13 @@ model Account {
   reconciledBalanceCents Int? // CACHE do saldo derivado — nunca é a verdade (§2.2)
   reconciledAt           DateTime?
   isActive               Boolean     @default(true)
+  // BACKLOG.md — "Arquivar conta/cartão": conceito distinto de isActive.
+  // isActive (pré-existente) governa se a conta entra nas projeções de
+  // fluxo de caixa/patrimônio (§ core cashflow/patrimonio.ts); archivedAt é
+  // puramente de organização de UI — esconde o item da lista principal de
+  // Contas e cartões, movendo-o para a seção "Arquivados" (reversível). Nulo
+  // = não arquivada.
+  archivedAt             DateTime?
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt
 
@@ -230,6 +237,8 @@ model CreditCard {
   autoDebitAccountId String? // débito automático (§6.4)
   currency           String   @default("BRL")
   isActive           Boolean  @default(true)
+  // Ver nota em Account.archivedAt — mesmo conceito, mesmo comportamento.
+  archivedAt         DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
