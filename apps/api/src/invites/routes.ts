@@ -77,6 +77,14 @@ export async function registerInviteRoutes(
         },
       });
 
+      await fireEvent(
+        fastify,
+        invite.inviterUserId,
+        "invite.created",
+        invite.id,
+        { inviteeEmail: invite.inviteeEmail },
+      );
+
       reply.code(201);
       return {
         id: invite.id,

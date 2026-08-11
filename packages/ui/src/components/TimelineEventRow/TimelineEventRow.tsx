@@ -24,6 +24,7 @@ export type DomainEventType =
   | "recurring.paused"
   | "recurring.ended"
   | "import.completed"
+  | "invite.created"
   | "invite.deleted"
   | "invite.resent"
   | "connection.requested"
@@ -57,6 +58,7 @@ export interface DomainEventPayload {
   count?: number;
   permission?: "view" | "edit";
   itemLabel?: string;
+  inviteeEmail?: string;
 }
 
 export interface TimelineEventRowProps {
@@ -118,7 +120,9 @@ const EVENT_TEXT: Record<DomainEventType, (p: DomainEventPayload) => string> = {
   "recurring.ended": () => "Você encerrou uma recorrência",
   "import.completed": (p) =>
     `Você importou a fatura ${p.institutionName ?? ""} — ${p.count ?? 0} transações`,
-  "invite.deleted": () => "Você excluiu um convite",
+  "invite.created": (p) => `Você enviou convite para ${p.inviteeEmail ?? ""}`,
+  "invite.deleted": (p) =>
+    `Você excluiu o convite para ${p.inviteeEmail ?? ""}`,
   "invite.resent": () => "Você reenviou um convite",
   // connection.*/share.* (8 types below) are deliberately NOT converted to
   // "Você [verbo]" — DomainEventPayload has no actor/direction field, so
@@ -185,7 +189,7 @@ function eventVariant(type: DomainEventType): AlertVariant {
 
 /**
  * Lurem's generic structural timeline event line. Dumb component: reads a
- * `type` + loosely-typed `payload` and renders one of the catalog's 35
+ * `type` + loosely-typed `payload` and renders one of the catalog's 36
  * pt-BR copy templates (IMPLEMENTACAO.md §6, BACKLOG US-2.4) as an inline
  * Alert — never decides which event happened.
  */

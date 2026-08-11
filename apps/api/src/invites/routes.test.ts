@@ -67,6 +67,27 @@ describe("POST /v1/invites", () => {
     expect(response.statusCode).toBe(201);
     expect(response.json().status).toBe("awaiting_approval");
   });
+
+  it("fires an invite.created domain event with the invitee's email", async () => {
+    const { userId, accessToken } = await authedUser();
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/invites",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { inviteeName: "Fulano", inviteeEmail: "fulano@example.com" },
+    });
+
+    const inviteId = response.json().id;
+    const events = await server.prisma.domainEvent.findMany({
+      where: { aggregateId: inviteId, type: "invite.created" },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]?.userId).toBe(userId);
+    expect(events[0]?.payload).toMatchObject({
+      inviteeEmail: "fulano@example.com",
+    });
+  });
 });
 
 describe("GET /v1/invites", () => {
