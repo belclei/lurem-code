@@ -445,6 +445,12 @@ model ExtractedTransaction {
   id                      String          @id @default(cuid())
   importedDocumentId      String
   status                  ExtractedStatus @default(pending)
+  // Ausente no scaffold original do model — adicionado ao implementar §6.8:
+  // amountCents é sempre positivo em todo o resto do app (Transaction.kind
+  // é quem carrega o sinal, nunca o valor); uma fatura tem tanto compras
+  // (expense) quanto estornos/pagamentos (income), então precisa do mesmo
+  // par kind+amountCents positivo pra não quebrar essa convenção ao confirmar.
+  kind                    TxKind          @default(expense)
   transactionDate         DateTime        @db.Date
   amountCents             Int
   currency                String          @default("BRL")
