@@ -24,6 +24,7 @@ import { createResendClient } from "./email/resend-client.js";
 import { registerResendWebhook } from "./email/webhook.js";
 import { type Env, type EnvInput, loadEnv, parseEnv } from "./env.js";
 import { AppError, INTERNAL, VALIDATION_FAILED } from "./errors.js";
+import { registerImportRoutes } from "./imports/routes.js";
 import { bumpInsightsGen } from "./insights/cache.js";
 import { registerInsightRoutes } from "./insights/routes.js";
 import { registerInstitutionRoutes } from "./institutions/routes.js";
@@ -84,6 +85,7 @@ export async function buildServer(
   await registerInviteRoutes(fastify);
   await registerAccessRoutes(fastify);
   await registerReleaseRoutes(fastify);
+  await registerImportRoutes(fastify);
 
   // Invalidação do cache de insights (§5.6/§7.8): qualquer escrita autenticada
   // (não-GET, 2xx, com userId) aposenta o cache do usuário incrementando sua

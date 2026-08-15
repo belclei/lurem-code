@@ -20,6 +20,7 @@ import {
   AdminNavIcon,
   ConnectionsNavIcon,
   DashboardNavIcon,
+  ImportNavIcon,
   LogoutIcon,
   RecurringNavIcon,
   TimelineNavIcon,
@@ -42,6 +43,7 @@ const NAV_ITEMS: NavItemConfig[] = [
   },
   { to: "/recurring", label: "Recorrências", icon: <RecurringNavIcon /> },
   { to: "/connections", label: "Conexões", icon: <ConnectionsNavIcon /> },
+  { to: "/imports", label: "Importar", icon: <ImportNavIcon /> },
 ];
 
 export function AppLayout() {

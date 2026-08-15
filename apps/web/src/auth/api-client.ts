@@ -142,6 +142,15 @@ export async function logout(): Promise<void> {
  * makes exactly one silent `/v1/auth/refresh` attempt before retrying the
  * original request once — per spec. `refreshAccessToken` is called
  * directly rather than through this function, so the retry can't recurse.
+ *
+ * A stale/expired access token comes back as 400 `auth.token_invalid`
+ * (authenticate.ts's requireUser can't tell "expired" from "malformed", so
+ * both map to the same code/status), not 401 — found live testing the
+ * imports feature: a session idle past the 15min access-token TTL got
+ * stuck failing every request with no reload, since nothing triggered a
+ * refresh. Peeking the body only on a 400 (never consuming it if the code
+ * doesn't match, so validation.failed etc. still reach the caller once)
+ * catches this without loosening the retry to every 400.
  */
 async function apiFetch(
   path: string,
@@ -159,10 +168,22 @@ async function apiFetch(
     },
   });
 
-  if (res.status === 401 && !isRetry) {
+  if (!isRetry && res.status === 401) {
     const newToken = await refreshAccessToken();
     if (newToken) {
       return apiFetch(path, init, true);
+    }
+  }
+  if (!isRetry && res.status === 400) {
+    const body = await res
+      .clone()
+      .json()
+      .catch(() => null);
+    if (body?.code === "auth.token_invalid") {
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        return apiFetch(path, init, true);
+      }
     }
   }
   return res;

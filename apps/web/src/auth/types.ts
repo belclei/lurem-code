@@ -318,3 +318,32 @@ export interface ReleaseDto {
   body: string;
   publishedAt: string;
 }
+
+// Mirrors apps/api/src/imports/serialize.ts.
+export interface ImportedDocumentDto {
+  id: string;
+  type: "card_invoice" | "account_statement";
+  accountId: string | null;
+  creditCardId: string | null;
+  status: "pending" | "processing" | "extracted" | "reviewed" | "error";
+  errorMessage: string | null;
+  createdAt: string;
+  processedAt: string | null;
+}
+
+export interface ExtractedTransactionDto {
+  id: string;
+  importedDocumentId: string;
+  status: "pending" | "confirmed" | "rejected";
+  kind: "income" | "expense" | "transfer";
+  transactionDate: string;
+  amountCents: number;
+  currency: string;
+  description: string;
+  suggestedCategoryId: string | null;
+  confidence: number;
+  cardHolderRaw: string | null;
+  installmentNumber: number | null;
+  installmentTotal: number | null;
+  confirmedTransactionId: string | null;
+}

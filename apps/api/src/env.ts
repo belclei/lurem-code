@@ -13,6 +13,12 @@ const EnvSchema = z.object({
   // /connections links sent in invite/connection e-mails. Defaulted so
   // every existing test's hand-rolled env object keeps working unchanged.
   WEB_APP_URL: z.string().url().default("http://localhost:5173"),
+  // §6.8 — gateway LLM compartilhado (bel-ia) usado pela extração de
+  // faturas/extratos importados. Defaulted (não required) para não quebrar
+  // todo teste/env existente que não passa essas duas chaves — a rota de
+  // import falha com uma mensagem clara se chamada sem BEL_IA_KEY real.
+  BEL_IA_URL: z.string().url().default("https://ia.fasolo.tech"),
+  BEL_IA_KEY: z.string().default(""),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
