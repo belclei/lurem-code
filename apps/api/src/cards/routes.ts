@@ -26,6 +26,7 @@ const CreateCardBody = z.object({
 
 const UpdateCardBody = z.object({
   name: z.string().min(1).nullable().optional(),
+  institutionId: z.string().min(1).optional(),
   limitCents: z.number().int().min(0).optional(),
   closingDay: z.number().int().min(1).max(31).optional(),
   dueDay: z.number().int().min(1).max(31).optional(),
@@ -181,15 +182,32 @@ export async function registerCardRoutes(
           ]);
         }
       }
-      if (body.name !== undefined) {
-        await assertUniqueNickname(fastify, userId, body.name, {
-          cardId: existing.id,
+      if (body.institutionId !== undefined) {
+        const institution = await fastify.prisma.institution.findUnique({
+          where: { id: body.institutionId },
         });
+        if (!institution) {
+          throw VALIDATION_FAILED([
+            { field: "institutionId", message: "Instituição não encontrada." },
+          ]);
+        }
+      }
+      if (body.name !== undefined || body.institutionId !== undefined) {
+        const finalName = body.name !== undefined ? body.name : existing.name;
+        const finalInstitutionId =
+          body.institutionId !== undefined
+            ? body.institutionId
+            : existing.institutionId;
+        if (body.name !== undefined) {
+          await assertUniqueNickname(fastify, userId, body.name, {
+            cardId: existing.id,
+          });
+        }
         await assertInstitutionNicknameRule(
           fastify,
           userId,
-          existing.institutionId,
-          body.name,
+          finalInstitutionId,
+          finalName,
           "card",
           existing.id,
         );
@@ -199,6 +217,9 @@ export async function registerCardRoutes(
         where: { id },
         data: {
           ...(body.name !== undefined ? { name: body.name } : {}),
+          ...(body.institutionId !== undefined
+            ? { institutionId: body.institutionId }
+            : {}),
           ...(body.limitCents !== undefined
             ? { limitCents: body.limitCents }
             : {}),
@@ -225,6 +246,7 @@ export async function registerCardRoutes(
       const changed = (
         [
           "name",
+          "institutionId",
           "limitCents",
           "closingDay",
           "dueDay",

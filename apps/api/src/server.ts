@@ -32,6 +32,7 @@ import prismaPlugin from "./plugins/prisma.js";
 import redisPlugin from "./plugins/redis.js";
 import { registerPortadorRoutes } from "./portador/routes.js";
 import { registerRecurringTransactionRoutes } from "./recurring-transactions/routes.js";
+import { registerReleaseRoutes } from "./releases/routes.js";
 import { registerSettingsRoutes } from "./settings/routes.js";
 import { registerShareRoutes } from "./shares/routes.js";
 import { registerTimelineRoutes } from "./timeline/routes.js";
@@ -82,6 +83,7 @@ export async function buildServer(
   await registerAdminCalendarRoutes(fastify);
   await registerInviteRoutes(fastify);
   await registerAccessRoutes(fastify);
+  await registerReleaseRoutes(fastify);
 
   // Invalidação do cache de insights (§5.6/§7.8): qualquer escrita autenticada
   // (não-GET, 2xx, com userId) aposenta o cache do usuário incrementando sua

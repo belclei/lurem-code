@@ -38,6 +38,7 @@ export async function resetTestDb(prisma: PrismaClient): Promise<void> {
     prisma.waitlistEntry.deleteMany(),
     prisma.invite.deleteMany(),
     prisma.globalCalendarEntry.deleteMany(),
+    prisma.release.deleteMany(),
     prisma.user.deleteMany(),
   ]);
 }

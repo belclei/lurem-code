@@ -3,7 +3,7 @@ import { Alert, Button, DateField, Dialog, Input, Select } from "@lurem/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { type FormEvent, useMemo, useState } from "react";
 import { ApiError, apiFetchJson } from "../../auth/api-client";
-import type { TransactionDto } from "../../auth/types";
+import type { AccountDto, CardDto, TransactionDto } from "../../auth/types";
 import { fieldErrorsFrom } from "../../lib/field-errors";
 import { reaisToCentsPositive } from "../../lib/money";
 import type { CategoryDto } from "./types";
@@ -13,17 +13,20 @@ interface UpdateTxPayload {
   categoryId?: string | null;
   transactionDate?: string;
   amountCents?: number;
+  accountId?: string;
+  creditCardId?: string;
 }
 
-/** Edits description/category/date/amount for an existing transaction —
- * the 4 fields PATCH /v1/transactions/:id accepts
- * (apps/api/src/transactions/routes.ts's UpdateTransactionBody).
- * Kind/account/destination aren't editable here: the backend contract
- * doesn't accept them, and building that (would it move money between
- * accounts retroactively? re-run overdraft checks?) is a bigger product
- * decision than this conformance pass covers. Opened from the "default",
- * "scheduled" and "installment" TransactionRow variants' click/"Editar"
- * — see this task's judgment-call note above.
+/** Edits description/category/date/amount/account-cartão for an existing
+ * transaction — the fields PATCH /v1/transactions/:id accepts
+ * (apps/api/src/transactions/routes.ts's UpdateTransactionBody). Kind isn't
+ * editable (income/expense/transfer changes the whole shape of the row).
+ * account/creditCardId ARE editable (issues.md: "ao editar transação,
+ * permitir alterar a conta/cartão") — except for transfer legs and
+ * installment rows, which the backend rejects (paired legs / shared card
+ * across the group would desync). Opened from the "default", "scheduled"
+ * and "installment" TransactionRow variants' click/"Editar" — see this
+ * task's judgment-call note above.
  *
  * Backlog "recorrência: não consigo confirmar" — when `tx.isScheduled`, this
  * also exposes Confirmar/Pular (POST /transactions/:id/confirm|skip), the
@@ -33,12 +36,16 @@ interface UpdateTxPayload {
  * interactions. */
 export function EditTransactionDialog({
   tx,
+  accounts,
+  cards,
   onClose,
   onSaved,
   onDelete,
   deleting = false,
 }: {
   tx: TransactionDto | null;
+  accounts: AccountDto[];
+  cards: CardDto[];
   onClose: () => void;
   onSaved: () => void;
   onDelete: (tx: TransactionDto) => void;
@@ -49,6 +56,9 @@ export function EditTransactionDialog({
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  // "acc:<id>" | "card:<id>" — same convention as NewTransactionDialog's
+  // sourceValue, so a Select can offer both lists as one flat option set.
+  const [sourceValue, setSourceValue] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
@@ -64,9 +74,37 @@ export function EditTransactionDialog({
     setAmount((tx.amountCents / 100).toFixed(2).replace(".", ","));
     setDate(tx.transactionDate.slice(0, 10));
     setCategoryId(tx.categoryId);
+    setSourceValue(
+      tx.accountId
+        ? `acc:${tx.accountId}`
+        : tx.creditCardId
+          ? `card:${tx.creditCardId}`
+          : null,
+    );
     setFormError(null);
     setFieldErrors({});
   }
+
+  // Moving the account/card is disabled for transfer legs (paired with
+  // another row) and installment rows (share a card across the group) —
+  // mirrors the backend's own rejection (routes.ts's PATCH handler).
+  const canMoveAccount = tx
+    ? !tx.transferPairId && !tx.installmentGroupId
+    : false;
+
+  const sourceOptions = useMemo(
+    () => [
+      ...accounts.map((a) => ({
+        value: `acc:${a.id}`,
+        label: `${a.institutionName}${a.name ? ` · ${a.name}` : ""}`,
+      })),
+      ...cards.map((c) => ({
+        value: `card:${c.id}`,
+        label: `Cartão ${c.institutionName}${c.name ? ` · ${c.name}` : ""}`,
+      })),
+    ],
+    [accounts, cards],
+  );
 
   const categoriesQuery = useQuery({
     queryKey: ["categories"],
@@ -185,6 +223,19 @@ export function EditTransactionDialog({
       setFieldErrors({ amountCents: "Informe um valor válido." });
       return;
     }
+    if (canMoveAccount && !sourceValue) {
+      setFormError("Escolha uma conta ou cartão.");
+      return;
+    }
+    const originalSourceValue = tx.accountId
+      ? `acc:${tx.accountId}`
+      : tx.creditCardId
+        ? `card:${tx.creditCardId}`
+        : null;
+    const [prefix, targetId] =
+      canMoveAccount && sourceValue && sourceValue !== originalSourceValue
+        ? sourceValue.split(":")
+        : [null, null];
     updateMutation.mutate({
       // Vazio (transferência sem descrição) precisa virar `undefined`, não
       // "" — o backend valida `description` com min(1) quando presente.
@@ -192,6 +243,8 @@ export function EditTransactionDialog({
       categoryId,
       transactionDate: date,
       amountCents: cents,
+      ...(prefix === "acc" ? { accountId: targetId as string } : {}),
+      ...(prefix === "card" ? { creditCardId: targetId as string } : {}),
     });
   }
 
@@ -222,6 +275,15 @@ export function EditTransactionDialog({
             error={fieldErrors.transactionDate}
           />
         </div>
+        {canMoveAccount ? (
+          <Select
+            label="Conta ou cartão"
+            options={sourceOptions}
+            value={sourceValue}
+            onChange={setSourceValue}
+            error={fieldErrors.accountId ?? fieldErrors.creditCardId}
+          />
+        ) : null}
         <Select
           label="Categoria (opcional)"
           options={categoryOptions}

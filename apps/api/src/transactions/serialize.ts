@@ -9,7 +9,6 @@ export interface InstallmentDetail {
   originalDate: string;
   installmentNumber: number;
   installmentTotal: number;
-  hasInterest: boolean;
   paidCount: number;
   paidAmountCents: number;
   remainingCount: number;
@@ -81,7 +80,6 @@ function calculateInstallmentDetails(
     originalDate: ymd(original.transactionDate),
     installmentNumber: tx.installmentNumber,
     installmentTotal: tx.installmentTotal,
-    hasInterest: false,
     paidCount,
     paidAmountCents,
     remainingCount,

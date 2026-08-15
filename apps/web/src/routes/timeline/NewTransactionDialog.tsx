@@ -42,7 +42,6 @@ interface CreateTxPayload {
   toCreditCardId?: string;
   categoryId?: string;
   installmentTotal?: number;
-  installmentHasInterest?: boolean;
   recurring?: boolean;
   recurringDayOfMonth?: number;
   recurringConfirmMonthly?: boolean;
@@ -71,7 +70,6 @@ export function NewTransactionDialog({
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [installmentEnabled, setInstallmentEnabled] = useState(false);
   const [installmentTotalStr, setInstallmentTotalStr] = useState("2");
-  const [installmentHasInterest, setInstallmentHasInterest] = useState(false);
   // Backlog "Recorrência integrada ao dialog": checkbox "Recorrente",
   // mutuamente exclusivo com "Parcelar" (§6.6/§6.7 — uma compra parcelada já
   // É uma série fixa de N linhas; recorrer criaria uma segunda série a
@@ -192,7 +190,6 @@ export function NewTransactionDialog({
       setCategoryId(null);
       setInstallmentEnabled(false);
       setInstallmentTotalStr("2");
-      setInstallmentHasInterest(false);
       setRecurringEnabled(false);
       setRecurringDayOfMonthStr("");
       setRecurringConfirmMonthly(false);
@@ -274,7 +271,6 @@ export function NewTransactionDialog({
       ...(showInstallments
         ? {
             installmentTotal: installmentTotalCount,
-            installmentHasInterest,
           }
         : {}),
       ...(showRecurring
@@ -363,26 +359,15 @@ export function NewTransactionDialog({
             />
             {installmentEnabled ? (
               <div className="flex flex-col gap-3 rounded-[var(--lr-r-md)] border border-[var(--lr-border)] p-3">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Input
-                    type="number"
-                    label="Número de parcelas"
-                    value={installmentTotalStr}
-                    onChange={(e) => setInstallmentTotalStr(e.target.value)}
-                    min={2}
-                    step={1}
-                    error={fieldErrors.installmentTotal}
-                  />
-                  <div className="flex items-end pb-2.5">
-                    <Checkbox
-                      label="Compra com juros"
-                      checked={installmentHasInterest}
-                      onChange={(e) =>
-                        setInstallmentHasInterest(e.target.checked)
-                      }
-                    />
-                  </div>
-                </div>
+                <Input
+                  type="number"
+                  label="Número de parcelas"
+                  value={installmentTotalStr}
+                  onChange={(e) => setInstallmentTotalStr(e.target.value)}
+                  min={2}
+                  step={1}
+                  error={fieldErrors.installmentTotal}
+                />
                 {installmentPreview ? (
                   <Table>
                     <TableHead>

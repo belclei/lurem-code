@@ -24,6 +24,7 @@ import { ResetPasswordPage } from "./routes/ResetPasswordPage";
 import { SettingsPage } from "./routes/SettingsPage";
 import { TimelinePage } from "./routes/TimelinePage";
 import { TransactionsPage } from "./routes/TransactionsPage";
+import { UpdatesPage } from "./routes/UpdatesPage";
 import { WaitlistPage } from "./routes/WaitlistPage";
 
 const rootRoute = createRootRoute({
@@ -115,6 +116,12 @@ const adminRoute = createRoute({
   component: AdminPage,
 });
 
+const updatesRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: "/updates",
+  component: UpdatesPage,
+});
+
 const waitlistRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/waitlist",
@@ -155,6 +162,7 @@ const routeTree = rootRoute.addChildren([
     settingsRoute,
     connectionsRoute,
     adminRoute,
+    updatesRoute,
   ]),
 ]);
 

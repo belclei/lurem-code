@@ -282,6 +282,162 @@ describe("POST /v1/transactions — transfer & installment (US-3.6)", () => {
   });
 });
 
+describe("PATCH /v1/transactions/:id — account/card (issues.md)", () => {
+  it("moves a transaction from one account to another", async () => {
+    const { userId, accessToken } = await authedUser();
+    const from = await account(userId);
+    const to = await account(userId);
+    const created = await post(accessToken, {
+      kind: "expense",
+      accountId: from.id,
+      description: "Mercado",
+      transactionDate: TODAY,
+      amountCents: 1_000,
+    });
+    const tx = created.json();
+
+    const res = await patch(accessToken, tx.id, { accountId: to.id });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().accountId).toBe(to.id);
+    expect(res.json().creditCardId).toBeNull();
+  });
+
+  it("moves a transaction from an account to a card", async () => {
+    const { userId, accessToken } = await authedUser();
+    const from = await account(userId);
+    const c = await card(userId);
+    const created = await post(accessToken, {
+      kind: "expense",
+      accountId: from.id,
+      description: "Mercado",
+      transactionDate: TODAY,
+      amountCents: 1_000,
+    });
+    const tx = created.json();
+
+    const res = await patch(accessToken, tx.id, { creditCardId: c.id });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().creditCardId).toBe(c.id);
+    expect(res.json().accountId).toBeNull();
+  });
+
+  it("rejects setting both accountId and creditCardId", async () => {
+    const { userId, accessToken } = await authedUser();
+    const from = await account(userId);
+    const to = await account(userId);
+    const c = await card(userId);
+    const created = await post(accessToken, {
+      kind: "expense",
+      accountId: from.id,
+      description: "Mercado",
+      transactionDate: TODAY,
+      amountCents: 1_000,
+    });
+
+    const res = await patch(accessToken, created.json().id, {
+      accountId: to.id,
+      creditCardId: c.id,
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("rejects moving a transfer leg's account", async () => {
+    const { userId, accessToken } = await authedUser();
+    const from = await account(userId, { openingBalanceCents: 100_000 });
+    const to = await account(userId, { openingBalanceCents: 0 });
+    const other = await account(userId);
+    const created = await post(accessToken, {
+      kind: "transfer",
+      accountId: from.id,
+      toAccountId: to.id,
+      transactionDate: TODAY,
+      amountCents: 30_000,
+    });
+    const [out] = created.json();
+
+    const res = await patch(accessToken, out.id, { accountId: other.id });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("rejects moving an installment row's card", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    const otherCard = await card(userId);
+    const created = await post(accessToken, {
+      kind: "expense",
+      creditCardId: c.id,
+      description: "Notebook 3x",
+      transactionDate: "2026-07-15",
+      amountCents: 10_000,
+      installmentTotal: 3,
+    });
+    const [first] = created.json();
+
+    const res = await patch(accessToken, first.id, {
+      creditCardId: otherCard.id,
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("propagates a categoryId change to every row in an installment group", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    const category = await server.prisma.category.create({
+      data: {
+        userId,
+        name: "Eletrônicos",
+        kind: "expense",
+        icon: "tag",
+        colorToken: "--lr-sage-500",
+      },
+    });
+    const created = await post(accessToken, {
+      kind: "expense",
+      creditCardId: c.id,
+      description: "Notebook 3x",
+      transactionDate: "2026-07-15",
+      amountCents: 10_000,
+      installmentTotal: 3,
+    });
+    const rows = created.json();
+
+    const res = await patch(accessToken, rows[1].id, {
+      categoryId: category.id,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const all = await server.prisma.transaction.findMany({
+      where: { installmentGroupId: rows[0].installmentGroupId },
+    });
+    expect(all.every((r) => r.categoryId === category.id)).toBe(true);
+  });
+
+  it("404s (via findOwnedAccount) when moving to another user's account", async () => {
+    const { accessToken, userId } = await authedUser();
+    const stranger = await authedUser();
+    const from = await account(userId);
+    const strangerAccount = await account(stranger.userId);
+    const created = await post(accessToken, {
+      kind: "expense",
+      accountId: from.id,
+      description: "Mercado",
+      transactionDate: TODAY,
+      amountCents: 1_000,
+    });
+
+    const res = await patch(accessToken, created.json().id, {
+      accountId: strangerAccount.id,
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+});
+
 describe("scheduled actions & list (US-3.7)", () => {
   it("confirms a scheduled transaction into a real one", async () => {
     const { userId, accessToken } = await authedUser();

@@ -65,7 +65,6 @@ export interface InstallmentDetailDto {
   originalDate: string;
   installmentNumber: number;
   installmentTotal: number;
-  hasInterest: boolean;
   paidCount: number;
   paidAmountCents: number;
   remainingCount: number;
@@ -296,4 +295,26 @@ export interface AdminHealthDto {
   database: "ok" | "error";
   redis: "ok" | "error";
   notAvailable: string[];
+}
+
+// Mirrors apps/api/src/admin/calendar-routes.ts's toResponse — data anual
+// recorrente (month/day, sem ano), projetada pra todo usuário na Timeline
+// (timeline/routes.ts's globalCalendarSource).
+export interface CalendarEntryDto {
+  id: string;
+  title: string;
+  month: number;
+  day: number;
+  displayStyle: "box" | "inline";
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Mirrors apps/api/src/releases/routes.ts's toResponse.
+export interface ReleaseDto {
+  id: string;
+  version: string;
+  title: string;
+  body: string;
+  publishedAt: string;
 }

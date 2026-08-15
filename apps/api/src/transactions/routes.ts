@@ -38,7 +38,6 @@ const CreateTransactionBody = z
     toCreditCardId: z.string().min(1).optional(),
     // parcelamento (§6.6): total de parcelas ≥ 2, só em cartão
     installmentTotal: z.number().int().min(2).optional(),
-    installmentHasInterest: z.boolean().optional(),
     // recorrência (§6.7): marca a transação como primeira ocorrência de uma série
     recurring: z.boolean().optional(),
     recurringDayOfMonth: z.number().int().min(1).max(31).optional(),
@@ -63,8 +62,22 @@ const UpdateTransactionBody = z
     categoryId: z.string().min(1).nullable().optional(),
     transactionDate: IsoDate.optional(),
     amountCents: z.number().int().positive().optional(),
+    // issues.md: "ao editar transação, permitir alterar a conta/cartão" —
+    // exactly one of the two, same XOR the create route enforces (§6.6).
+    // Transfer/installment rows are excluded below (see handler): both have
+    // extra invariants (paired legs, shared card across the group) that
+    // moving a single row's account/card would break.
+    accountId: z.string().min(1).optional(),
+    creditCardId: z.string().min(1).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (data) => data.accountId === undefined || data.creditCardId === undefined,
+    {
+      message: "Escolha conta OU cartão, não os dois.",
+      path: ["accountId"],
+    },
+  );
 
 function parseDate(ymd: string): Date {
   const [y, m, d] = ymd.split("-");
@@ -260,7 +273,6 @@ export async function registerTransactionRoutes(
               installmentNumber: i + 1,
               installmentTotal: n,
               installmentPurchaseAmountCents: body.amountCents,
-              installmentHasInterest: body.installmentHasInterest ?? false,
             };
           },
         );
@@ -478,6 +490,29 @@ export async function registerTransactionRoutes(
       const tx = await findOwnedTx(userId, id);
       if (body.categoryId !== undefined)
         await validateCategory(userId, body.categoryId);
+      if (body.accountId !== undefined || body.creditCardId !== undefined) {
+        if (tx.transferPairId) {
+          throw VALIDATION_FAILED([
+            {
+              field: "accountId",
+              message: "Transferências não têm conta/cartão editável.",
+            },
+          ]);
+        }
+        if (tx.installmentGroupId) {
+          throw VALIDATION_FAILED([
+            {
+              field: "accountId",
+              message: "Parcelamentos não têm conta/cartão editável.",
+            },
+          ]);
+        }
+        if (body.accountId !== undefined) {
+          await findOwnedAccount(userId, body.accountId);
+        } else if (body.creditCardId !== undefined) {
+          await findOwnedCard(userId, body.creditCardId);
+        }
+      }
       const data = {
         ...(body.description !== undefined
           ? { description: body.description }
@@ -493,6 +528,12 @@ export async function registerTransactionRoutes(
               amountCents: body.amountCents,
               amountBRLCents: body.amountCents,
             }
+          : {}),
+        ...(body.accountId !== undefined
+          ? { accountId: body.accountId, creditCardId: null }
+          : {}),
+        ...(body.creditCardId !== undefined
+          ? { creditCardId: body.creditCardId, accountId: null }
           : {}),
       };
       // Uma transferência é 2 linhas (out/in) que precisam concordar em
@@ -512,6 +553,22 @@ export async function registerTransactionRoutes(
             }),
           ])
         : [await prisma.transaction.update({ where: { id: tx.id }, data })];
+      // issues.md: "categoria é da compra (despesa toda), não da parcela" —
+      // a categoria é uma propriedade do grupo de parcelas, não de uma linha
+      // isolada; sem isso, editar só a 2ª parcela deixaria o grupo com
+      // categorias divergentes. amountCents/transactionDate/description
+      // legitimamente variam por parcela (valor da linha, mês, texto livre)
+      // — só categoryId precisa desse sync extra.
+      if (tx.installmentGroupId && body.categoryId !== undefined) {
+        await prisma.transaction.updateMany({
+          where: {
+            userId,
+            installmentGroupId: tx.installmentGroupId,
+            id: { not: tx.id },
+          },
+          data: { categoryId: body.categoryId },
+        });
+      }
       // Editar em vez de criar/apagar não deixa rastro nenhum na timeline por
       // si só (o card renderiza o estado atual) — issues.md: "quando algum
       // dado financeiro for alterado, deve aparecer na timeline". Criação

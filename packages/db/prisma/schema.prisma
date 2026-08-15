@@ -323,7 +323,6 @@ model Transaction {
   installmentNumber              Int?
   installmentTotal               Int?
   installmentPurchaseAmountCents Int? // compra original (mesmo valor em todas as linhas do grupo)
-  installmentHasInterest         Boolean?
   recurringTransactionId         String? // ocorrência de uma série (§6.7)
   // origem/roteamento
   importedDocumentId             String?
@@ -570,4 +569,19 @@ model GlobalCalendarEntry {
   displayStyle CalendarEntryDisplayStyle @default(inline)
   createdAt    DateTime                  @default(now())
   updatedAt    DateTime                  @updatedAt
+}
+
+// issues.md: "a cada nova versão que entrar em produção, exibir um Alert no
+// topo da página explicando o que há de novo". "Vista/não vista" não vira
+// campo no User — o client guarda o id da última release vista em
+// localStorage (evita migration + evita um novo endpoint só pra marcar como
+// lida; comparar id é suficiente, não precisa ser por-usuário no servidor).
+model Release {
+  id          String   @id @default(cuid())
+  version     String // ex.: "2026.08.15" — livre, só exibido, não comparado semver
+  title       String
+  body        String // markdown simples, renderizado como texto na página de updates
+  publishedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

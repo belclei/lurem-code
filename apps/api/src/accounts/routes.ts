@@ -59,6 +59,7 @@ const CreateAccountBody = z.object({
 
 const UpdateAccountBody = z.object({
   name: z.string().min(1).nullable().optional(),
+  institutionId: z.string().min(1).optional(),
   overdraftLimitCents: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
   // BACKLOG.md "Arquivar conta/cartão" — boolean toggle, not a client-supplied
@@ -242,15 +243,40 @@ export async function registerAccountRoutes(
           },
         ]);
       }
-      if (body.name !== undefined) {
-        await assertUniqueNickname(fastify, existing.userId, body.name, {
-          accountId: existing.id,
+      if (body.institutionId !== undefined) {
+        if (existing.type === "cash") {
+          throw VALIDATION_FAILED([
+            {
+              field: "institutionId",
+              message: "Carteira não tem instituição.",
+            },
+          ]);
+        }
+        const institution = await fastify.prisma.institution.findUnique({
+          where: { id: body.institutionId },
         });
+        if (!institution) {
+          throw VALIDATION_FAILED([
+            { field: "institutionId", message: "Instituição não encontrada." },
+          ]);
+        }
+      }
+      if (body.name !== undefined || body.institutionId !== undefined) {
+        const finalName = body.name !== undefined ? body.name : existing.name;
+        const finalInstitutionId =
+          body.institutionId !== undefined
+            ? body.institutionId
+            : existing.institutionId;
+        if (body.name !== undefined) {
+          await assertUniqueNickname(fastify, existing.userId, body.name, {
+            accountId: existing.id,
+          });
+        }
         await assertInstitutionNicknameRule(
           fastify,
           existing.userId,
-          existing.institutionId,
-          body.name,
+          finalInstitutionId,
+          finalName,
           "account",
           existing.id,
         );
@@ -260,6 +286,9 @@ export async function registerAccountRoutes(
         where: { id },
         data: {
           ...(body.name !== undefined ? { name: body.name } : {}),
+          ...(body.institutionId !== undefined
+            ? { institutionId: body.institutionId }
+            : {}),
           ...(body.overdraftLimitCents !== undefined
             ? { overdraftLimitCents: body.overdraftLimitCents }
             : {}),
@@ -276,7 +305,13 @@ export async function registerAccountRoutes(
         : null;
 
       const changed = (
-        ["name", "overdraftLimitCents", "isActive", "archived"] as const
+        [
+          "name",
+          "institutionId",
+          "overdraftLimitCents",
+          "isActive",
+          "archived",
+        ] as const
       ).filter((field) => body[field] !== undefined);
       if (changed.length > 0) {
         await fastify.prisma.domainEvent.create({

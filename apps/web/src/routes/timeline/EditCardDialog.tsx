@@ -8,13 +8,14 @@ import { Alert, Button, Dialog, Input, Select } from "@lurem/ui";
 import { useMutation } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { ApiError, apiFetchJson } from "../../auth/api-client";
-import type { AccountDto, CardDto } from "../../auth/types";
+import type { AccountDto, CardDto, InstitutionDto } from "../../auth/types";
 import { fieldErrorsFrom } from "../../lib/field-errors";
 import { reaisToCentsPositive } from "../../lib/money";
 
 export function EditCardDialog({
   card,
   accounts,
+  institutions,
   onClose,
   onSaved,
   onArchiveToggled,
@@ -22,12 +23,16 @@ export function EditCardDialog({
 }: {
   card: CardDto | null;
   accounts: AccountDto[];
+  institutions: InstitutionDto[];
   onClose: () => void;
   onSaved: () => void;
   onArchiveToggled?: (archived: boolean) => void;
   onDeleted?: () => void;
 }) {
   const [name, setName] = useState(card?.name ?? "");
+  const [institutionId, setInstitutionId] = useState(
+    card?.institutionId ?? null,
+  );
   const [limit, setLimit] = useState(
     card ? (card.limitCents / 100).toFixed(2).replace(".", ",") : "",
   );
@@ -125,8 +130,13 @@ export function EditCardDialog({
       setFieldErrors({ dueDay: "Dia de vencimento deve ser entre 1 e 31." });
       return;
     }
+    if (!institutionId) {
+      setFormError("Escolha uma instituição.");
+      return;
+    }
     updateMutation.mutate({
       name: name.trim() || null,
+      ...(institutionId !== card.institutionId ? { institutionId } : {}),
       limitCents,
       closingDay: closing,
       dueDay: due,
@@ -142,6 +152,13 @@ export function EditCardDialog({
           value={name}
           onChange={(e) => setName(e.target.value)}
           error={fieldErrors.name}
+        />
+        <Select
+          label="Instituição"
+          options={institutions.map((i) => ({ value: i.id, label: i.name }))}
+          value={institutionId}
+          onChange={setInstitutionId}
+          error={fieldErrors.institutionId}
         />
         <Input
           money
