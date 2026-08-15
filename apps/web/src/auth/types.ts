@@ -65,7 +65,6 @@ export interface InstallmentDetailDto {
   originalDate: string;
   installmentNumber: number;
   installmentTotal: number;
-  hasInterest: boolean;
   paidCount: number;
   paidAmountCents: number;
   remainingCount: number;

@@ -29,7 +29,6 @@ export interface InstallmentDetail {
   originalDate: string;
   installmentNumber: number;
   installmentTotal: number;
-  hasInterest: boolean;
   paidCount: number;
   paidAmountCents: number;
   remainingCount: number;
@@ -104,6 +103,23 @@ export function scheduledMetaText(
 }
 
 function RowHeader(props: TransactionRowProps) {
+  // Day header already shows the date (issues.md: "Remover as datas dos
+  // cards de transações na timeline") — this meta line only carries a date
+  // for scheduled/recurringPreview, where it's a *future* date plus status
+  // context ("não entra no saldo" / "aguardando confirmação"), not a
+  // same-day-header duplicate.
+  const metaParts: (string | undefined)[] = [props.categoryLabel];
+  if (props.variant === "scheduled") {
+    metaParts.push(scheduledMetaText(props.date));
+  } else if (props.variant === "recurringPreview") {
+    metaParts.push(
+      `Prevista para ${formatDate(props.date)} · aguardando confirmação`,
+    );
+  } else if (props.variant === "transfer") {
+    metaParts.push(props.transferToLabel);
+  }
+  const meta = metaParts.filter(Boolean).join(" · ");
+
   return (
     <div className="flex items-center gap-3">
       {props.categoryIcon ? (
@@ -147,13 +163,7 @@ function RowHeader(props: TransactionRowProps) {
           ) : null}
         </div>
         <Body muted className="text-[.8125rem]">
-          {props.categoryLabel ? `${props.categoryLabel} · ` : ""}
-          {props.variant === "scheduled"
-            ? scheduledMetaText(props.date)
-            : props.variant === "recurringPreview"
-              ? `Prevista para ${formatDate(props.date)} · aguardando confirmação`
-              : formatDate(props.date)}
-          {props.variant === "transfer" ? ` · ${props.transferToLabel}` : ""}
+          {meta}
         </Body>
       </div>
       <div className="flex flex-none items-center gap-1.5">
@@ -232,10 +242,7 @@ function InstallmentDetails({
         </div>
         <div>
           <p className="lr-label mb-1">Plano</p>
-          <Body as="span">
-            {installment.installmentTotal}x
-            {installment.hasInterest ? " com juros" : " sem juros"}
-          </Body>
+          <Body as="span">{installment.installmentTotal}x</Body>
         </div>
         <div>
           <p className="lr-label mb-1">Já pago</p>

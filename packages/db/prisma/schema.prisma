@@ -323,7 +323,6 @@ model Transaction {
   installmentNumber              Int?
   installmentTotal               Int?
   installmentPurchaseAmountCents Int? // compra original (mesmo valor em todas as linhas do grupo)
-  installmentHasInterest         Boolean?
   recurringTransactionId         String? // ocorrência de uma série (§6.7)
   // origem/roteamento
   importedDocumentId             String?

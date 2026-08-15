@@ -38,7 +38,6 @@ const CreateTransactionBody = z
     toCreditCardId: z.string().min(1).optional(),
     // parcelamento (§6.6): total de parcelas ≥ 2, só em cartão
     installmentTotal: z.number().int().min(2).optional(),
-    installmentHasInterest: z.boolean().optional(),
     // recorrência (§6.7): marca a transação como primeira ocorrência de uma série
     recurring: z.boolean().optional(),
     recurringDayOfMonth: z.number().int().min(1).max(31).optional(),
@@ -260,7 +259,6 @@ export async function registerTransactionRoutes(
               installmentNumber: i + 1,
               installmentTotal: n,
               installmentPurchaseAmountCents: body.amountCents,
-              installmentHasInterest: body.installmentHasInterest ?? false,
             };
           },
         );
