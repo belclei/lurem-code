@@ -49,6 +49,18 @@ async function toJsonOrThrow<T>(res: Response): Promise<T> {
   throw new ApiError(await parseErrorBody(res));
 }
 
+// Found live in prod (§ incident 15/08): the refresh token is single-use
+// and rotates server-side — two concurrent refresh calls racing on the
+// same still-valid cookie make the server treat the loser as token *reuse*
+// and revoke the whole family, hard-logging the user out. On a page with
+// several queries firing in parallel (accounts/cards/categories/timeline/
+// insights/...), every one of them hitting a stale access token at once
+// used to mean that many *simultaneous* `POST /v1/auth/refresh` calls — a
+// self-inflicted reuse-revocation storm. `inFlightRefresh` makes every
+// caller within the same tick share one real network call/rotation instead
+// of racing each other.
+let inFlightRefresh: Promise<string | null> | null = null;
+
 /**
  * Calls `/v1/auth/refresh` using the httpOnly `refreshToken` cookie (sent
  * automatically because of `credentials: "include"`). Never throws — a
@@ -56,17 +68,27 @@ async function toJsonOrThrow<T>(res: Response): Promise<T> {
  * which callers treat as `null`, not an error.
  */
 export async function refreshAccessToken(): Promise<string | null> {
-  const res = await fetch(`${BASE}/auth/refresh`, {
-    method: "POST",
-    credentials: "include",
-  });
-  if (!res.ok) {
-    setAccessToken(null);
-    return null;
-  }
-  const data = (await res.json()) as { accessToken: string };
-  setAccessToken(data.accessToken);
-  return data.accessToken;
+  if (inFlightRefresh) return inFlightRefresh;
+
+  inFlightRefresh = (async () => {
+    try {
+      const res = await fetch(`${BASE}/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        setAccessToken(null);
+        return null;
+      }
+      const data = (await res.json()) as { accessToken: string };
+      setAccessToken(data.accessToken);
+      return data.accessToken;
+    } finally {
+      inFlightRefresh = null;
+    }
+  })();
+
+  return inFlightRefresh;
 }
 
 export async function login(email: string, password: string): Promise<string> {
