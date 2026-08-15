@@ -553,6 +553,22 @@ export async function registerTransactionRoutes(
             }),
           ])
         : [await prisma.transaction.update({ where: { id: tx.id }, data })];
+      // issues.md: "categoria é da compra (despesa toda), não da parcela" —
+      // a categoria é uma propriedade do grupo de parcelas, não de uma linha
+      // isolada; sem isso, editar só a 2ª parcela deixaria o grupo com
+      // categorias divergentes. amountCents/transactionDate/description
+      // legitimamente variam por parcela (valor da linha, mês, texto livre)
+      // — só categoryId precisa desse sync extra.
+      if (tx.installmentGroupId && body.categoryId !== undefined) {
+        await prisma.transaction.updateMany({
+          where: {
+            userId,
+            installmentGroupId: tx.installmentGroupId,
+            id: { not: tx.id },
+          },
+          data: { categoryId: body.categoryId },
+        });
+      }
       // Editar em vez de criar/apagar não deixa rastro nenhum na timeline por
       // si só (o card renderiza o estado atual) — issues.md: "quando algum
       // dado financeiro for alterado, deve aparecer na timeline". Criação

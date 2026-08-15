@@ -384,6 +384,39 @@ describe("PATCH /v1/transactions/:id — account/card (issues.md)", () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it("propagates a categoryId change to every row in an installment group", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    const category = await server.prisma.category.create({
+      data: {
+        userId,
+        name: "Eletrônicos",
+        kind: "expense",
+        icon: "tag",
+        colorToken: "--lr-sage-500",
+      },
+    });
+    const created = await post(accessToken, {
+      kind: "expense",
+      creditCardId: c.id,
+      description: "Notebook 3x",
+      transactionDate: "2026-07-15",
+      amountCents: 10_000,
+      installmentTotal: 3,
+    });
+    const rows = created.json();
+
+    const res = await patch(accessToken, rows[1].id, {
+      categoryId: category.id,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const all = await server.prisma.transaction.findMany({
+      where: { installmentGroupId: rows[0].installmentGroupId },
+    });
+    expect(all.every((r) => r.categoryId === category.id)).toBe(true);
+  });
+
   it("404s (via findOwnedAccount) when moving to another user's account", async () => {
     const { accessToken, userId } = await authedUser();
     const stranger = await authedUser();
