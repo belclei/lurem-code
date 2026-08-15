@@ -84,6 +84,11 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     entrypoint: ["/app/apps/api/cron/entrypoint.sh"]
+    # Herda o HEALTHCHECK do apps/api/Dockerfile (wget em :3001/health), mas
+    # este serviço roda crond, não o servidor HTTP — desabilita pra não
+    # ficar "unhealthy" pra sempre por um endpoint que nunca vai existir aqui.
+    healthcheck:
+      disable: true
     environment:
       DATABASE_URL: postgresql://lurem:${POSTGRES_PASSWORD}@postgres:5432/lurem?schema=public
       REDIS_URL: redis://redis:6379
