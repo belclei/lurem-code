@@ -222,6 +222,78 @@ describe("PATCH/DELETE /v1/accounts/:id", () => {
     expect(event).toBeNull();
   });
 
+  it("updates the account's institution", async () => {
+    const { accessToken, userId } = await authedUser();
+    const institution = await createInstitution();
+    const other = await server.prisma.institution.create({
+      data: { name: "Itaú", compeCode: "341-test", logoAsset: "itau.svg" },
+    });
+    const account = await server.prisma.account.create({
+      data: { userId, type: "checking", institutionId: institution.id },
+    });
+
+    const response = await server.inject({
+      method: "PATCH",
+      url: `/v1/accounts/${account.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { institutionId: other.id },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().institutionName).toBe("Itaú");
+    const event = await server.prisma.domainEvent.findFirstOrThrow({
+      where: { aggregateType: "Account", aggregateId: account.id },
+    });
+    expect(event.payload).toMatchObject({ changed: ["institutionId"] });
+  });
+
+  it("rejects changing the institution of a cash account", async () => {
+    const { accessToken, userId } = await authedUser();
+    const institution = await createInstitution();
+    const account = await server.prisma.account.create({
+      data: { userId, type: "cash" },
+    });
+
+    const response = await server.inject({
+      method: "PATCH",
+      url: `/v1/accounts/${account.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { institutionId: institution.id },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it("rejects moving to an institution that already has a nameless account, unless this one also gets a name", async () => {
+    const { accessToken, userId } = await authedUser();
+    const institution = await createInstitution();
+    const other = await server.prisma.institution.create({
+      data: { name: "Itaú", compeCode: "341-test", logoAsset: "itau.svg" },
+    });
+    await server.prisma.account.create({
+      data: { userId, type: "checking", institutionId: other.id },
+    });
+    const account = await server.prisma.account.create({
+      data: { userId, type: "checking", institutionId: institution.id },
+    });
+
+    const blocked = await server.inject({
+      method: "PATCH",
+      url: `/v1/accounts/${account.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { institutionId: other.id },
+    });
+    expect(blocked.statusCode).toBe(400);
+
+    const withName = await server.inject({
+      method: "PATCH",
+      url: `/v1/accounts/${account.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { institutionId: other.id, name: "Conta PJ" },
+    });
+    expect(withName.statusCode).toBe(200);
+  });
+
   it("404s when editing another user's account", async () => {
     const owner = await authedUser();
     const stranger = await authedUser();

@@ -8,22 +8,24 @@
 // archive/desarquivar and (when there's no history) hard delete — reused
 // both from here (timeline click) and from AccountsPage (list click), so
 // those actions live here once instead of duplicated per caller.
-import { Alert, Button, Dialog, Input } from "@lurem/ui";
+import { Alert, Button, Dialog, Input, Select } from "@lurem/ui";
 import { useMutation } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { ApiError, apiFetchJson } from "../../auth/api-client";
-import type { AccountDto } from "../../auth/types";
+import type { AccountDto, InstitutionDto } from "../../auth/types";
 import { fieldErrorsFrom } from "../../lib/field-errors";
 import { reaisToCentsOrZero } from "../../lib/money";
 
 export function EditAccountDialog({
   account,
+  institutions,
   onClose,
   onSaved,
   onArchiveToggled,
   onDeleted,
 }: {
   account: AccountDto | null;
+  institutions: InstitutionDto[];
   onClose: () => void;
   onSaved: () => void;
   /** Called after a successful archive/desarquivar PATCH — absent means the
@@ -36,6 +38,9 @@ export function EditAccountDialog({
   onDeleted?: () => void;
 }) {
   const [name, setName] = useState(account?.name ?? "");
+  const [institutionId, setInstitutionId] = useState(
+    account?.institutionId ?? null,
+  );
   const [overdraftLimit, setOverdraftLimit] = useState(
     account
       ? (account.overdraftLimitCents / 100).toFixed(2).replace(".", ",")
@@ -119,6 +124,13 @@ export function EditAccountDialog({
         return;
       }
       body.overdraftLimitCents = overdraft;
+      if (!institutionId) {
+        setFormError("Escolha uma instituição.");
+        return;
+      }
+      if (institutionId !== account.institutionId) {
+        body.institutionId = institutionId;
+      }
     }
     updateMutation.mutate(body);
   }
@@ -133,14 +145,26 @@ export function EditAccountDialog({
           error={fieldErrors.name}
         />
         {account?.type !== "cash" ? (
-          <Input
-            money
-            label="Limite de cheque especial"
-            affix="R$"
-            value={overdraftLimit}
-            onChange={(e) => setOverdraftLimit(e.target.value)}
-            error={fieldErrors.overdraftLimitCents}
-          />
+          <>
+            <Select
+              label="Instituição"
+              options={institutions.map((i) => ({
+                value: i.id,
+                label: i.name,
+              }))}
+              value={institutionId}
+              onChange={setInstitutionId}
+              error={fieldErrors.institutionId}
+            />
+            <Input
+              money
+              label="Limite de cheque especial"
+              affix="R$"
+              value={overdraftLimit}
+              onChange={(e) => setOverdraftLimit(e.target.value)}
+              error={fieldErrors.overdraftLimitCents}
+            />
+          </>
         ) : null}
         {formError ? (
           <Alert variant="error" layout="inline" title={formError} />

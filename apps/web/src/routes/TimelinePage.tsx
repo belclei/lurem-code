@@ -491,6 +491,7 @@ export function TimelinePage() {
           <EditAccountDialog
             key={editingAccount?.id ?? "closed"}
             account={editingAccount}
+            institutions={institutionsQuery.data ?? []}
             onClose={() => setEditingAccount(null)}
             onSaved={() => {
               queryClient.invalidateQueries({ queryKey: ["accounts"] });
@@ -501,6 +502,7 @@ export function TimelinePage() {
             key={editingCard?.id ?? "closed"}
             card={editingCard}
             accounts={accountsQuery.data ?? []}
+            institutions={institutionsQuery.data ?? []}
             onClose={() => setEditingCard(null)}
             onSaved={() => {
               queryClient.invalidateQueries({ queryKey: ["cards"] });

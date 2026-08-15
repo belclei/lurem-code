@@ -172,6 +172,79 @@ describe("PATCH /v1/cards/:id", () => {
     });
   });
 
+  it("updates the card's institution", async () => {
+    const { accessToken, userId } = await authedUser();
+    const institution = await createInstitution();
+    const other = await server.prisma.institution.create({
+      data: { name: "Nubank", compeCode: "260-test", logoAsset: "nubank.svg" },
+    });
+    const card = await server.prisma.creditCard.create({
+      data: {
+        userId,
+        institutionId: institution.id,
+        limitCents: 100_000,
+        closingDay: 5,
+        dueDay: 15,
+      },
+    });
+
+    const response = await server.inject({
+      method: "PATCH",
+      url: `/v1/cards/${card.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { institutionId: other.id },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().institutionName).toBe("Nubank");
+    const event = await server.prisma.domainEvent.findFirstOrThrow({
+      where: { aggregateType: "CreditCard", aggregateId: card.id },
+    });
+    expect(event.payload).toMatchObject({ changed: ["institutionId"] });
+  });
+
+  it("rejects moving to an institution that already has a nameless card, unless this one also gets a name", async () => {
+    const { accessToken, userId } = await authedUser();
+    const institution = await createInstitution();
+    const other = await server.prisma.institution.create({
+      data: { name: "Nubank", compeCode: "260-test", logoAsset: "nubank.svg" },
+    });
+    await server.prisma.creditCard.create({
+      data: {
+        userId,
+        institutionId: other.id,
+        limitCents: 100_000,
+        closingDay: 5,
+        dueDay: 15,
+      },
+    });
+    const card = await server.prisma.creditCard.create({
+      data: {
+        userId,
+        institutionId: institution.id,
+        limitCents: 100_000,
+        closingDay: 5,
+        dueDay: 15,
+      },
+    });
+
+    const blocked = await server.inject({
+      method: "PATCH",
+      url: `/v1/cards/${card.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { institutionId: other.id },
+    });
+    expect(blocked.statusCode).toBe(400);
+
+    const withName = await server.inject({
+      method: "PATCH",
+      url: `/v1/cards/${card.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { institutionId: other.id, name: "Cartão PJ" },
+    });
+    expect(withName.statusCode).toBe(200);
+  });
+
   it("does not emit card.updated when the PATCH body has no fields", async () => {
     const { accessToken, userId } = await authedUser();
     const institution = await createInstitution();

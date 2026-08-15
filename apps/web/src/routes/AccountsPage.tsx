@@ -189,6 +189,7 @@ export function AccountsPage() {
       <EditAccountDialog
         key={editingAccount?.id ?? "closed"}
         account={editingAccount}
+        institutions={institutionsQuery.data ?? []}
         onClose={() => setEditingAccount(null)}
         onSaved={invalidateAccounts}
         onArchiveToggled={(archived) => {
@@ -207,6 +208,7 @@ export function AccountsPage() {
         key={editingCard?.id ?? "closed"}
         card={editingCard}
         accounts={accountsQuery.data ?? []}
+        institutions={institutionsQuery.data ?? []}
         onClose={() => setEditingCard(null)}
         onSaved={invalidateCards}
         onArchiveToggled={(archived) => {
