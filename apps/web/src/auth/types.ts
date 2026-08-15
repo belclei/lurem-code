@@ -309,3 +309,12 @@ export interface CalendarEntryDto {
   createdAt: string;
   updatedAt: string;
 }
+
+// Mirrors apps/api/src/releases/routes.ts's toResponse.
+export interface ReleaseDto {
+  id: string;
+  version: string;
+  title: string;
+  body: string;
+  publishedAt: string;
+}

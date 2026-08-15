@@ -22,6 +22,7 @@ import type {
   AdminUsageDto,
   AdminUserDto,
   CalendarEntryDto,
+  ReleaseDto,
 } from "../auth/types";
 
 const DISPLAY_STYLE_OPTIONS = [
@@ -66,6 +67,11 @@ export function AdminPage() {
   const calendarQuery = useQuery({
     queryKey: ["admin-calendar-entries"],
     queryFn: () => apiFetchJson<CalendarEntryDto[]>("/admin/calendar-entries"),
+    enabled: hasSession && isAdmin,
+  });
+  const releasesQuery = useQuery({
+    queryKey: ["releases"],
+    queryFn: () => apiFetchJson<ReleaseDto[]>("/releases"),
     enabled: hasSession && isAdmin,
   });
 
@@ -195,6 +201,56 @@ export function AdminPage() {
     });
   }
 
+  const invalidateReleases = () =>
+    queryClient.invalidateQueries({ queryKey: ["releases"] });
+
+  const [releaseVersion, setReleaseVersion] = useState("");
+  const [releaseTitle, setReleaseTitle] = useState("");
+  const [releaseBody, setReleaseBody] = useState("");
+  const [releaseError, setReleaseError] = useState<string | null>(null);
+
+  const createReleaseMutation = useMutation({
+    mutationFn: (body: { version: string; title: string; body: string }) =>
+      apiFetchJson<ReleaseDto>("/admin/releases", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      setReleaseVersion("");
+      setReleaseTitle("");
+      setReleaseBody("");
+      setReleaseError(null);
+      invalidateReleases();
+    },
+    onError: (error: unknown) => {
+      setReleaseError(
+        error instanceof ApiError
+          ? error.message
+          : "Não foi possível criar a release.",
+      );
+    },
+  });
+
+  const deleteReleaseMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiFetchJson(`/admin/releases/${id}`, { method: "DELETE" }),
+    onSuccess: invalidateReleases,
+  });
+
+  function onSubmitRelease(event: FormEvent) {
+    event.preventDefault();
+    setReleaseError(null);
+    if (!releaseVersion.trim() || !releaseTitle.trim() || !releaseBody.trim()) {
+      setReleaseError("Preencha versão, título e descrição.");
+      return;
+    }
+    createReleaseMutation.mutate({
+      version: releaseVersion.trim(),
+      title: releaseTitle.trim(),
+      body: releaseBody.trim(),
+    });
+  }
+
   if (isBooting) {
     return <p className="p-6 text-[var(--lr-text-secondary)]">Carregando…</p>;
   }
@@ -209,6 +265,7 @@ export function AdminPage() {
   const invites = accessQuery.data?.invites ?? [];
   const users = usersQuery.data ?? [];
   const calendarEntries = calendarQuery.data ?? [];
+  const releases = releasesQuery.data ?? [];
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -453,6 +510,100 @@ export function AdminPage() {
                   variant="danger"
                   loading={deleteCalendarEntryMutation.isPending}
                   onClick={() => deleteCalendarEntryMutation.mutate(entry.id)}
+                >
+                  Excluir
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="mt-10">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--lr-text-secondary)]">
+          Novidades
+        </h2>
+        <p className="mb-3 text-sm text-[var(--lr-text-secondary)]">
+          A release mais recente aparece como um Alert no topo da página pra
+          todo usuário que ainda não viu, com um link pra /updates.
+        </p>
+        <form
+          onSubmit={onSubmitRelease}
+          className="mb-4 flex flex-col gap-3 rounded-[var(--lr-r-lg)] border border-[var(--lr-border)] p-4"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="w-32">
+              <Input
+                label="Versão"
+                placeholder="2026.08.15"
+                value={releaseVersion}
+                onChange={(e) => setReleaseVersion(e.target.value)}
+              />
+            </div>
+            <div className="flex-1">
+              <Input
+                label="Título"
+                value={releaseTitle}
+                onChange={(e) => setReleaseTitle(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="grid gap-1.5">
+            <label
+              htmlFor="release-body"
+              className="text-[.9375rem] font-medium text-[var(--lr-text)]"
+            >
+              Descrição
+            </label>
+            <textarea
+              id="release-body"
+              value={releaseBody}
+              onChange={(e) => setReleaseBody(e.target.value)}
+              rows={3}
+              className="rounded-[var(--lr-r-md)] border border-[var(--lr-border)] bg-[var(--lr-surface)] px-3 py-2 text-[var(--lr-text)]"
+            />
+          </div>
+          <div>
+            <Button type="submit" loading={createReleaseMutation.isPending}>
+              Publicar
+            </Button>
+          </div>
+        </form>
+        {releaseError ? (
+          <Alert
+            variant="error"
+            layout="inline"
+            title={releaseError}
+            className="mb-4"
+          />
+        ) : null}
+        {releases.length === 0 ? (
+          <EmptyState
+            title="Nenhuma release"
+            description="Publicadas aqui, aparecem como Alert pra todo mundo que ainda não viu."
+          />
+        ) : (
+          <div className="flex flex-col gap-2">
+            {releases.map((release) => (
+              <div
+                key={release.id}
+                className="flex items-center justify-between rounded-[var(--lr-r-lg)] border border-[var(--lr-border)] p-4"
+              >
+                <div>
+                  <p className="text-[var(--lr-text)]">
+                    {release.title}{" "}
+                    <span className="text-sm text-[var(--lr-text-secondary)]">
+                      v{release.version}
+                    </span>
+                  </p>
+                  <p className="text-sm text-[var(--lr-text-secondary)]">
+                    {release.body}
+                  </p>
+                </div>
+                <Button
+                  variant="danger"
+                  loading={deleteReleaseMutation.isPending}
+                  onClick={() => deleteReleaseMutation.mutate(release.id)}
                 >
                   Excluir
                 </Button>

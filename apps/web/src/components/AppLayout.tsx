@@ -24,6 +24,7 @@ import {
   RecurringNavIcon,
   TimelineNavIcon,
 } from "./AppLayoutIcons";
+import { UpdatesBanner } from "./UpdatesBanner";
 
 interface NavItemConfig {
   to: string;
@@ -139,6 +140,9 @@ export function AppLayout() {
           scope overflow-x-hidden to their own non-sticky wrapper instead of
           relying on the shell for it — see TimelinePage.tsx's feed column. */}
       <main className="min-w-0 flex-1 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
+        <div className="px-4 pt-4">
+          <UpdatesBanner />
+        </div>
         <Outlet />
       </main>
 
