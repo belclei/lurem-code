@@ -430,6 +430,8 @@ export function TimelinePage() {
           <EditTransactionDialog
             key={editingTx?.id ?? "closed"}
             tx={editingTx}
+            accounts={accountsQuery.data ?? []}
+            cards={cardsQuery.data ?? []}
             onClose={() => setEditingTx(null)}
             onSaved={() => {
               queryClient.invalidateQueries({ queryKey: ["timeline"] });

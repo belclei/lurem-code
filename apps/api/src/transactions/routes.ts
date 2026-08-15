@@ -62,8 +62,22 @@ const UpdateTransactionBody = z
     categoryId: z.string().min(1).nullable().optional(),
     transactionDate: IsoDate.optional(),
     amountCents: z.number().int().positive().optional(),
+    // issues.md: "ao editar transação, permitir alterar a conta/cartão" —
+    // exactly one of the two, same XOR the create route enforces (§6.6).
+    // Transfer/installment rows are excluded below (see handler): both have
+    // extra invariants (paired legs, shared card across the group) that
+    // moving a single row's account/card would break.
+    accountId: z.string().min(1).optional(),
+    creditCardId: z.string().min(1).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (data) => data.accountId === undefined || data.creditCardId === undefined,
+    {
+      message: "Escolha conta OU cartão, não os dois.",
+      path: ["accountId"],
+    },
+  );
 
 function parseDate(ymd: string): Date {
   const [y, m, d] = ymd.split("-");
@@ -476,6 +490,29 @@ export async function registerTransactionRoutes(
       const tx = await findOwnedTx(userId, id);
       if (body.categoryId !== undefined)
         await validateCategory(userId, body.categoryId);
+      if (body.accountId !== undefined || body.creditCardId !== undefined) {
+        if (tx.transferPairId) {
+          throw VALIDATION_FAILED([
+            {
+              field: "accountId",
+              message: "Transferências não têm conta/cartão editável.",
+            },
+          ]);
+        }
+        if (tx.installmentGroupId) {
+          throw VALIDATION_FAILED([
+            {
+              field: "accountId",
+              message: "Parcelamentos não têm conta/cartão editável.",
+            },
+          ]);
+        }
+        if (body.accountId !== undefined) {
+          await findOwnedAccount(userId, body.accountId);
+        } else if (body.creditCardId !== undefined) {
+          await findOwnedCard(userId, body.creditCardId);
+        }
+      }
       const data = {
         ...(body.description !== undefined
           ? { description: body.description }
@@ -491,6 +528,12 @@ export async function registerTransactionRoutes(
               amountCents: body.amountCents,
               amountBRLCents: body.amountCents,
             }
+          : {}),
+        ...(body.accountId !== undefined
+          ? { accountId: body.accountId, creditCardId: null }
+          : {}),
+        ...(body.creditCardId !== undefined
+          ? { creditCardId: body.creditCardId, accountId: null }
           : {}),
       };
       // Uma transferência é 2 linhas (out/in) que precisam concordar em
