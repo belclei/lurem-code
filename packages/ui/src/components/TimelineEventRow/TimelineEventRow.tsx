@@ -50,7 +50,14 @@ export type DomainEventType =
   | "portador.assigned"
   | "portador.accepted"
   | "portador.rejected"
-  | "portador.settled";
+  | "portador.settled"
+  // Ação do admin sobre a fila de acesso/convite de outro usuário (§7.1) —
+  // achado em produção (15/08): faltava no catálogo inteiro, então
+  // EVENT_TEXT[type] undefined quebrava a Timeline pra qualquer admin que já
+  // tivesse aprovado/recusado alguém — exatamente a conta que "sempre
+  // quebrava" enquanto uma conta sem esse histórico funcionava normalmente.
+  | "admin.access_approved"
+  | "admin.access_rejected";
 
 /** Loosely-typed union of every field any catalog entry's copy needs — see Task 5's judgment-call note (mirrors `DomainEvent.payload: Json` in the Prisma schema). */
 export interface DomainEventPayload {
@@ -73,10 +80,14 @@ export interface DomainEventPayload {
   permission?: "view" | "edit";
   itemLabel?: string;
   inviteeEmail?: string;
+  /** admin.access_approved/.rejected's own field name (routes.ts's fireAdminEvent payload) — distinct from inviteeEmail above (invite.* events), same value shape. */
+  email?: string;
   /** calendar.global_entry — the admin-authored line itself (GlobalCalendarEntry.title), not composed from other fields. */
   title?: string;
   /** calendar.global_entry — GlobalCalendarEntry.displayStyle ("box" | "inline"); unused by this row today (both render as an inline Alert), kept so the payload round-trips the admin's choice for a future "box" treatment. */
   displayStyle?: string;
+  /** admin.access_approved/.rejected — "waitlist" ou "invite", qual fila o admin agiu sobre. */
+  kind?: "waitlist" | "invite";
 }
 
 export interface TimelineEventRowProps {
@@ -182,6 +193,10 @@ const EVENT_TEXT: Record<DomainEventType, (p: DomainEventPayload) => string> = {
     `${p.counterpartName ?? ""} rejeitou a transação que você atribuiu`,
   "portador.settled": (p) =>
     `Você registrou o acerto com ${p.counterpartName ?? ""}`,
+  "admin.access_approved": (p) =>
+    `Você aprovou ${p.kind === "invite" ? "o convite" : "o acesso"} de ${p.email ?? ""}`,
+  "admin.access_rejected": (p) =>
+    `Você recusou ${p.kind === "invite" ? "o convite" : "o acesso"} de ${p.email ?? ""}`,
 };
 
 // Category → icon mapping (line icons, viewBox 24×24, stroke 1.8 — Alert.tsx's
@@ -201,6 +216,7 @@ function eventEmoji(type: DomainEventType): string {
   if (type.startsWith("scheduled")) return "⏰";
   if (type.startsWith("recurring")) return "🔁";
   if (type.startsWith("import")) return "📥";
+  if (type.startsWith("admin")) return "🛡️";
   // connection.*/share.*/portador.*: eventos sobre outra pessoa.
   return "🤝";
 }
@@ -209,6 +225,7 @@ function eventVariant(type: DomainEventType): AlertVariant {
   if (type.endsWith("over_limit_entered")) return "warning";
   if (type.endsWith("over_limit_cleared")) return "success";
   if (type === "card.invoice_due") return "warning";
+  if (type === "admin.access_rejected") return "warning";
   return "info";
 }
 
@@ -223,12 +240,20 @@ function eventVariant(type: DomainEventType): AlertVariant {
  * component can't tell the difference and doesn't need to.
  */
 export function TimelineEventRow({ type, payload }: TimelineEventRowProps) {
+  // Defensive: EVENT_TEXT is a TypeScript Record keyed by the DomainEventType
+  // union, but `type` at runtime is whatever string is in the DB column —
+  // TS can't stop a real event type from outrunning this catalog (found in
+  // prod 15/08: admin.access_approved existed in the DB for months before
+  // this catalog had an entry for it, crashing the whole Timeline for any
+  // admin with that history). A missing entry now degrades to a generic
+  // line instead of throwing and blanking the page.
+  const renderText = EVENT_TEXT[type] ?? (() => "Um evento aconteceu.");
   return (
     <Alert
       layout="inline"
       variant={eventVariant(type)}
       emoji={eventEmoji(type)}
-      title={EVENT_TEXT[type](payload)}
+      title={renderText(payload)}
     />
   );
 }
