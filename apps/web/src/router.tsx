@@ -17,6 +17,8 @@ import { AdminPage } from "./routes/AdminPage";
 import { ConnectionsPage } from "./routes/ConnectionsPage";
 import { DashboardPage } from "./routes/DashboardPage";
 import { ForgotPasswordPage } from "./routes/ForgotPasswordPage";
+import { ImportPage } from "./routes/ImportPage";
+import { ImportReviewPage } from "./routes/ImportReviewPage";
 import { LoginPage } from "./routes/LoginPage";
 import { RecurringPage } from "./routes/RecurringPage";
 import { RegisterPage } from "./routes/RegisterPage";
@@ -122,6 +124,18 @@ const updatesRoute = createRoute({
   component: UpdatesPage,
 });
 
+const importRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: "/imports",
+  component: ImportPage,
+});
+
+const importReviewRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: "/imports/$id",
+  component: ImportReviewPage,
+});
+
 const waitlistRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/waitlist",
@@ -163,6 +177,8 @@ const routeTree = rootRoute.addChildren([
     connectionsRoute,
     adminRoute,
     updatesRoute,
+    importRoute,
+    importReviewRoute,
   ]),
 ]);
 

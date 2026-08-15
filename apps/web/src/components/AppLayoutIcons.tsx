@@ -66,6 +66,16 @@ export function ConnectionsNavIcon() {
   );
 }
 
+export function ImportNavIcon() {
+  return (
+    <svg {...ICON_PROPS} aria-hidden="true">
+      <path d="M12 15 V4" />
+      <path d="M7 9 L12 4 L17 9" />
+      <path d="M4 15 V18 A2 2 0 0 0 6 20 H18 A2 2 0 0 0 20 18 V15" />
+    </svg>
+  );
+}
+
 export function AdminNavIcon() {
   return (
     <svg {...ICON_PROPS} aria-hidden="true">
