@@ -296,3 +296,16 @@ export interface AdminHealthDto {
   redis: "ok" | "error";
   notAvailable: string[];
 }
+
+// Mirrors apps/api/src/admin/calendar-routes.ts's toResponse — data anual
+// recorrente (month/day, sem ano), projetada pra todo usuário na Timeline
+// (timeline/routes.ts's globalCalendarSource).
+export interface CalendarEntryDto {
+  id: string;
+  title: string;
+  month: number;
+  day: number;
+  displayStyle: "box" | "inline";
+  createdAt: string;
+  updatedAt: string;
+}

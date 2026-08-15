@@ -2,17 +2,32 @@
 // BACKLOG.md US-7.1/US-7.2 — painéis Acessos e Usuários. role=user é
 // bloqueado na UI (espelha o 403 admin.forbidden do backend); nunca mostra
 // valor financeiro, só contagens (§6.2).
-import { Badge, Button, EmptyState, Switch } from "@lurem/ui";
+import {
+  Alert,
+  Badge,
+  Button,
+  EmptyState,
+  Input,
+  Segmented,
+  Switch,
+} from "@lurem/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate } from "@tanstack/react-router";
+import { type FormEvent, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { apiFetchJson } from "../auth/api-client";
+import { ApiError, apiFetchJson } from "../auth/api-client";
 import type {
   AdminAccessDto,
   AdminHealthDto,
   AdminUsageDto,
   AdminUserDto,
+  CalendarEntryDto,
 } from "../auth/types";
+
+const DISPLAY_STYLE_OPTIONS = [
+  { value: "inline", label: "Inline" },
+  { value: "box", label: "Caixa" },
+];
 
 const NOT_AVAILABLE_LABEL: Record<string, string> = {
   jobQueue: "Fila de jobs",
@@ -46,6 +61,11 @@ export function AdminPage() {
   const healthQuery = useQuery({
     queryKey: ["admin-health"],
     queryFn: () => apiFetchJson<AdminHealthDto>("/admin/health"),
+    enabled: hasSession && isAdmin,
+  });
+  const calendarQuery = useQuery({
+    queryKey: ["admin-calendar-entries"],
+    queryFn: () => apiFetchJson<CalendarEntryDto[]>("/admin/calendar-entries"),
     enabled: hasSession && isAdmin,
   });
 
@@ -105,6 +125,76 @@ export function AdminPage() {
     onSuccess: invalidateUsers,
   });
 
+  const invalidateCalendar = () =>
+    queryClient.invalidateQueries({ queryKey: ["admin-calendar-entries"] });
+
+  const [calendarTitle, setCalendarTitle] = useState("");
+  const [calendarMonth, setCalendarMonth] = useState("1");
+  const [calendarDay, setCalendarDay] = useState("1");
+  const [calendarDisplayStyle, setCalendarDisplayStyle] = useState<
+    "box" | "inline"
+  >("inline");
+  const [calendarError, setCalendarError] = useState<string | null>(null);
+
+  const createCalendarEntryMutation = useMutation({
+    mutationFn: (body: {
+      title: string;
+      month: number;
+      day: number;
+      displayStyle: "box" | "inline";
+    }) =>
+      apiFetchJson<CalendarEntryDto>("/admin/calendar-entries", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      setCalendarTitle("");
+      setCalendarMonth("1");
+      setCalendarDay("1");
+      setCalendarDisplayStyle("inline");
+      setCalendarError(null);
+      invalidateCalendar();
+    },
+    onError: (error: unknown) => {
+      setCalendarError(
+        error instanceof ApiError
+          ? error.message
+          : "Não foi possível criar a entrada.",
+      );
+    },
+  });
+
+  const deleteCalendarEntryMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiFetchJson(`/admin/calendar-entries/${id}`, { method: "DELETE" }),
+    onSuccess: invalidateCalendar,
+  });
+
+  function onSubmitCalendarEntry(event: FormEvent) {
+    event.preventDefault();
+    setCalendarError(null);
+    const month = Number(calendarMonth);
+    const day = Number(calendarDay);
+    if (!calendarTitle.trim()) {
+      setCalendarError("Informe um título.");
+      return;
+    }
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      setCalendarError("Mês deve ser entre 1 e 12.");
+      return;
+    }
+    if (!Number.isInteger(day) || day < 1 || day > 31) {
+      setCalendarError("Dia deve ser entre 1 e 31.");
+      return;
+    }
+    createCalendarEntryMutation.mutate({
+      title: calendarTitle.trim(),
+      month,
+      day,
+      displayStyle: calendarDisplayStyle,
+    });
+  }
+
   if (isBooting) {
     return <p className="p-6 text-[var(--lr-text-secondary)]">Carregando…</p>;
   }
@@ -118,6 +208,7 @@ export function AdminPage() {
   const waitlist = accessQuery.data?.waitlist ?? [];
   const invites = accessQuery.data?.invites ?? [];
   const users = usersQuery.data ?? [];
+  const calendarEntries = calendarQuery.data ?? [];
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -277,6 +368,98 @@ export function AdminPage() {
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="mt-10">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--lr-text-secondary)]">
+          Calendário global
+        </h2>
+        <p className="mb-3 text-sm text-[var(--lr-text-secondary)]">
+          Aparece na Timeline de todos os usuários, todo ano, na mesma data —
+          ex.: "Natal", "prazo pra declarar IR".
+        </p>
+        <form
+          onSubmit={onSubmitCalendarEntry}
+          className="mb-4 flex flex-col gap-3 rounded-[var(--lr-r-lg)] border border-[var(--lr-border)] p-4 sm:flex-row sm:flex-wrap sm:items-end"
+        >
+          <div className="flex-1 sm:min-w-[200px]">
+            <Input
+              label="Título"
+              value={calendarTitle}
+              onChange={(e) => setCalendarTitle(e.target.value)}
+            />
+          </div>
+          <div className="w-24">
+            <Input
+              type="number"
+              label="Mês"
+              min={1}
+              max={12}
+              value={calendarMonth}
+              onChange={(e) => setCalendarMonth(e.target.value)}
+            />
+          </div>
+          <div className="w-24">
+            <Input
+              type="number"
+              label="Dia"
+              min={1}
+              max={31}
+              value={calendarDay}
+              onChange={(e) => setCalendarDay(e.target.value)}
+            />
+          </div>
+          <Segmented
+            label="Estilo"
+            options={DISPLAY_STYLE_OPTIONS}
+            value={calendarDisplayStyle}
+            onChange={(value) =>
+              setCalendarDisplayStyle(value as "box" | "inline")
+            }
+          />
+          <Button type="submit" loading={createCalendarEntryMutation.isPending}>
+            Adicionar
+          </Button>
+        </form>
+        {calendarError ? (
+          <Alert
+            variant="error"
+            layout="inline"
+            title={calendarError}
+            className="mb-4"
+          />
+        ) : null}
+        {calendarEntries.length === 0 ? (
+          <EmptyState
+            title="Nenhuma entrada"
+            description="Entradas cadastradas aqui aparecem na Timeline de todo mundo, todo ano."
+          />
+        ) : (
+          <div className="flex flex-col gap-2">
+            {calendarEntries.map((entry) => (
+              <div
+                key={entry.id}
+                className="flex items-center justify-between rounded-[var(--lr-r-lg)] border border-[var(--lr-border)] p-4"
+              >
+                <div>
+                  <p className="text-[var(--lr-text)]">{entry.title}</p>
+                  <p className="text-sm text-[var(--lr-text-secondary)]">
+                    {String(entry.day).padStart(2, "0")}/
+                    {String(entry.month).padStart(2, "0")} ·{" "}
+                    {entry.displayStyle === "box" ? "Caixa" : "Inline"}
+                  </p>
+                </div>
+                <Button
+                  variant="danger"
+                  loading={deleteCalendarEntryMutation.isPending}
+                  onClick={() => deleteCalendarEntryMutation.mutate(entry.id)}
+                >
+                  Excluir
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="mt-10">
