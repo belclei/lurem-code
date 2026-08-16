@@ -98,7 +98,11 @@ export function NewCardDialog({
       <form onSubmit={onSubmit} className="grid gap-3">
         <Select
           label="Instituição"
-          options={institutions.map((i) => ({ value: i.id, label: i.name }))}
+          options={institutions.map((i) => ({
+            value: i.id,
+            label: i.name,
+            icon: i.logoAsset ? <img src={i.logoAsset} alt="" className="h-full w-full object-contain" /> : undefined,
+          }))}
           value={institutionId}
           onChange={setInstitutionId}
           error={fieldErrors.institutionId}
