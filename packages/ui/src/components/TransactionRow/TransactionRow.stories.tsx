@@ -10,8 +10,8 @@ const meta: Meta<typeof TransactionRow> = {
     docs: {
       description: {
         component:
-          "Linha de transação — 5 variantes (IMPLEMENTACAO.md §10.1b item 4, §6.6 arq). " +
-          "Manual/importada compartilham o variant `default`, distinguidas só pela tag `source`.",
+          "Unified transaction row — expandable card supporting default/transfer/installment/scheduled variants. " +
+          "Collapsed by default; expands to show details and action buttons.",
       },
     },
   },
@@ -30,7 +30,30 @@ export const Manual: Story = {
         kind="expense"
         amountCents={18790}
         source="manual"
-        categoryLabel="Alimentação"
+        categoryEmoji="🍽️"
+        categoryName="Alimentação"
+        expanded={false}
+      />
+    </div>
+  ),
+};
+
+export const ManualExpanded: Story = {
+  render: () => (
+    <div style={{ width: "28rem" }}>
+      <TransactionRow
+        variant="default"
+        description="Supermercado Extra"
+        date="2026-07-20T12:00:00.000Z"
+        kind="expense"
+        amountCents={18790}
+        source="manual"
+        categoryEmoji="🍽️"
+        categoryName="Alimentação"
+        expanded={true}
+        onToggleExpand={() => {}}
+        onEdit={() => {}}
+        onDelete={() => {}}
       />
     </div>
   ),
@@ -46,7 +69,9 @@ export const Importada: Story = {
         kind="income"
         amountCents={520000}
         source="import"
-        categoryLabel="Salário"
+        categoryEmoji="💰"
+        categoryName="Renda"
+        expanded={false}
       />
     </div>
   ),
@@ -62,66 +87,9 @@ export const Transferencia: Story = {
         kind="transfer"
         amountCents={30000}
         source="manual"
-        transferToLabel="Poupança Itaú"
-      />
-    </div>
-  ),
-};
-
-export const ParceladaFechada: Story = {
-  render: () => (
-    <div style={{ width: "28rem" }}>
-      <TransactionRow
-        variant="installment"
-        description="Notebook Dell"
-        date="2026-05-10T12:00:00.000Z"
-        kind="expense"
-        amountCents={45000}
-        source="manual"
-        categoryLabel="Compras"
-        installment={{
-          originalAmountCents: 450000,
-          originalDate: "2026-05-10T12:00:00.000Z",
-          installmentNumber: 3,
-          installmentTotal: 10,
-          paidCount: 3,
-          paidAmountCents: 135000,
-          remainingCount: 7,
-          remainingAmountCents: 315000,
-          nextInstallmentDate: "2026-08-10T12:00:00.000Z",
-          payoffDate: "2027-02-10T12:00:00.000Z",
-        }}
-      />
-    </div>
-  ),
-};
-
-export const ParceladaExpandida: Story = {
-  render: () => (
-    <div style={{ width: "28rem" }}>
-      <TransactionRow
-        variant="installment"
-        expanded
-        description="Notebook Dell"
-        date="2026-05-10T12:00:00.000Z"
-        kind="expense"
-        amountCents={45000}
-        source="manual"
-        categoryLabel="Compras"
-        onViewAllInstallments={() => {}}
-        onEdit={() => {}}
-        installment={{
-          originalAmountCents: 450000,
-          originalDate: "2026-05-10T12:00:00.000Z",
-          installmentNumber: 3,
-          installmentTotal: 10,
-          paidCount: 3,
-          paidAmountCents: 135000,
-          remainingCount: 7,
-          remainingAmountCents: 315000,
-          nextInstallmentDate: "2026-08-10T12:00:00.000Z",
-          payoffDate: "2027-02-10T12:00:00.000Z",
-        }}
+        categoryEmoji="🔀"
+        categoryName="Transferência"
+        expanded={false}
       />
     </div>
   ),
@@ -132,15 +100,37 @@ export const Agendada: Story = {
     <div style={{ width: "28rem" }}>
       <TransactionRow
         variant="scheduled"
+        isScheduled={true}
         description="Aluguel"
         date="2026-08-10T12:00:00.000Z"
         kind="expense"
         amountCents={180000}
         source="manual"
-        categoryLabel="Moradia"
+        categoryEmoji="🏠"
+        categoryName="Moradia"
+        expanded={false}
+      />
+    </div>
+  ),
+};
+
+export const AgendadaExpandida: Story = {
+  render: () => (
+    <div style={{ width: "28rem" }}>
+      <TransactionRow
+        variant="scheduled"
+        isScheduled={true}
+        description="Aluguel"
+        date="2026-08-10T12:00:00.000Z"
+        kind="expense"
+        amountCents={180000}
+        source="manual"
+        categoryEmoji="🏠"
+        categoryName="Moradia"
+        expanded={true}
+        onToggleExpand={() => {}}
         onConfirm={() => {}}
         onEdit={() => {}}
-        onSkip={() => {}}
         onDelete={() => {}}
       />
     </div>

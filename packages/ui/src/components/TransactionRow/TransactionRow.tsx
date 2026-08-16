@@ -19,8 +19,22 @@ interface TransactionRowCommon {
   /** Always the positive magnitude — sign/color come from `kind`, never from the number itself. */
   amountCents: number;
   source: TransactionSource;
-  categoryIcon?: ReactNode;
-  categoryLabel?: string;
+  /** Institution mark (logo/initial) — replaces the old categoryIcon. */
+  institutionMark?: ReactNode;
+  /** Category emoji + name for the second line. */
+  categoryEmoji?: string;
+  categoryName?: string;
+  /** Whether this row is expanded to show details. */
+  expanded?: boolean;
+  /** Fired when the user clicks the chevron or the whole card to toggle expand. */
+  onToggleExpand?: () => void;
+  /** Scheduled-only: fired when the user clicks Confirmar. */
+  onConfirm?: () => void;
+  /** Called when the user clicks Editar — except recurringPreview (no button). */
+  onEdit?: () => void;
+  /** Called when the user clicks Apagar — except recurringPreview (no button). */
+  onDelete?: () => void;
+  /** Used only by recurringPreview: fired when clicking the entire card to manage the series. */
   onClick?: () => void;
 }
 
@@ -38,37 +52,21 @@ export interface InstallmentDetail {
 }
 
 export type TransactionRowProps =
-  | (TransactionRowCommon & { variant: "default" })
   | (TransactionRowCommon & {
-      variant: "transfer";
-      /** e.g. "Conta Corrente → Poupança" destination label — already resolved by the caller, this component never looks up account names. */
-      transferToLabel: string;
+      /** Generic transaction card: default/transfer/installment/scheduled. */
+      variant?: "default" | "transfer" | "installment" | "scheduled";
+      /** For installments only. */
+      installment?: InstallmentDetail;
+      /** For scheduled only. */
+      isScheduled?: boolean;
     })
   | (TransactionRowCommon & {
-      variant: "installment";
-      expanded?: boolean;
-      installment: InstallmentDetail;
-      onViewAllInstallments?: () => void;
-      onEdit?: () => void;
-    })
-  | (TransactionRowCommon & {
-      variant: "scheduled";
-      onClick?: never;
-      onConfirm: () => void;
-      onEdit: () => void;
-      onSkip: () => void;
-      onDelete: () => void;
-    })
-  | (TransactionRowCommon & {
-      // Backlog "Recorrência integrada ao dialog": a próxima ocorrência de
-      // uma série recorrente ainda não vencida (nenhuma Transaction real
-      // existe pra ela ainda — ver apps/api/src/timeline/routes.ts's
-      // `recurringOccurrenceSource`). Visually distinct from "scheduled"
-      // (that variant IS a real Transaction row, isScheduled=true) — this
-      // one is a pure preview, so it never exposes
-      // confirm/skip/delete actions, only a click-through to manage the
-      // series.
+      /** Pure preview of a future recurring occurrence — no expansion, no actions, click through to series. */
       variant: "recurringPreview";
+      onClick: () => void;
+      isScheduled?: never;
+      onToggleExpand?: never;
+      expanded?: never;
     });
 
 const KIND_TONE: Record<TransactionKind, "in" | "out" | "default"> = {
@@ -83,12 +81,6 @@ const KIND_SIGN: Record<TransactionKind, string> = {
   transfer: "",
 };
 
-// §5b's meta line needs to know whether `date` (the scheduled transaction's
-// own date) is today, in America/Sao_Paulo — the same civil-day comparison
-// apps/web/src/routes/TimelinePage.tsx's own todayYmd()/isToday() helpers
-// already use, reimplemented locally since packages/ui can't import from
-// apps/web. `now` is injectable so this stays a pure, testable function
-// (see TransactionRow.test.ts) instead of reaching for `new Date()` inline.
 export function scheduledMetaText(
   dateIso: string,
   now: Date = new Date(),
@@ -103,34 +95,24 @@ export function scheduledMetaText(
 }
 
 function RowHeader(props: TransactionRowProps) {
-  // Day header already shows the date (issues.md: "Remover as datas dos
-  // cards de transações na timeline") — this meta line only carries a date
-  // for scheduled/recurringPreview, where it's a *future* date plus status
-  // context ("não entra no saldo" / "aguardando confirmação"), not a
-  // same-day-header duplicate.
-  const metaParts: (string | undefined)[] = [props.categoryLabel];
-  if (props.variant === "scheduled") {
-    metaParts.push(scheduledMetaText(props.date));
-  } else if (props.variant === "recurringPreview") {
-    metaParts.push(
-      `Prevista para ${formatDate(props.date)} · aguardando confirmação`,
-    );
-  } else if (props.variant === "transfer") {
-    metaParts.push(props.transferToLabel);
-  }
-  const meta = metaParts.filter(Boolean).join(" · ");
+  const isInstallment = props.variant === "installment" && props.installment;
+  const isScheduled = props.variant === "scheduled" || props.isScheduled;
+  const isRecurringPreview = props.variant === "recurringPreview";
 
   return (
     <div className="flex items-center gap-3">
-      {props.categoryIcon ? (
+      {props.institutionMark ? (
         <span aria-hidden="true" className="flex-none">
-          {props.categoryIcon}
+          {props.institutionMark}
         </span>
       ) : null}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <Body weight="medium" className="truncate">
             {props.description}
+            {isInstallment
+              ? ` · ${props.installment!.installmentNumber}/${props.installment!.installmentTotal}`
+              : ""}
           </Body>
           {props.source === "import" ? (
             <Badge kind="status" status="pending">
@@ -142,36 +124,31 @@ function RowHeader(props: TransactionRowProps) {
               Transferência
             </Badge>
           ) : null}
-          {/* Collapsed installment rows were visually identical to a plain
-              transaction — this is the only always-visible tell that the
-              row is parcelada, so it survives even when never expanded. */}
-          {props.variant === "installment" ? (
-            <Badge kind="category" color="ink">
-              {props.installment.installmentNumber}/
-              {props.installment.installmentTotal}
-            </Badge>
-          ) : null}
-          {props.variant === "scheduled" ? (
+          {isScheduled && !isRecurringPreview ? (
             <Badge kind="status" status="estimate">
               Agendada
             </Badge>
           ) : null}
-          {props.variant === "recurringPreview" ? (
+          {isRecurringPreview ? (
             <Badge kind="status" status="pending">
               Recorrência pendente
             </Badge>
           ) : null}
         </div>
         <Body muted className="text-[.8125rem]">
-          {meta}
+          {props.categoryEmoji ? (
+            <span aria-hidden="true" className="mr-1">
+              {props.categoryEmoji}
+            </span>
+          ) : null}
+          {props.categoryName}
         </Body>
       </div>
       <div className="flex flex-none items-center gap-1.5">
         <Mono
           variant="number"
           tone={
-            props.variant === "scheduled" ||
-            props.variant === "recurringPreview"
+            isScheduled || isRecurringPreview
               ? "estimate"
               : KIND_TONE[props.kind]
           }
@@ -179,26 +156,15 @@ function RowHeader(props: TransactionRowProps) {
           {KIND_SIGN[props.kind]}
           {formatMoney(props.amountCents)}
         </Mono>
-        {props.variant === "installment" ? (
-          // A real <button>, not the whole Card, is the interactive element
-          // here: the card also contains "Ver todas as parcelas"/"Editar"
-          // <button>s below, and a role="button" ancestor (which is what
-          // Card becomes whenever it's given an onClick) must never contain
-          // interactive descendants — nested interactive controls are a
-          // WAI-ARIA authoring-practices violation. See TransactionRow's own
-          // `clickable` computation, which now excludes this variant.
+        {!isRecurringPreview ? (
           <button
             type="button"
             aria-label={
-              props.expanded ? "Recolher parcelamento" : "Expandir parcelamento"
+              props.expanded ? "Recolher detalhes" : "Expandir detalhes"
             }
             onClick={(event) => {
-              // Purely defensive: the outer Card no longer has an onClick
-              // for this variant, so there's nothing to bubble into — but
-              // this mirrors the stopPropagation already used by the
-              // "Ver todas as parcelas"/"Editar" buttons below.
               event.stopPropagation();
-              props.onClick?.();
+              props.onToggleExpand?.();
             }}
             className="flex-none rounded-[var(--lr-r-full)] p-1 text-[var(--lr-text-secondary)] hover:bg-[var(--lr-surface-sunken)]"
           >
@@ -284,94 +250,59 @@ function InstallmentDetails({
 }
 
 /**
- * Lurem's transaction line item. Dumb component: variant/fields all come
- * via props — it renders 5 shapes (manual/importada share the `default`
- * variant, distinguished only by the `source` tag) without deciding any
- * business state itself (§6.6, BACKLOG US-2.3).
+ * Lurem's unified transaction row. Supports all transaction types
+ * (default/transfer/installment/scheduled/recurringPreview) via optional props.
+ * Collapsed by default, expands to show details and action buttons in a trailer.
+ * recurringPreview is special: never expands, just a click-through.
  */
 export function TransactionRow(props: TransactionRowProps) {
-  // "scheduled" never gets a card-level onClick (its type declares
-  // `onClick?: never`); "installment" now exposes its own toggle only via
-  // the chevron <button> in RowHeader (see there) so the whole row — which
-  // also contains "Ver todas as parcelas"/"Editar" <button>s — doesn't
-  // become a role="button" ancestor with interactive descendants.
-  const clickable =
-    props.variant !== "scheduled" &&
-    props.variant !== "installment" &&
-    Boolean(props.onClick);
+  const isRecurringPreview = props.variant === "recurringPreview";
+  const isInstallment = props.variant === "installment" && props.installment;
+  const isScheduled = props.variant === "scheduled" || props.isScheduled;
 
   return (
     <Card
-      interactive={clickable}
-      onClick={clickable ? props.onClick : undefined}
-      dashed={
-        props.variant === "scheduled" || props.variant === "recurringPreview"
-      }
+      interactive={isRecurringPreview}
+      onClick={isRecurringPreview ? props.onClick : undefined}
+      dashed={isScheduled || isRecurringPreview}
     >
       <RowHeader {...props} />
-      {props.variant === "installment" && props.expanded ? (
-        <InstallmentDetails installment={props.installment} />
-      ) : null}
-      {props.variant === "installment" &&
-      (props.onViewAllInstallments || props.onEdit) ? (
-        <div className="mt-3 flex gap-2 border-t border-[var(--lr-border)] pt-3">
-          {props.onViewAllInstallments ? (
-            <Button
-              variant="tertiary"
-              size="sm"
-              onClick={(event) => {
-                // Task 19 wires the whole card's own onClick to the same
-                // toggle — without this, clicking this button would ALSO
-                // bubble up and re-fire the card's onClick (both handlers run
-                // on a plain DOM click), double-toggling expand/collapse.
-                event.stopPropagation();
-                props.onViewAllInstallments?.();
-              }}
-            >
-              Ver todas as parcelas
-            </Button>
-          ) : null}
-          {props.onEdit ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={(event) => {
-                event.stopPropagation();
-                props.onEdit?.();
-              }}
-            >
-              Editar
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-      {props.variant === "scheduled" ? (
-        <div className="mt-3 flex justify-end gap-2 border-t border-[var(--lr-border)] pt-3">
-          {/* TIMELINE.md §5b wants `hmc-btn--sm hmc-btn--ghost-danger` for
-              Apagar — Button has no ghost+danger combination (variants are
-              primary/secondary/tertiary/danger/link, see Button.tsx). `danger`
-              (solid) is the closest available match: it's the only variant
-              that keeps the red destructive signal, which matters more for an
-              irreversible delete than matching the reference's lower visual
-              weight exactly. Judgment call — flagged in the plan's report. */}
-          <Button
-            variant="danger"
-            size="sm"
-            className="mr-auto"
-            onClick={props.onDelete}
-          >
-            Apagar
-          </Button>
-          <Button variant="tertiary" size="sm" onClick={props.onSkip}>
-            Pular
-          </Button>
-          <Button variant="secondary" size="sm" onClick={props.onEdit}>
-            Editar
-          </Button>
-          <Button variant="primary" size="sm" onClick={props.onConfirm}>
-            Confirmar
-          </Button>
-        </div>
+
+      {!isRecurringPreview && props.expanded ? (
+        <>
+          {isInstallment ? (
+            <InstallmentDetails installment={props.installment!} />
+          ) : (
+            <div className="mt-3 border-t border-[var(--lr-border)] pt-3">
+              <Body muted className="text-[.8125rem]">
+                {formatDate(props.date)}
+              </Body>
+            </div>
+          )}
+
+          <div className="mt-3 flex justify-end gap-2 border-t border-[var(--lr-border)] pt-3">
+            {props.onDelete ? (
+              <Button
+                variant="danger"
+                size="sm"
+                className="mr-auto"
+                onClick={props.onDelete}
+              >
+                Apagar
+              </Button>
+            ) : null}
+            {props.onEdit ? (
+              <Button variant="secondary" size="sm" onClick={props.onEdit}>
+                Editar
+              </Button>
+            ) : null}
+            {isScheduled && props.onConfirm ? (
+              <Button variant="primary" size="sm" onClick={props.onConfirm}>
+                Confirmar
+              </Button>
+            ) : null}
+          </div>
+        </>
       ) : null}
     </Card>
   );

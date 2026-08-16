@@ -1,5 +1,5 @@
 // apps/web/src/routes/timeline/transactionRowHelpers.ts
-import { CategoryIcon, TransactionRow } from "@lurem/ui";
+import { CategoryIcon, InstitutionMark, TransactionRow } from "@lurem/ui";
 import type { TransferAccount } from "@lurem/ui";
 import type {
   AccountDto,
@@ -26,86 +26,119 @@ export function transactionRowProps(
   categoriesById: Map<string, CategoryDto>,
   accountsById: Map<string, AccountDto>,
   cardsById: Map<string, CardDto>,
-  expandedInstallments: Set<string>,
-  onToggleInstallment: (id: string) => void,
+  expandedTransactions: Set<string>,
+  onToggleExpand: (id: string) => void,
   onEditTransaction: (tx: TransactionDto) => void,
 ) {
   const category = tx.categoryId
     ? categoriesById.get(tx.categoryId)
     : undefined;
-  // TIMELINE.md §5.2a's meta is "instituição · categoria" (hour dropped
-  // per the design doc's own scope decision #3, not both fields) — this
-  // was only ever computing the installment "Parcela N/M" string,
-  // leaving every other row's meta as just the bare date. Real gap,
-  // fixed here alongside this task's other transactionRowProps changes.
-  const institutionName = tx.accountId
-    ? accountsById.get(tx.accountId)?.institutionName
-    : tx.creditCardId
-      ? cardsById.get(tx.creditCardId)?.institutionName
-      : undefined;
-  const metaParts = [institutionName, category?.name].filter(
-    (part): part is string => Boolean(part),
-  );
+
+  // Resolve institution mark from account/card
+  const account = tx.accountId ? accountsById.get(tx.accountId) : undefined;
+  const card = tx.creditCardId ? cardsById.get(tx.creditCardId) : undefined;
+  const institution = account?.institutionName || card?.institutionName;
+
+  const institutionMark = account ? (
+    <InstitutionMark
+      logoUrl={account.logoUrl}
+      name={institution || "Conta"}
+      tone={account.type === "cash" ? "gold" : "petrol"}
+      size="sm"
+    />
+  ) : card ? (
+    <InstitutionMark
+      logoUrl={card.logoUrl}
+      name={institution || "Cartão"}
+      tone="petrol"
+      size="sm"
+    />
+  ) : undefined;
+
+  // Category emoji + name from mapping
+  // Note: CategoryIcon still renders the emoji, but we need just the emoji string
+  // for the categoryEmoji prop. We'll compute it directly from the category icon map.
+  const categoryEmojiMap: Record<string, string> = {
+    "hm-cat-alimentacao": "🍽️",
+    "hm-cat-moradia": "🏠",
+    "hm-cat-transporte": "🚗",
+    "hm-cat-saude": "🩺",
+    "hm-cat-lazer": "🎬",
+    "hm-cat-servicos": "🔧",
+    "hm-cat-compras": "🛍️",
+    "hm-cat-renda": "💰",
+    "hm-cat-impostos": "🧾",
+    "hm-cat-dividas": "💳",
+    "hm-cat-poupanca": "🐷",
+    "hm-cat-doacoes": "❤️",
+    "hm-cat-assinaturas": "🔁",
+    "hm-cat-transferencia": "🔀",
+    "hm-cat-sem-categoria": "❔",
+  };
+  const categoryEmoji = category
+    ? categoryEmojiMap[category.icon] ||
+      categoryEmojiMap["hm-cat-sem-categoria"]
+    : undefined;
+
   const common = {
     description: tx.description,
     date: tx.transactionDate,
     kind: tx.kind,
     amountCents: tx.amountCents,
     source: tx.source,
-    categoryIcon: category ? <CategoryIcon slug={category.icon} /> : undefined,
-    categoryLabel: metaParts.length > 0 ? metaParts.join(" · ") : undefined,
+    institutionMark,
+    categoryEmoji,
+    categoryName: category?.name,
+    expanded: expandedTransactions.has(tx.id),
+    onToggleExpand: () => onToggleExpand(tx.id),
   };
+
   if (tx.isScheduled) {
     return (
       <TransactionRow
         key={tx.id}
         {...common}
         variant="scheduled"
+        isScheduled={true}
         onConfirm={() => scheduled.onConfirm(tx.id)}
-        onSkip={() => scheduled.onSkip(tx.id)}
         onEdit={() => onEditTransaction(tx)}
         onDelete={() => scheduled.onDelete(tx.id)}
       />
     );
   }
+
   if (tx.kind === "transfer") {
-    // PATCH /v1/transactions/:id atualiza as duas pernas (out+in) juntas e
-    // atomicamente quando a transação tem transferPairId — editar por aqui
-    // não desincroniza o par.
     return (
       <TransactionRow
         key={tx.id}
         {...common}
         variant="transfer"
-        transferToLabel={tx.transferDirection === "out" ? "Saída" : "Entrada"}
-        onClick={() => onEditTransaction(tx)}
+        onEdit={() => onEditTransaction(tx)}
+        onDelete={() => scheduled.onDelete(tx.id)}
       />
     );
   }
+
   if (tx.installmentGroupId && tx.installmentDetails) {
     return (
       <TransactionRow
         key={tx.id}
         {...common}
-        // The dedicated badge (installmentNumber/installmentTotal) below
-        // already shows "N/M" — dropping the "Parcela N/M" categoryLabel
-        // here avoids saying it twice in the same row.
-        categoryLabel={undefined}
         variant="installment"
         installment={tx.installmentDetails}
-        expanded={expandedInstallments.has(tx.id)}
-        onClick={() => onToggleInstallment(tx.id)}
-        onViewAllInstallments={() => onToggleInstallment(tx.id)}
         onEdit={() => onEditTransaction(tx)}
+        onDelete={() => scheduled.onDelete(tx.id)}
       />
     );
   }
+
   return (
     <TransactionRow
       key={tx.id}
       {...common}
       variant="default"
-      onClick={() => onEditTransaction(tx)}
+      onEdit={() => onEditTransaction(tx)}
+      onDelete={() => scheduled.onDelete(tx.id)}
     />
   );
 }

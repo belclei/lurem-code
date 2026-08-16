@@ -22,6 +22,10 @@ export interface CreditCardLike {
   dueDay: number;
   autoDebitAccountId?: string | null;
   isActive: boolean;
+  /** Manual invoice closure override — year of closed period, null if no override. */
+  manualClosureYear?: number | null;
+  /** Manual invoice closure override — month of closed period, null if no override. */
+  manualClosureMonth?: number | null;
 }
 
 /**

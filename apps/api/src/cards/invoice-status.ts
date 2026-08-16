@@ -63,10 +63,31 @@ export function cardInvoiceStatus(
   asOf: Date = new Date(),
 ): CardInvoiceStatus {
   const today = todayAsDate(asOf);
+  const openMonth = findOpenInvoiceMonth(card, today);
+
+  // Check manual closure override first: if this period was manually closed, force closed status
+  const manuallyClosedThisPeriod =
+    card.manualClosureYear === openMonth.year &&
+    card.manualClosureMonth === openMonth.month;
+
+  if (manuallyClosedThisPeriod) {
+    const closed: Money = faturaFechadaNaoVencida({ card, transactions, asOf });
+    const open = sumCardTransactionsForInvoiceMonth(
+      card,
+      transactions,
+      openMonth.year,
+      openMonth.month,
+    );
+    return {
+      usedCents: closed.valueCents + open.valueCents,
+      invoiceStatus: "closed_awaiting_payment",
+    };
+  }
+
+  // Otherwise use normal date-based calculation
   const closedMonth = findClosedNotDueInvoiceMonth(card, today);
   const closed: Money = faturaFechadaNaoVencida({ card, transactions, asOf });
 
-  const openMonth = findOpenInvoiceMonth(card, today);
   const open = sumCardTransactionsForInvoiceMonth(
     card,
     transactions,
