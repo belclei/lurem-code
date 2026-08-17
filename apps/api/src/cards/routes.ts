@@ -363,6 +363,7 @@ export async function registerCardRoutes(
     "/v1/cards/:id/close-invoice",
     { preHandler: requireUser(fastify) },
     async (request) => {
+      // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler, which runs before this handler and throws if auth fails
       const userId = request.userId!;
       const { id } = request.params as { id: string };
 
@@ -407,6 +408,7 @@ export async function registerCardRoutes(
     "/v1/cards/:id/reopen-invoice",
     { preHandler: requireUser(fastify) },
     async (request) => {
+      // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler, which runs before this handler and throws if auth fails
       const userId = request.userId!;
       const { id } = request.params as { id: string };
 

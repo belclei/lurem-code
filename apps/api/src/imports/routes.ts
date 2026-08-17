@@ -19,12 +19,16 @@
 // confirmação em lote deixaria a conta além do limite" (§6.8 item 6) também
 // fica de fora do lote automático por ora — consistente com o resto do app,
 // que sempre permite e só avisa (§0), nunca bloqueia.
+import type { PrismaClient } from "@lurem/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireUser } from "../auth/authenticate.js";
 import { NOT_FOUND, VALIDATION_FAILED } from "../errors.js";
 import { belIaChat } from "./bel-ia-client.js";
-import { extractTransactionsFromText } from "./extractor.js";
+import {
+  extractDocumentMetadata,
+  extractTransactionsFromText,
+} from "./extractor.js";
 import {
   toExtractedTransactionResponse,
   toImportedDocumentResponse,
@@ -53,11 +57,81 @@ const UpdateLineBody = z
   })
   .strict();
 
+const ConfirmBody = z
+  .object({
+    resolution: z.enum(["keep_both", "replace"]).optional(),
+  })
+  .strict();
+
 const HIGH_CONFIDENCE_THRESHOLD = 0.8;
 
 function parseDateOnly(ymd: string): Date {
   const [y, m, d] = ymd.split("-").map(Number) as [number, number, number];
   return new Date(Date.UTC(y, m - 1, d));
+}
+
+function duplicateKey(date: Date, amountCents: number, kind: string): string {
+  return `${date.getTime()}:${amountCents}:${kind}`;
+}
+
+// Possível duplicata (§6.8): mesmo usuário + mesma data + mesmo valor + mesmo
+// kind já existindo como Transaction real. Não é uma checagem exaustiva (não
+// compara descrição/moeda) — é só um sinal pra revisão humana decidir entre
+// pular, manter os dois ou substituir (ver POST .../confirm, resolution).
+async function findDuplicateTransactions(
+  prisma: PrismaClient,
+  userId: string,
+  dates: Date[],
+): Promise<Map<string, string>> {
+  const uniqueDates = [...new Set(dates.map((d) => d.getTime()))].map(
+    (t) => new Date(t),
+  );
+  if (uniqueDates.length === 0) return new Map();
+
+  const candidates = await prisma.transaction.findMany({
+    where: { userId, transactionDate: { in: uniqueDates } },
+    select: { id: true, transactionDate: true, amountCents: true, kind: true },
+  });
+
+  const byKey = new Map<string, string>();
+  for (const tx of candidates) {
+    const key = duplicateKey(tx.transactionDate, tx.amountCents, tx.kind);
+    if (!byKey.has(key)) byKey.set(key, tx.id);
+  }
+  return byKey;
+}
+
+interface DuplicateSummary {
+  description: string;
+  transactionDate: string;
+  amountCents: number;
+  kind: string;
+}
+
+async function buildDuplicatesMap(
+  prisma: PrismaClient,
+  lines: { duplicateOfTxId: string | null }[],
+): Promise<Record<string, DuplicateSummary>> {
+  const ids = [
+    ...new Set(
+      lines
+        .map((l) => l.duplicateOfTxId)
+        .filter((id): id is string => id !== null),
+    ),
+  ];
+  if (ids.length === 0) return {};
+  const txs = await prisma.transaction.findMany({ where: { id: { in: ids } } });
+  return Object.fromEntries(
+    txs.map((tx) => [
+      tx.id,
+      {
+        description: tx.description,
+        transactionDate: tx.transactionDate.toISOString().slice(0, 10),
+        amountCents: tx.amountCents,
+        kind: tx.kind,
+      },
+    ]),
+  );
 }
 
 export async function registerImportRoutes(
@@ -177,14 +251,24 @@ export async function registerImportRoutes(
           categories.map((c) => [`${c.name.toLowerCase()}:${c.kind}`, c.id]),
         );
 
+        const parsedItems = items.map((item) => ({
+          item,
+          date: item.transactionDate
+            ? parseDateOnly(item.transactionDate)
+            : new Date(),
+        }));
+        const duplicateOfTxIdByKey = await findDuplicateTransactions(
+          prisma,
+          userId,
+          parsedItems.map((p) => p.date),
+        );
+
         await prisma.$transaction([
           prisma.extractedTransaction.createMany({
-            data: items.map((item) => ({
+            data: parsedItems.map(({ item, date }) => ({
               importedDocumentId: doc.id,
               kind: item.kind,
-              transactionDate: item.transactionDate
-                ? parseDateOnly(item.transactionDate)
-                : new Date(),
+              transactionDate: date,
               amountCents: item.amountCents,
               currency: item.currency,
               description: item.description,
@@ -197,6 +281,9 @@ export async function registerImportRoutes(
               cardHolderRaw: item.cardHolderRaw,
               installmentNumber: item.installmentNumber,
               installmentTotal: item.installmentTotal,
+              duplicateOfTxId: duplicateOfTxIdByKey.get(
+                duplicateKey(date, item.amountCents, item.kind),
+              ),
             })),
           }),
           prisma.importedDocument.update({
@@ -227,12 +314,14 @@ export async function registerImportRoutes(
         where: { importedDocumentId: doc.id },
         orderBy: { transactionDate: "desc" },
       });
+      const duplicates = await buildDuplicatesMap(prisma, lines);
 
       reply.code(201);
       return {
         duplicate: false,
         document: toImportedDocumentResponse(finalDoc),
         lines: lines.map(toExtractedTransactionResponse),
+        duplicates,
       };
     },
   );
@@ -263,9 +352,11 @@ export async function registerImportRoutes(
         where: { importedDocumentId: doc.id },
         orderBy: { transactionDate: "desc" },
       });
+      const duplicates = await buildDuplicatesMap(prisma, lines);
       return {
         document: toImportedDocumentResponse(doc),
         lines: lines.map(toExtractedTransactionResponse),
+        duplicates,
       };
     },
   );
@@ -384,11 +475,39 @@ export async function registerImportRoutes(
       // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler
       const userId = request.userId!;
       const { id, lineId } = request.params as { id: string; lineId: string };
+      const parsedBody = ConfirmBody.safeParse(request.body ?? {});
+      if (!parsedBody.success) {
+        throw VALIDATION_FAILED([
+          { field: "resolution", message: "Ação inválida." },
+        ]);
+      }
+      const { resolution } = parsedBody.data;
       const { doc, line } = await findOwnedLine(userId, id, lineId);
       if (line.status !== "pending") {
         throw VALIDATION_FAILED([
           { field: "status", message: "Esta linha já foi revisada." },
         ]);
+      }
+      // "replace" (§6.8, precedente money-flow): a transação já existente
+      // que gerou o duplicateOfTxId sai, a extraída entra no lugar dela —
+      // ownership revalidado aqui (não confia em duplicateOfTxId sozinho)
+      // porque essa coluna é preenchida na extração, sem garantia de que a
+      // Transaction referenciada ainda pertence a este usuário (poderia ter
+      // sido apagada/movida entre a extração e a revisão).
+      if (resolution === "replace") {
+        if (!line.duplicateOfTxId) {
+          throw VALIDATION_FAILED([
+            {
+              field: "resolution",
+              message: "Esta linha não tem duplicata pra substituir.",
+            },
+          ]);
+        }
+        const existing = await prisma.transaction.findFirst({
+          where: { id: line.duplicateOfTxId, userId },
+        });
+        if (!existing) throw NOT_FOUND();
+        await prisma.transaction.delete({ where: { id: existing.id } });
       }
       await confirmLine(userId, doc, line);
       await maybeMarkReviewed(doc.id);

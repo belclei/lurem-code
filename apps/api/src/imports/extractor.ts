@@ -111,10 +111,79 @@ function parseJsonArray(text: string): RawItem[] {
   );
 }
 
+export interface DocumentMetadata {
+  institutionId?: string | null;
+  institutionName?: string | null;
+  limitCents?: number | null;
+  initialBalanceCents?: number | null;
+  closingDay?: number | null;
+  dueDayOrPaymentDay?: number | null;
+}
+
 export type ChatFn = (
   action: string,
   messages: { role: "system" | "user" | "assistant"; content: string }[],
 ) => Promise<string>;
+
+function buildMetadataPrompt(): string {
+  return `You are a financial document analyzer.
+Extract metadata from a bank statement or credit card invoice (markdown format).
+
+Return a JSON object with these fields (all optional, use null if not found):
+- institutionName: name of the bank/institution (e.g., "Itaú", "Nubank", "Bradesco")
+- limitCents: credit limit in cents (integer, for credit cards only)
+- initialBalanceCents: account/card balance before these transactions in cents (integer)
+- closingDay: day of month when credit card closes (integer 1-31, for credit cards only)
+- dueDayOrPaymentDay: day of month when payment is due for credit cards, or transfer day for checking accounts (integer 1-31)
+
+Rules:
+- Extract numbers in BRL currency (convert to cents if shown in reais)
+- Look for patterns like "Limite disponível", "Saldo anterior", "Data de fechamento", "Vencimento"
+- Do not include any text outside the JSON object
+- Do not wrap the object in markdown code fences`;
+}
+
+function parseJsonObject(text: string): Record<string, unknown> {
+  const start = text.indexOf("{");
+  if (start === -1) {
+    return {};
+  }
+
+  try {
+    const end = text.lastIndexOf("}");
+    if (end > start) {
+      return JSON.parse(text.slice(start, end + 1));
+    }
+  } catch {
+    // continue
+  }
+
+  return {};
+}
+
+export async function extractDocumentMetadata(
+  text: string,
+  documentType: "card_invoice" | "account_statement",
+  chat: ChatFn,
+): Promise<DocumentMetadata> {
+  const raw = await chat("metadata-extract", [
+    { role: "system", content: buildMetadataPrompt() },
+    {
+      role: "user",
+      content: `Extract metadata from this ${documentType === "card_invoice" ? "credit card invoice" : "bank statement"} (markdown format):\n\n${text}`,
+    },
+  ]);
+
+  const parsed = parseJsonObject(cleanJson(raw)) as Record<string, unknown>;
+
+  return {
+    institutionName: (parsed.institutionName as string | null) ?? null,
+    limitCents: (parsed.limitCents as number) ?? null,
+    initialBalanceCents: (parsed.initialBalanceCents as number) ?? null,
+    closingDay: (parsed.closingDay as number) ?? null,
+    dueDayOrPaymentDay: (parsed.dueDayOrPaymentDay as number) ?? null,
+  };
+}
 
 export async function extractTransactionsFromText(
   text: string,

@@ -11,6 +11,7 @@ import {
   EmptyState,
   Input,
   Select,
+  formatMoney,
 } from "@lurem/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
@@ -18,6 +19,8 @@ import { useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError, apiFetchJson } from "../auth/api-client";
 import type {
+  ConnectionDto,
+  DuplicateTransactionSummary,
   ExtractedTransactionDto,
   ImportedDocumentDto,
 } from "../auth/types";
@@ -46,10 +49,14 @@ function ConfidencePips({ confidence }: { confidence: number }) {
 function LineRow({
   line,
   categories,
+  duplicate,
+  connections,
   onSaved,
 }: {
   line: ExtractedTransactionDto;
   categories: CategoryDto[];
+  duplicate: DuplicateTransactionSummary | undefined;
+  connections: ConnectionDto[];
   onSaved: () => void;
 }) {
   const [description, setDescription] = useState(line.description);
@@ -57,11 +64,16 @@ function LineRow({
     (line.amountCents / 100).toFixed(2).replace(".", ","),
   );
   const [categoryId, setCategoryId] = useState(line.suggestedCategoryId);
+  const [portadorUserId, setPortadorUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const categoryOptions = categories
     .filter((c) => c.kind === line.kind)
     .map((c) => ({ value: c.id, label: c.name }));
+  const connectionOptions = connections.map((c) => ({
+    value: c.counterpartUserId,
+    label: c.counterpartName,
+  }));
 
   const patchMutation = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
@@ -71,8 +83,21 @@ function LineRow({
       ),
   });
 
+  // Sem alias persistido nome→usuário (diferente do precedente money-flow,
+  // que guarda um PortadorAlias por nome): o portador (§6.10) do Lurem já
+  // atribui por Transaction real via /v1/portador/assign, então a sugestão
+  // aqui é só "quem confirma escolhe um conectado" — nada é lembrado entre
+  // importações, cada linha com cardHolderRaw pede de novo.
+  const assignPortadorMutation = useMutation({
+    mutationFn: (transactionId: string) =>
+      apiFetchJson("/portador/assign", {
+        method: "POST",
+        body: JSON.stringify({ transactionId, portadorUserId }),
+      }),
+  });
+
   const confirmMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (resolution?: "keep_both" | "replace") => {
       const cents = reaisToCentsPositive(amount);
       if (cents === null) throw new Error("Valor inválido.");
       if (
@@ -86,10 +111,19 @@ function LineRow({
           categoryId,
         });
       }
-      return apiFetchJson(
+      const confirmed = await apiFetchJson<ExtractedTransactionDto>(
         `/imports/${line.importedDocumentId}/lines/${line.id}/confirm`,
-        { method: "POST" },
+        {
+          method: "POST",
+          body: resolution ? JSON.stringify({ resolution }) : undefined,
+        },
       );
+      if (portadorUserId && confirmed.confirmedTransactionId) {
+        await assignPortadorMutation.mutateAsync(
+          confirmed.confirmedTransactionId,
+        );
+      }
+      return confirmed;
     },
     onSuccess: onSaved,
     onError: (err: unknown) => {
@@ -155,6 +189,23 @@ function LineRow({
           placeholder="Sem categoria"
         />
       </div>
+      {line.cardHolderRaw && connectionOptions.length > 0 ? (
+        <Select
+          label={`Atribuir "${line.cardHolderRaw}" a um conectado`}
+          options={connectionOptions}
+          value={portadorUserId}
+          onChange={setPortadorUserId}
+          placeholder="Não atribuir"
+        />
+      ) : null}
+      {duplicate ? (
+        <Alert
+          variant="warning"
+          layout="inline"
+          title="Possível duplicata"
+          description={`Já existe: ${duplicate.description} · ${duplicate.transactionDate.split("-").reverse().join("/")} · ${formatMoney(duplicate.amountCents)}`}
+        />
+      ) : null}
       {error ? <Alert variant="error" layout="inline" title={error} /> : null}
       <div className="flex justify-end gap-2">
         <Button
@@ -163,14 +214,29 @@ function LineRow({
           loading={rejectMutation.isPending}
           onClick={() => rejectMutation.mutate()}
         >
-          Rejeitar
+          {duplicate ? "Pular" : "Rejeitar"}
         </Button>
+        {duplicate ? (
+          <Button
+            type="button"
+            variant="secondary"
+            loading={
+              confirmMutation.isPending &&
+              confirmMutation.variables === "replace"
+            }
+            onClick={() => confirmMutation.mutate("replace")}
+          >
+            Substituir
+          </Button>
+        ) : null}
         <Button
           type="button"
-          loading={confirmMutation.isPending}
-          onClick={() => confirmMutation.mutate()}
+          loading={
+            confirmMutation.isPending && confirmMutation.variables !== "replace"
+          }
+          onClick={() => confirmMutation.mutate(undefined)}
         >
-          Confirmar
+          {duplicate ? "Manter os dois" : "Confirmar"}
         </Button>
       </div>
     </div>
@@ -189,6 +255,7 @@ export function ImportReviewPage() {
       apiFetchJson<{
         document: ImportedDocumentDto;
         lines: ExtractedTransactionDto[];
+        duplicates: Record<string, DuplicateTransactionSummary>;
       }>(`/imports/${id}`),
     enabled: hasSession,
   });
@@ -197,6 +264,14 @@ export function ImportReviewPage() {
     queryFn: () => apiFetchJson<CategoryDto[]>("/categories"),
     enabled: hasSession,
   });
+  const connectionsQuery = useQuery({
+    queryKey: ["connections"],
+    queryFn: () => apiFetchJson<ConnectionDto[]>("/connections"),
+    enabled: hasSession,
+  });
+  const acceptedConnections = (connectionsQuery.data ?? []).filter(
+    (c) => c.status === "accepted",
+  );
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["imports", id] });
@@ -219,7 +294,7 @@ export function ImportReviewPage() {
     return <div className="mx-auto max-w-3xl px-4 py-8">Carregando…</div>;
   }
 
-  const { document: importDoc, lines } = docQuery.data;
+  const { document: importDoc, lines, duplicates } = docQuery.data;
   const pendingLines = lines.filter((l) => l.status === "pending");
   const resolvedLines = lines.filter((l) => l.status !== "pending");
 
@@ -269,6 +344,12 @@ export function ImportReviewPage() {
               key={line.id}
               line={line}
               categories={categoriesQuery.data ?? []}
+              duplicate={
+                line.duplicateOfTxId
+                  ? duplicates[line.duplicateOfTxId]
+                  : undefined
+              }
+              connections={acceptedConnections}
               onSaved={invalidate}
             />
           ))}
@@ -277,6 +358,12 @@ export function ImportReviewPage() {
               key={line.id}
               line={line}
               categories={categoriesQuery.data ?? []}
+              duplicate={
+                line.duplicateOfTxId
+                  ? duplicates[line.duplicateOfTxId]
+                  : undefined
+              }
+              connections={acceptedConnections}
               onSaved={invalidate}
             />
           ))}

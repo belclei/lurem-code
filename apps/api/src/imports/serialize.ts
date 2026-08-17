@@ -26,6 +26,7 @@ export interface ExtractedTransactionResponse {
   cardHolderRaw: string | null;
   installmentNumber: number | null;
   installmentTotal: number | null;
+  duplicateOfTxId: string | null;
   confirmedTransactionId: string | null;
 }
 
@@ -61,6 +62,7 @@ export function toExtractedTransactionResponse(
     cardHolderRaw: line.cardHolderRaw,
     installmentNumber: line.installmentNumber,
     installmentTotal: line.installmentTotal,
+    duplicateOfTxId: line.duplicateOfTxId,
     confirmedTransactionId: line.confirmedTransactionId,
   };
 }

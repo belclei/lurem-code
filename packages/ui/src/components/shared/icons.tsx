@@ -80,6 +80,22 @@ export function PlusIcon({ className = "h-4 w-4" }: IconProps) {
   );
 }
 
+/** Upload/import icon — "Importar transações" button. */
+export function UploadIcon({ className = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      className={className}
+    >
+      <path d="M12 5v14M5 12l7-7 7 7" />
+    </svg>
+  );
+}
+
 /** Bidirectional transfer arrows — TransferPairCard's header. */
 export function TransferIcon({ className = "h-4 w-4" }: IconProps) {
   return (

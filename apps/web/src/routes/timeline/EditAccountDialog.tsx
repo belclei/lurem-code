@@ -157,6 +157,7 @@ export function EditAccountDialog({
                 value: i.id,
                 label: i.name,
                 icon: i.logoUrl ? (
+                  // biome-ignore lint/a11y/useAltText: src is runtime-bound, alt="" is correct for decorative icon
                   <img
                     src={i.logoUrl}
                     alt=""

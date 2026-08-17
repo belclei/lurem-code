@@ -111,7 +111,7 @@ function RowHeader(props: TransactionRowProps) {
           <Body weight="medium" className="truncate">
             {props.description}
             {isInstallment
-              ? ` · ${props.installment!.installmentNumber}/${props.installment!.installmentTotal}`
+              ? ` · ${props.installment?.installmentNumber}/${props.installment?.installmentTotal}`
               : ""}
           </Body>
           {props.source === "import" ? (
@@ -271,6 +271,7 @@ export function TransactionRow(props: TransactionRowProps) {
       {!isRecurringPreview && props.expanded ? (
         <>
           {isInstallment ? (
+            // biome-ignore lint/style/noNonNullAssertion: isInstallment guard guarantees installment is defined
             <InstallmentDetails installment={props.installment!} />
           ) : (
             <div className="mt-3 border-t border-[var(--lr-border)] pt-3">
