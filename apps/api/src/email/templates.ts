@@ -21,36 +21,57 @@ async function send(
 
 export function sendInviteEmail(
   resend: Resend,
-  params: { to: string; link: string },
+  params: { to: string; link: string; inviteeName?: string },
 ): Promise<{ id: string }> {
   return send(resend, {
     to: params.to,
     subject: "Seu convite para o Lurem chegou",
-    html: renderTemplate("lurem-convite.html", { link: params.link }),
-    text: renderTemplate("lurem-convite.txt", { link: params.link }),
+    html: renderTemplate("lurem-convite.html", {
+      link: params.link,
+      inviteeName: params.inviteeName || "",
+    }),
+    text: renderTemplate("lurem-convite.txt", {
+      link: params.link,
+      inviteeName: params.inviteeName || "",
+    }),
   });
 }
 
 export function sendPasswordResetEmail(
   resend: Resend,
-  params: { to: string; link: string },
+  params: { to: string; link: string; userName?: string },
 ): Promise<{ id: string }> {
   return send(resend, {
     to: params.to,
     subject: "Defina sua senha no Lurem",
-    html: renderTemplate("lurem-reset-senha.html", { link: params.link }),
-    text: renderTemplate("lurem-reset-senha.txt", { link: params.link }),
+    html: renderTemplate("lurem-reset-senha.html", {
+      link: params.link,
+      userName: params.userName || "",
+    }),
+    text: renderTemplate("lurem-reset-senha.txt", {
+      link: params.link,
+      userName: params.userName || "",
+    }),
   });
 }
 
 export function sendConnectionRequestEmail(
   resend: Resend,
-  params: { to: string; requesterName: string; link: string },
+  params: {
+    to: string;
+    requesterName: string;
+    link: string;
+    addresseeName?: string;
+  },
 ): Promise<{ id: string }> {
-  const vars = { requesterName: params.requesterName, link: params.link };
+  const vars = {
+    requesterName: params.requesterName,
+    addresseeName: params.addresseeName || "",
+    link: params.link,
+  };
   return send(resend, {
     to: params.to,
-    subject: "Pedido de conexão no Lurem",
+    subject: `${params.requesterName} quer se conectar com você no Lurem`,
     html: renderTemplate("lurem-conexao.html", vars),
     text: renderTemplate("lurem-conexao.txt", vars),
   });

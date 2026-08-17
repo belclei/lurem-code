@@ -92,6 +92,7 @@ describe("sendConnectionRequestEmail", () => {
     const result = await sendConnectionRequestEmail(resend, {
       to: "addressee@example.com",
       requesterName: "Maria",
+      addresseeName: "João",
       link: "https://lurem.fasolo.tech/connections",
     });
 
@@ -104,7 +105,7 @@ describe("sendConnectionRequestEmail", () => {
       text: string;
     };
     expect(call.to).toBe("addressee@example.com");
-    expect(call.subject).toBe("Pedido de conexão no Lurem");
+    expect(call.subject).toBe("Maria quer se conectar com você no Lurem");
     expect(call.html).toContain("Maria");
     expect(call.text).toContain("https://lurem.fasolo.tech/connections");
   });

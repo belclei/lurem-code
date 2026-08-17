@@ -23,7 +23,8 @@ import { z } from "zod";
 import { requireUser } from "../auth/authenticate.js";
 import { hashToken } from "../auth/refresh-tokens.js";
 import { sendConnectionRequestEmail } from "../email/templates.js";
-import { NOT_FOUND, VALIDATION_FAILED } from "../errors.js";
+import { FEATURE_DISABLED, NOT_FOUND, VALIDATION_FAILED } from "../errors.js";
+import { resolveFlags } from "../flags/resolve.js";
 
 const CreateConnectionBody = z.object({ addresseeEmail: z.string().email() });
 
@@ -45,6 +46,16 @@ async function fireEvent(
   });
 }
 
+async function requireConnectionsFeature(
+  fastify: FastifyInstance,
+  userId: string,
+): Promise<void> {
+  const flags = await resolveFlags(fastify.prisma, userId);
+  if (!flags.connections) {
+    throw FEATURE_DISABLED("Conexões");
+  }
+}
+
 export async function registerConnectionRoutes(
   fastify: FastifyInstance,
 ): Promise<void> {
@@ -54,6 +65,7 @@ export async function registerConnectionRoutes(
     async (request) => {
       // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler, which runs before this handler and throws if auth fails
       const userId = request.userId!;
+      await requireConnectionsFeature(fastify, userId);
       const connections = await fastify.prisma.userConnection.findMany({
         where: {
           OR: [{ requesterUserId: userId }, { addresseeUserId: userId }],
@@ -125,6 +137,7 @@ export async function registerConnectionRoutes(
     async (request, reply) => {
       // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler, which runs before this handler and throws if auth fails
       const userId = request.userId!;
+      await requireConnectionsFeature(fastify, userId);
       const body = request.body as z.infer<typeof CreateConnectionBody>;
 
       const addressee = await fastify.prisma.user.findUnique({
@@ -178,6 +191,7 @@ export async function registerConnectionRoutes(
       await sendConnectionRequestEmail(fastify.resend, {
         to: addressee.email,
         requesterName: requester.name,
+        addresseeName: addressee.name,
         link: `${fastify.env.WEB_APP_URL}/connections`,
       });
       await fireEvent(fastify, userId, "connection.requested", connection.id, {
@@ -195,6 +209,7 @@ export async function registerConnectionRoutes(
     async (request) => {
       // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler, which runs before this handler and throws if auth fails
       const userId = request.userId!;
+      await requireConnectionsFeature(fastify, userId);
       const { id } = request.params as { id: string };
       const connection = await fastify.prisma.userConnection.findUnique({
         where: { id },
@@ -234,6 +249,7 @@ export async function registerConnectionRoutes(
     async (request) => {
       // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler, which runs before this handler and throws if auth fails
       const userId = request.userId!;
+      await requireConnectionsFeature(fastify, userId);
       const { id } = request.params as { id: string };
       const connection = await fastify.prisma.userConnection.findUnique({
         where: { id },
@@ -272,6 +288,7 @@ export async function registerConnectionRoutes(
     async (request) => {
       // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler, which runs before this handler and throws if auth fails
       const userId = request.userId!;
+      await requireConnectionsFeature(fastify, userId);
       const { id } = request.params as { id: string };
       const connection = await fastify.prisma.userConnection.findUnique({
         where: { id },
@@ -313,6 +330,7 @@ export async function registerConnectionRoutes(
     async (request) => {
       // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler, which runs before this handler and throws if auth fails
       const userId = request.userId!;
+      await requireConnectionsFeature(fastify, userId);
       const { id } = request.params as { id: string };
       const connection = await fastify.prisma.userConnection.findUnique({
         where: { id },
@@ -340,6 +358,7 @@ export async function registerConnectionRoutes(
       await sendConnectionRequestEmail(fastify.resend, {
         to: addressee.email,
         requesterName: requester.name,
+        addresseeName: addressee.name,
         link: `${fastify.env.WEB_APP_URL}/connections`,
       });
       await fireEvent(

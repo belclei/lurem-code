@@ -44,13 +44,25 @@ afterAll(async () => {
   await server.close();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   // mockClear (not just mockResolvedValue) because this file's earlier
   // describe blocks also call POST /v1/connections, which now sends an
   // email as a side effect — without clearing, the "sends a notification
   // email" assertions below would see stale call counts from those tests.
   sendMock.mockClear();
   sendMock.mockResolvedValue({ data: { id: "email_test" }, error: null });
+
+  // Enable connections feature flag for testing
+  await server.prisma.featureFlag.upsert({
+    where: { key: "connections" },
+    update: { state: "on" },
+    create: {
+      key: "connections",
+      description: "Test",
+      state: "on",
+      rolloutPercent: 100,
+    },
+  });
 });
 
 async function authedUser(email?: string) {

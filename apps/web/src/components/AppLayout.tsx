@@ -51,6 +51,13 @@ export function AppLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
+  const visibleNavItems = NAV_ITEMS.filter((item) => {
+    if (item.to === "/connections" && user && !user.flags.connections) {
+      return false;
+    }
+    return true;
+  });
+
   async function handleLogout() {
     await logout();
     await navigate({ to: "/login" });
@@ -64,7 +71,7 @@ export function AppLayout() {
         </div>
 
         <nav className="flex flex-col gap-0.5">
-          {NAV_ITEMS.map((item) => {
+          {visibleNavItems.map((item) => {
             const isActive = location.pathname.startsWith(item.to);
             return (
               <Link
@@ -152,7 +159,7 @@ export function AppLayout() {
         aria-label="Navegação principal"
         className="fixed inset-x-0 bottom-0 z-40 flex items-stretch justify-around border-t border-[var(--lr-night-700)] bg-[#090F1A] pb-[env(safe-area-inset-bottom)] md:hidden"
       >
-        {NAV_ITEMS.map((item) => {
+        {visibleNavItems.map((item) => {
           const isActive = location.pathname.startsWith(item.to);
           return (
             <Link
