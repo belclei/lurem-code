@@ -207,7 +207,7 @@ export function Select({
         {selectedOption?.icon && !open ? (
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute left-3 top-1/2 inline-flex h-[24px] w-[24px] flex-none -translate-y-1/2 overflow-hidden rounded-[4px] text-[var(--lr-petrol-700)] dark:text-[var(--lr-petrol-300)] [&>svg]:h-full [&>svg]:w-full"
+            className="pointer-events-none absolute left-3 top-1/2 inline-flex h-[24px] w-[24px] flex-none -translate-y-1/2 overflow-hidden rounded-[var(--lr-r-sm)] text-[var(--lr-petrol-700)] dark:text-[var(--lr-petrol-300)] [&>svg]:h-full [&>svg]:w-full"
           >
             {selectedOption.icon}
           </span>
@@ -312,7 +312,7 @@ export function Select({
                     {option.icon ? (
                       <span
                         aria-hidden="true"
-                        className="inline-flex h-[24px] w-[24px] flex-none overflow-hidden rounded-[4px] text-[var(--lr-petrol-700)] dark:text-[var(--lr-petrol-300)] [&>svg]:h-full [&>svg]:w-full"
+                        className="inline-flex h-[24px] w-[24px] flex-none overflow-hidden rounded-[var(--lr-r-sm)] text-[var(--lr-petrol-700)] dark:text-[var(--lr-petrol-300)] [&>svg]:h-full [&>svg]:w-full"
                       >
                         {option.icon}
                       </span>

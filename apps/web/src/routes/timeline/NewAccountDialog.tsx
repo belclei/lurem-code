@@ -102,10 +102,20 @@ export function NewAccountDialog({
         {type !== "cash" ? (
           <Select
             label="Instituição"
+            // Inline <img>, not <InstitutionMark>: Select's icon slot is a
+            // fixed 24px box (SelectOption.icon contract) and
+            // InstitutionMark's smallest size is 28px (sm) — reusing it here
+            // would get corners clipped by Select's overflow-hidden wrapper.
             options={institutions.map((i) => ({
               value: i.id,
               label: i.name,
-              icon: i.logoAsset ? <img src={i.logoAsset} alt="" className="h-full w-full object-contain" /> : undefined,
+              icon: i.logoUrl ? (
+                <img
+                  src={i.logoUrl}
+                  alt=""
+                  className="h-full w-full object-contain"
+                />
+              ) : undefined,
             }))}
             value={institutionId}
             onChange={setInstitutionId}
