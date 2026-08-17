@@ -28,6 +28,7 @@ import { TimelinePage } from "./routes/TimelinePage";
 import { TransactionsPage } from "./routes/TransactionsPage";
 import { UpdatesPage } from "./routes/UpdatesPage";
 import { WaitlistPage } from "./routes/WaitlistPage";
+import { FlagsPage } from "./routes/admin/FlagsPage";
 
 const rootRoute = createRootRoute({
   component: Outlet,
@@ -118,6 +119,12 @@ const adminRoute = createRoute({
   component: AdminPage,
 });
 
+const flagsRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: "/admin/flags",
+  component: FlagsPage,
+});
+
 const updatesRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/updates",
@@ -176,6 +183,7 @@ const routeTree = rootRoute.addChildren([
     settingsRoute,
     connectionsRoute,
     adminRoute,
+    flagsRoute,
     updatesRoute,
     importRoute,
     importReviewRoute,

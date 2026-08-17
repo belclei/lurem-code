@@ -369,4 +369,69 @@ export async function registerAdminRoutes(
       return { id: updated.id, status: updated.status };
     },
   );
+
+  fastify.get(
+    "/v1/admin/flags",
+    { preHandler: requireAdmin(fastify) },
+    async () => {
+      const flags = await fastify.prisma.featureFlag.findMany({
+        orderBy: { key: "asc" },
+      });
+      return flags.map((f) => ({
+        key: f.key,
+        description: f.description,
+        state: f.state,
+        rolloutPercent: f.rolloutPercent,
+        updatedAt: f.updatedAt.toISOString(),
+      }));
+    },
+  );
+
+  const UpdateFlagBody = z
+    .object({
+      state: z.enum(["off", "beta", "on"]),
+      rolloutPercent: z.number().int().min(0).max(100),
+    })
+    .strict();
+
+  fastify.patch(
+    "/v1/admin/flags/:key",
+    {
+      schema: { body: UpdateFlagBody },
+      preHandler: requireAdmin(fastify),
+    },
+    async (request) => {
+      // biome-ignore lint/style/noNonNullAssertion: set by requireAdmin() preHandler, which runs before this handler and throws if auth fails
+      const adminId = request.userId!;
+      const { key } = request.params as { key: string };
+      const body = request.body as z.infer<typeof UpdateFlagBody>;
+
+      const flag = await fastify.prisma.featureFlag.findUnique({
+        where: { key },
+      });
+      if (!flag) throw NOT_FOUND();
+
+      const updated = await fastify.prisma.featureFlag.update({
+        where: { key },
+        data: { state: body.state, rolloutPercent: body.rolloutPercent },
+      });
+      await fireAdminEvent(
+        fastify,
+        adminId,
+        adminId,
+        "admin.flag_updated",
+        key,
+        {
+          actorUserId: adminId,
+          from: { state: flag.state, rolloutPercent: flag.rolloutPercent },
+          to: { state: body.state, rolloutPercent: body.rolloutPercent },
+        },
+      );
+      return {
+        key: updated.key,
+        state: updated.state,
+        rolloutPercent: updated.rolloutPercent,
+      };
+    },
+  );
 }

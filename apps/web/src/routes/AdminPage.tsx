@@ -12,7 +12,7 @@ import {
   Switch,
 } from "@lurem/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Navigate } from "@tanstack/react-router";
+import { Link, Navigate } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError, apiFetchJson } from "../auth/api-client";
@@ -269,9 +269,17 @@ export function AdminPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
-      <h1 className="mb-6 text-xl font-bold text-[var(--lr-text)]">
-        Painel administrativo
-      </h1>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-xl font-bold text-[var(--lr-text)]">
+          Painel administrativo
+        </h1>
+        <Link
+          to="/admin/flags"
+          className="rounded-[var(--lr-r-md)] bg-[var(--lr-bg-secondary)] px-3 py-2 text-sm text-[var(--lr-text-secondary)] hover:bg-[var(--lr-border)]"
+        >
+          Feature Flags
+        </Link>
+      </div>
 
       <section className="mb-10">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--lr-text-secondary)]">
