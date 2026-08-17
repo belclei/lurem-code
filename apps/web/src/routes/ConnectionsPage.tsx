@@ -445,6 +445,10 @@ export function ConnectionsPage() {
   const { isBooting, user } = useAuth();
   const hasSession = !isBooting && Boolean(user);
   const queryClient = useQueryClient();
+
+  if (hasSession && user && !user.flags.connections) {
+    return <Navigate to="/timeline" />;
+  }
   const [settlingConnection, setSettlingConnection] =
     useState<ConnectionDto | null>(null);
   const [acceptingItem, setAcceptingItem] = useState<PortadorPendingDto | null>(

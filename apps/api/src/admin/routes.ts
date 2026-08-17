@@ -103,6 +103,7 @@ export async function registerAdminRoutes(
       });
       await sendInviteEmail(fastify.resend, {
         to: entry.email,
+        inviteeName: entry.name,
         link: `${fastify.env.WEB_APP_URL}/register?token=${rawToken}`,
       });
       // Sem userId de agregado próprio (WaitlistEntry não é de um usuário
@@ -176,6 +177,7 @@ export async function registerAdminRoutes(
       });
       await sendInviteEmail(fastify.resend, {
         to: updated.inviteeEmail,
+        inviteeName: updated.inviteeName,
         link: `${fastify.env.WEB_APP_URL}/register?token=${rawToken}`,
       });
       await fireAdminEvent(

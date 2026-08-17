@@ -149,6 +149,7 @@ export async function registerAuthRoutes(
         const rawToken = await issuePasswordResetToken(fastify.prisma, user.id);
         await sendPasswordResetEmail(fastify.resend, {
           to: user.email,
+          userName: user.name,
           link: `${fastify.env.WEB_APP_URL}/reset-password?token=${rawToken}`,
         });
       }

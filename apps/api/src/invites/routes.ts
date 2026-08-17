@@ -153,6 +153,7 @@ export async function registerInviteRoutes(
       });
       await sendInviteEmail(fastify.resend, {
         to: updated.inviteeEmail,
+        inviteeName: updated.inviteeName,
         link: `${fastify.env.WEB_APP_URL}/register?token=${rawToken}`,
       });
       await fireEvent(fastify, updated.inviterUserId, "invite.resent", id, {

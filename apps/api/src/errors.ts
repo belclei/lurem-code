@@ -136,3 +136,10 @@ export const PORTADOR_ALREADY_ACCEPTED = () =>
     409,
     "Esta atribuição já foi aceita.",
   );
+// Feature flag disabled.
+export const FEATURE_DISABLED = (featureName: string) =>
+  new AppError(
+    "feature.disabled",
+    403,
+    `A funcionalidade "${featureName}" ainda não está disponível.`,
+  );

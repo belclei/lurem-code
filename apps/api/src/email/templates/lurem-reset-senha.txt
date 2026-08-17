@@ -1,8 +1,10 @@
 LUREM · SENHA
 
-Defina sua senha.
+{{#if userName}}Olá, {{userName}}.
 
-Recebemos um pedido para trocar a senha da sua conta Lurem. Acesse o link
+{{/if}}Defina sua senha.
+
+Recebemos um pedido para acessar sua conta Lurem com e-mail e senha. Acesse o link
 abaixo para escolher uma nova.
 
 Escolher nova senha: {{link}}

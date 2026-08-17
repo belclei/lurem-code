@@ -1,8 +1,10 @@
 LUREM · CONVITE
 
-Seu convite para o Lurem chegou.
+{{#if inviteeName}}Olá, {{inviteeName}}.
 
-Você entrou na lista e agora tem acesso. O Lurem organiza seus extratos,
+{{/if}}Bem-vindo ao Lurem.
+
+Você entrou na fila de espera e agora tem acesso. O Lurem organiza seus extratos,
 recorrências e agendamentos numa timeline única — e responde a única
 pergunta que importa: quanto dinheiro você realmente pode gastar hoje?
 

@@ -377,6 +377,20 @@ async function seedFeatureFlags() {
       rolloutPercent: 100,
     },
   });
+
+  // Feature flag para a funcionalidade geral de conexões (incompleta).
+  // Desabilitada para todos até que a implementação seja concluída.
+  await prisma.featureFlag.upsert({
+    where: { key: "connections" },
+    update: {},
+    create: {
+      key: "connections",
+      description:
+        "Funcionalidade geral de conexões entre usuários. Incompleta — desabilitada por padrão.",
+      state: "off",
+      rolloutPercent: 0,
+    },
+  });
 }
 
 async function main() {

@@ -1,6 +1,8 @@
 LUREM · CONEXÃO
 
-{{requesterName}} quer se conectar com você.
+{{#if addresseeName}}Olá, {{addresseeName}}.
+
+{{/if}}{{requesterName}} quer se conectar com você.
 
 Conexões no Lurem permitem compartilhar contas e cartões, e acertar
 despesas divididas. Entre no app para aceitar ou recusar este pedido.
