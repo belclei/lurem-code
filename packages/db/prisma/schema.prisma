@@ -254,6 +254,9 @@ model CreditCard {
   autoDebitAccountId String? // débito automático (§6.4)
   currency           String   @default("BRL")
   isActive           Boolean  @default(true)
+  // Manual invoice closure override — nullable (year, month) pair identifying a closed period.
+  manualClosureYear  Int?
+  manualClosureMonth Int?
   // Ver nota em Account.archivedAt — mesmo conceito, mesmo comportamento.
   archivedAt         DateTime?
   createdAt          DateTime @default(now())

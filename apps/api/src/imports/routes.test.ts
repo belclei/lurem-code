@@ -205,35 +205,35 @@ describe("POST /v1/imports", () => {
   });
 });
 
-describe("line review", () => {
-  async function createImportWithOneLine(
-    accessToken: string,
-    creditCardId: string,
-  ) {
-    fakeLlmResponse([
-      {
-        date: "2026-07-10",
-        description: "Loja A",
-        amountCents: 5000,
-        kind: "expense",
-        confidence: 0.9,
-      },
-    ]);
-    const res = await server.inject({
-      method: "POST",
-      url: "/v1/imports",
-      headers: { authorization: `Bearer ${accessToken}` },
-      payload: {
-        type: "card_invoice",
-        creditCardId,
-        contentHash: `hash-${Math.random()}`,
-        text: "...",
-      },
-    });
-    const body = res.json();
-    return { documentId: body.document.id, lineId: body.lines[0].id };
-  }
+async function createImportWithOneLine(
+  accessToken: string,
+  creditCardId: string,
+) {
+  fakeLlmResponse([
+    {
+      date: "2026-07-10",
+      description: "Loja A",
+      amountCents: 5000,
+      kind: "expense",
+      confidence: 0.9,
+    },
+  ]);
+  const res = await server.inject({
+    method: "POST",
+    url: "/v1/imports",
+    headers: { authorization: `Bearer ${accessToken}` },
+    payload: {
+      type: "card_invoice",
+      creditCardId,
+      contentHash: `hash-${Math.random()}`,
+      text: "...",
+    },
+  });
+  const body = res.json();
+  return { documentId: body.document.id, lineId: body.lines[0].id };
+}
 
+describe("line review", () => {
   it("confirms a line into a real Transaction and marks the document reviewed", async () => {
     const { userId, accessToken } = await authedUser();
     const c = await card(userId);
@@ -353,6 +353,227 @@ describe("line review", () => {
     expect(response.json().confirmedCount).toBe(1);
     const txCount = await server.prisma.transaction.count();
     expect(txCount).toBe(1);
+  });
+});
+
+describe("duplicate detection", () => {
+  it("flags an extracted line as a possible duplicate of an existing Transaction", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    const existing = await server.prisma.transaction.create({
+      data: {
+        userId,
+        creditCardId: c.id,
+        kind: "expense",
+        source: "manual",
+        description: "Compra manual anterior",
+        transactionDate: new Date(Date.UTC(2026, 6, 10)),
+        currency: "BRL",
+        amountCents: 5000,
+        amountBRLCents: 5000,
+      },
+    });
+
+    fakeLlmResponse([
+      {
+        date: "2026-07-10",
+        description: "Loja A",
+        amountCents: 5000,
+        kind: "expense",
+        confidence: 0.9,
+      },
+      {
+        date: "2026-07-11",
+        description: "Loja B (sem duplicata)",
+        amountCents: 3000,
+        kind: "expense",
+        confidence: 0.9,
+      },
+    ]);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: "dup-hash",
+        text: "...",
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = response.json();
+    const dupLine = body.lines.find(
+      (l: { amountCents: number }) => l.amountCents === 5000,
+    );
+    const cleanLine = body.lines.find(
+      (l: { amountCents: number }) => l.amountCents === 3000,
+    );
+    expect(dupLine.duplicateOfTxId).toBe(existing.id);
+    expect(cleanLine.duplicateOfTxId).toBeNull();
+    expect(body.duplicates[existing.id]).toMatchObject({
+      description: "Compra manual anterior",
+      amountCents: 5000,
+      kind: "expense",
+    });
+  });
+
+  it("does not flag a duplicate for a different user's transaction", async () => {
+    const owner = await authedUser();
+    const other = await authedUser();
+    const c = await card(owner.userId);
+    const otherCard = await card(other.userId);
+    await server.prisma.transaction.create({
+      data: {
+        userId: other.userId,
+        creditCardId: otherCard.id,
+        kind: "expense",
+        source: "manual",
+        description: "Transação de outro usuário",
+        transactionDate: new Date(Date.UTC(2026, 6, 10)),
+        currency: "BRL",
+        amountCents: 5000,
+        amountBRLCents: 5000,
+      },
+    });
+    fakeLlmResponse([
+      {
+        date: "2026-07-10",
+        description: "Loja A",
+        amountCents: 5000,
+        kind: "expense",
+        confidence: 0.9,
+      },
+    ]);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${owner.accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: "dup-hash-2",
+        text: "...",
+      },
+    });
+
+    expect(response.json().lines[0].duplicateOfTxId).toBeNull();
+  });
+});
+
+describe("confirm with duplicate resolution", () => {
+  async function createImportWithDuplicate(
+    accessToken: string,
+    userId: string,
+    creditCardId: string,
+  ) {
+    const existing = await server.prisma.transaction.create({
+      data: {
+        userId,
+        creditCardId,
+        kind: "expense",
+        source: "manual",
+        description: "Compra manual anterior",
+        transactionDate: new Date(Date.UTC(2026, 6, 10)),
+        currency: "BRL",
+        amountCents: 5000,
+        amountBRLCents: 5000,
+      },
+    });
+    fakeLlmResponse([
+      {
+        date: "2026-07-10",
+        description: "Loja A",
+        amountCents: 5000,
+        kind: "expense",
+        confidence: 0.9,
+      },
+    ]);
+    const res = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId,
+        contentHash: `dup-confirm-${Math.random()}`,
+        text: "...",
+      },
+    });
+    const body = res.json();
+    return {
+      documentId: body.document.id,
+      lineId: body.lines[0].id,
+      existingTxId: existing.id,
+    };
+  }
+
+  it("keep_both (default): confirming leaves the old transaction and creates a new one", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    const { documentId, lineId, existingTxId } =
+      await createImportWithDuplicate(accessToken, userId, c.id);
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/v1/imports/${documentId}/lines/${lineId}/confirm`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const stillExists = await server.prisma.transaction.findUnique({
+      where: { id: existingTxId },
+    });
+    expect(stillExists).not.toBeNull();
+    const txCount = await server.prisma.transaction.count({
+      where: { userId },
+    });
+    expect(txCount).toBe(2);
+  });
+
+  it("replace: confirming deletes the old duplicate and keeps only the new transaction", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    const { documentId, lineId, existingTxId } =
+      await createImportWithDuplicate(accessToken, userId, c.id);
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/v1/imports/${documentId}/lines/${lineId}/confirm`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { resolution: "replace" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const deleted = await server.prisma.transaction.findUnique({
+      where: { id: existingTxId },
+    });
+    expect(deleted).toBeNull();
+    const txCount = await server.prisma.transaction.count({
+      where: { userId },
+    });
+    expect(txCount).toBe(1);
+  });
+
+  it("rejects resolution=replace when the line has no duplicate", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    const { documentId, lineId } = await createImportWithOneLine(
+      accessToken,
+      c.id,
+    );
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/v1/imports/${documentId}/lines/${lineId}/confirm`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { resolution: "replace" },
+    });
+
+    expect(response.statusCode).toBe(400);
   });
 });
 

@@ -345,5 +345,13 @@ export interface ExtractedTransactionDto {
   cardHolderRaw: string | null;
   installmentNumber: number | null;
   installmentTotal: number | null;
+  duplicateOfTxId: string | null;
   confirmedTransactionId: string | null;
+}
+
+export interface DuplicateTransactionSummary {
+  description: string;
+  transactionDate: string;
+  amountCents: number;
+  kind: string;
 }

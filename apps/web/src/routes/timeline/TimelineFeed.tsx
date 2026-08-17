@@ -14,6 +14,7 @@ import type { DomainEventType } from "@lurem/ui";
 import type {
   AccountDto,
   CardDto,
+  ImportedDocumentDto,
   TimelineDayDto,
   TransactionDto,
 } from "../../auth/types";
@@ -57,18 +58,16 @@ export interface TimelineFeedProps {
   categoriesById: Map<string, CategoryDto>;
   accountsById: Map<string, AccountDto>;
   cardsById: Map<string, CardDto>;
-  expandedInstallments: Set<string>;
-  onToggleInstallment: (id: string) => void;
+  expandedTransactions: Set<string>;
+  onToggleExpandTransaction: (id: string) => void;
   onEditTransaction: (tx: TransactionDto) => void;
   onEditAccount: (account: AccountDto) => void;
   onEditCard: (card: CardDto) => void;
-  /** Backlog "Recorrência integrada ao dialog": clicar numa ocorrência
-   * futura ainda não vencida (variant "recurringPreview") abre a série
-   * correspondente já em modo de edição em /recurring (RecurringPage's
-   * `?edit=<id>`) — pragmatic cut, ver report: um dialog de edição dedicado
-   * para "confirmar/alterar o valor" de uma ocorrência que ainda nem existe
-   * como Transaction ficou fora deste recorte. */
   onManageRecurring: (recurringTransactionId: string) => void;
+  onCloseInvoice?: (cardId: string) => void;
+  onPayInvoice?: (cardId: string) => void;
+  importedDocuments: ImportedDocumentDto[];
+  onNavigateToImport: (documentId: string) => void;
 }
 
 /** US-6.1's day-by-day feed (§6.12) — the Timeline's core concept once
@@ -89,12 +88,16 @@ export function TimelineFeed({
   categoriesById,
   accountsById,
   cardsById,
-  expandedInstallments,
-  onToggleInstallment,
+  expandedTransactions,
+  onToggleExpandTransaction,
   onEditTransaction,
   onEditAccount,
   onEditCard,
   onManageRecurring,
+  onCloseInvoice,
+  onPayInvoice,
+  importedDocuments,
+  onNavigateToImport,
 }: TimelineFeedProps) {
   return (
     <>
@@ -120,6 +123,13 @@ export function TimelineFeed({
           const dow = dayOfWeek(day.date);
           const todayIsBirthday = isBirthday(day.date, userBirthDate);
           const todayIsJoinDay = isJoinDay(day.date, userCreatedAt);
+
+          // Documentos importados neste dia
+          const dayDocuments = importedDocuments.filter((doc) => {
+            const docDate = new Date(doc.createdAt).toISOString().split("T")[0];
+            const dayDateStr = day.date;
+            return docDate === dayDateStr && doc.status === "extracted";
+          });
 
           return (
             <section key={day.date} className="relative">
@@ -168,6 +178,20 @@ export function TimelineFeed({
                       description="Foi hoje que você se juntou a nós — sua jornada financeira começa aqui."
                     />
                   ) : null}
+                  {dayDocuments.map((doc) => (
+                    <Alert
+                      key={doc.id}
+                      variant="success"
+                      emoji="📄"
+                      title={`${doc.type === "card_invoice" ? "Fatura de cartão" : "Extrato de conta"} importado`}
+                      actions={[
+                        {
+                          label: "Revisar transações",
+                          onClick: () => onNavigateToImport(doc.id),
+                        },
+                      ]}
+                    />
+                  ))}
                   {day.items.map((item) => {
                     // Backlog "Recorrência integrada ao dialog": a próxima
                     // ocorrência ainda não vencida de uma série recorrente
@@ -208,13 +232,11 @@ export function TimelineFeed({
                       const row = (
                         <TimelineEventRow
                           key={item.id}
-                          // DomainEvent.type/payload are untyped String/Json
-                          // at the DB boundary (§6 catalog) —
-                          // TimelineEventRow owns the actual type union, so
-                          // this cast is the API contract's boundary, not a
-                          // real type escape.
                           type={item.type as DomainEventType}
                           payload={item.payload}
+                          aggregateId={item.aggregateId}
+                          onCloseInvoice={onCloseInvoice}
+                          onPayInvoice={onPayInvoice}
                         />
                       );
                       // issues.md: clicar num evento de conta/cartão abre a
@@ -282,7 +304,12 @@ export function TimelineFeed({
                               accountsById,
                               cardsById,
                             )}
-                            onClick={() => onEditTransaction(tx)}
+                            expanded={expandedTransactions.has(tx.id)}
+                            onToggleExpand={() =>
+                              onToggleExpandTransaction(tx.id)
+                            }
+                            onEdit={() => onEditTransaction(tx)}
+                            onDelete={() => scheduledHandlers.onDelete(tx.id)}
                           />
                         );
                       }
@@ -303,8 +330,8 @@ export function TimelineFeed({
                       categoriesById,
                       accountsById,
                       cardsById,
-                      expandedInstallments,
-                      onToggleInstallment,
+                      expandedTransactions,
+                      onToggleExpandTransaction,
                       onEditTransaction,
                     );
                   })}

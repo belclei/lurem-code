@@ -1,9 +1,11 @@
+import { Badge } from "../Badge/Badge";
+import { Button } from "../Button/Button";
 import { Card } from "../Card/Card";
 import { Body } from "../Typography/Body";
 import { Mono } from "../Typography/Mono";
 import { InstitutionMark } from "../shared/InstitutionMark";
 import { formatMoney } from "../shared/formatMoney";
-import { TransferIcon } from "../shared/icons";
+import { ChevronDownIcon, ChevronRightIcon } from "../shared/icons";
 
 export interface TransferAccount {
   name: string;
@@ -21,96 +23,164 @@ export interface TransferPairCardProps {
   to: TransferAccount;
   /** Optional — transfers don't require a description (§6.6), but shows here when the user provided one. */
   description?: string;
-  onClick?: () => void;
+  expanded?: boolean;
+  onToggleExpand?: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }
 
 /**
- * Transfer pair card (§5d) — a paired transfer between two of the user's
- * own accounts/cards, collapsed into a single card instead of two
- * separate TransactionRows. Uses existing Card/Mono/Body/InstitutionMark
- * — no business logic of its own (the caller resolves both legs' data).
+ * Transfer pair card — unified, expandable layout matching TransactionRow.
+ * Collapsed: DE → PARA institution marks + description + emoji 🔀 Transferência.
+ * Expanded: detailed rows (origin/destination with amounts) + action trailer.
  */
 export function TransferPairCard({
   amountCents,
   from,
   to,
   description,
-  onClick,
+  expanded,
+  onToggleExpand,
+  onEdit,
+  onDelete,
 }: TransferPairCardProps) {
+  const fromAccountType = from.isCash ? "Em espécie" : "Conta corrente";
+  const toAccountType = to.isCash ? "Em espécie" : "Conta corrente";
+
   return (
-    <Card interactive={Boolean(onClick)} onClick={onClick}>
-      {/* Header: transfer icon + title + amount */}
-      <div className="mb-4 flex items-center gap-3">
-        <span
-          aria-hidden="true"
-          className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[var(--lr-r-sm)] bg-[var(--lr-petrol-100)] text-[var(--lr-petrol-600)] dark:bg-[var(--lr-petrol-700)]/20 dark:text-[var(--lr-petrol-300)]"
-        >
-          <TransferIcon className="h-4 w-4" />
-        </span>
+    <Card interactive={false} dashed={false}>
+      {/* Collapsed header */}
+      <div className="flex items-center gap-3">
+        {/* Institution marks: from → to */}
+        <div className="flex flex-none items-center gap-1">
+          <InstitutionMark
+            logoUrl={from.logoUrl}
+            name={from.institution || from.name}
+            tone={from.isCash ? "gold" : "petrol"}
+            size="sm"
+          />
+          <ChevronRightIcon className="h-3 w-3 text-[var(--lr-text-secondary)]" />
+          <InstitutionMark
+            logoUrl={to.logoUrl}
+            name={to.institution || to.name}
+            tone={to.isCash ? "gold" : "petrol"}
+            size="sm"
+          />
+        </div>
+
+        {/* Center: description + category line */}
         <div className="min-w-0 flex-1">
-          <Body weight="medium">Transferência entre suas contas</Body>
-          {description ? (
-            <Body muted className="truncate text-[.75rem]">
-              {description}
+          <div className="flex items-center gap-2">
+            <Body weight="medium" className="truncate">
+              {description || "Transferência"}
             </Body>
-          ) : null}
-        </div>
-        <Mono
-          variant="number"
-          className="flex-none text-[.8125rem] text-[var(--lr-text-secondary)]"
-        >
-          {formatMoney(amountCents)}
-        </Mono>
-      </div>
-
-      {/* From account row */}
-      <div className="mb-3 flex items-center gap-3 border-t border-[var(--lr-border)] pt-3">
-        <InstitutionMark
-          logoUrl={from.logoUrl}
-          name={from.institution || from.name}
-          tone={from.isCash ? "gold" : "petrol"}
-          size="sm"
-        />
-        <div className="min-w-0 flex-1">
-          <Body weight="medium" className="truncate">
-            {from.name}
-          </Body>
-          <Body muted className="text-[.75rem]">
-            {from.isCash ? "Em espécie" : "Conta corrente"} · origem
+            <Badge kind="status" status="active">
+              Transferência
+            </Badge>
+          </div>
+          <Body muted className="text-[.8125rem]">
+            <span aria-hidden="true" className="mr-1">
+              🔀
+            </span>
+            Transferência
           </Body>
         </div>
-        <Mono variant="number" tone="out" className="flex-none">
-          −{formatMoney(amountCents)}
-        </Mono>
-      </div>
 
-      {/* To account row */}
-      <div className="mb-3 flex items-center gap-3">
-        <InstitutionMark
-          logoUrl={to.logoUrl}
-          name={to.institution || to.name}
-          tone={to.isCash ? "gold" : "petrol"}
-          size="sm"
-        />
-        <div className="min-w-0 flex-1">
-          <Body weight="medium" className="truncate">
-            {to.name}
-          </Body>
-          <Body muted className="text-[.75rem]">
-            {to.isCash ? "Em espécie" : "Conta corrente"} · destino
-          </Body>
+        {/* Trailing: amount + expand button */}
+        <div className="flex flex-none items-center gap-1.5">
+          <Mono variant="number" tone="default">
+            {formatMoney(amountCents)}
+          </Mono>
+          <button
+            type="button"
+            aria-label={expanded ? "Recolher detalhes" : "Expandir detalhes"}
+            onClick={onToggleExpand}
+            className="flex-none rounded-[var(--lr-r-full)] p-1 text-[var(--lr-text-secondary)] hover:bg-[var(--lr-surface-sunken)]"
+          >
+            <ChevronDownIcon
+              className={[
+                "h-3.5 w-3.5 transition-transform duration-150",
+                expanded ? "rotate-180" : "",
+              ].join(" ")}
+            />
+          </button>
         </div>
-        <Mono variant="number" tone="in" className="flex-none">
-          +{formatMoney(amountCents)}
-        </Mono>
       </div>
 
-      {/* Footer: disclaimer */}
-      <div className="mt-4 border-t border-[var(--lr-border)] pt-3">
-        <Body muted className="text-[.75rem]">
-          Não conta como receita nem despesa.
-        </Body>
-      </div>
+      {/* Expanded details */}
+      {expanded ? (
+        <>
+          <div className="mt-3 border-t border-[var(--lr-border)] pt-3">
+            {/* From account */}
+            <div className="mb-3 flex items-center gap-3">
+              <InstitutionMark
+                logoUrl={from.logoUrl}
+                name={from.institution || from.name}
+                tone={from.isCash ? "gold" : "petrol"}
+                size="sm"
+              />
+              <div className="min-w-0 flex-1">
+                <Body weight="medium" className="truncate">
+                  {from.name}
+                </Body>
+                <Body muted className="text-[.75rem]">
+                  {fromAccountType} · origem
+                </Body>
+              </div>
+              <Mono variant="number" tone="out" className="flex-none">
+                −{formatMoney(amountCents)}
+              </Mono>
+            </div>
+
+            {/* To account */}
+            <div className="flex items-center gap-3">
+              <InstitutionMark
+                logoUrl={to.logoUrl}
+                name={to.institution || to.name}
+                tone={to.isCash ? "gold" : "petrol"}
+                size="sm"
+              />
+              <div className="min-w-0 flex-1">
+                <Body weight="medium" className="truncate">
+                  {to.name}
+                </Body>
+                <Body muted className="text-[.75rem]">
+                  {toAccountType} · destino
+                </Body>
+              </div>
+              <Mono variant="number" tone="in" className="flex-none">
+                +{formatMoney(amountCents)}
+              </Mono>
+            </div>
+
+            {/* Disclaimer */}
+            <div className="mt-3">
+              <Body muted className="text-[.75rem]">
+                Não conta como receita nem despesa.
+              </Body>
+            </div>
+          </div>
+
+          {/* Action trailer */}
+          <div className="mt-3 flex justify-end gap-2 border-t border-[var(--lr-border)] pt-3">
+            {onDelete ? (
+              <Button
+                variant="danger"
+                size="sm"
+                className="mr-auto"
+                onClick={onDelete}
+              >
+                Apagar
+              </Button>
+            ) : null}
+            {onEdit ? (
+              <Button variant="secondary" size="sm" onClick={onEdit}>
+                Editar
+              </Button>
+            ) : null}
+          </div>
+        </>
+      ) : null}
     </Card>
   );
 }

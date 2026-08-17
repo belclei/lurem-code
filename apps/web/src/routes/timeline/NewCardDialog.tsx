@@ -98,7 +98,22 @@ export function NewCardDialog({
       <form onSubmit={onSubmit} className="grid gap-3">
         <Select
           label="Instituição"
-          options={institutions.map((i) => ({ value: i.id, label: i.name }))}
+          // Inline <img>, not <InstitutionMark>: Select's icon slot is a
+          // fixed 24px box (SelectOption.icon contract) and
+          // InstitutionMark's smallest size is 28px (sm) — reusing it here
+          // would get corners clipped by Select's overflow-hidden wrapper.
+          options={institutions.map((i) => ({
+            value: i.id,
+            label: i.name,
+            icon: i.logoUrl ? (
+              // biome-ignore lint/a11y/useAltText: src is runtime-bound, alt="" is correct for decorative icon
+              <img
+                src={i.logoUrl}
+                alt=""
+                className="h-full w-full object-contain"
+              />
+            ) : undefined,
+          }))}
           value={institutionId}
           onChange={setInstitutionId}
           error={fieldErrors.institutionId}

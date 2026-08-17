@@ -390,10 +390,11 @@ export function TransactionsPage() {
               kind: tx.kind,
               amountCents: tx.amountCents,
               source: tx.source,
-              categoryLabel:
-                tx.installmentTotal && tx.installmentNumber
-                  ? `Parcela ${tx.installmentNumber}/${tx.installmentTotal}`
-                  : undefined,
+              categoryName: undefined,
+              categoryEmoji: undefined,
+              institutionMark: undefined,
+              onToggleExpand: undefined,
+              expanded: false,
             };
             if (tx.isScheduled) {
               return (
@@ -401,8 +402,8 @@ export function TransactionsPage() {
                   key={tx.id}
                   {...common}
                   variant="scheduled"
+                  isScheduled={true}
                   onConfirm={() => confirmMutation.mutate(tx.id)}
-                  onSkip={() => skipMutation.mutate(tx.id)}
                   onEdit={() => {}}
                   onDelete={() => deleteMutation.mutate(tx.id)}
                 />
@@ -414,14 +415,20 @@ export function TransactionsPage() {
                   key={tx.id}
                   {...common}
                   variant="transfer"
-                  transferToLabel={
-                    tx.transferDirection === "out" ? "Saída" : "Entrada"
-                  }
-                  onClick={() => {}}
+                  onEdit={() => {}}
+                  onDelete={() => deleteMutation.mutate(tx.id)}
                 />
               );
             }
-            return <TransactionRow key={tx.id} {...common} variant="default" />;
+            return (
+              <TransactionRow
+                key={tx.id}
+                {...common}
+                variant="default"
+                onEdit={() => {}}
+                onDelete={() => deleteMutation.mutate(tx.id)}
+              />
+            );
           })}
         </div>
       </section>

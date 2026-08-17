@@ -15,6 +15,7 @@ import {
   Mono,
   PlusIcon,
   ProfileIncompleteAlert,
+  UploadIcon,
   formatDate,
   formatMoney,
 } from "@lurem/ui";
@@ -32,6 +33,7 @@ import { apiFetchJson } from "../auth/api-client";
 import type {
   AccountDto,
   CardDto,
+  ImportedDocumentDto,
   InstitutionDto,
   PendingRecurringDto,
   TimelinePageDto,
@@ -52,6 +54,7 @@ import type { DashboardInsights } from "./DashboardView";
 import { EditAccountDialog } from "./timeline/EditAccountDialog";
 import { EditCardDialog } from "./timeline/EditCardDialog";
 import { EditTransactionDialog } from "./timeline/EditTransactionDialog";
+import { ImportTransactionsDialog } from "./timeline/ImportTransactionsDialog";
 import { NewAccountDialog } from "./timeline/NewAccountDialog";
 import { NewCardDialog } from "./timeline/NewCardDialog";
 import { NewTransactionDialog } from "./timeline/NewTransactionDialog";
@@ -83,6 +86,7 @@ export function TimelinePage() {
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [cardDialogOpen, setCardDialogOpen] = useState(false);
   const [txDialogOpen, setTxDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [periodRange, setPeriodRange] = useSessionState<CalendarRange>(
     "timeline.periodRange",
     thisMonthRange,
@@ -115,9 +119,8 @@ export function TimelinePage() {
   );
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [accountsOpen, setAccountsOpen] = useState(false);
-  // Task 10 (§6.12) — per-row "ver todas as parcelas" toggle for the
-  // installment TransactionRow variant, keyed by transaction id.
-  const [expandedInstallments, setExpandedInstallments] = useState<Set<string>>(
+  // Per-row expand/collapse toggle for all transaction variants, keyed by transaction id.
+  const [expandedTransactions, setExpandedTransactions] = useState<Set<string>>(
     new Set(),
   );
   // Task 18/19 (§5b/§5c) — the transaction currently open in
@@ -128,8 +131,8 @@ export function TimelinePage() {
   const [editingCard, setEditingCard] = useState<CardDto | null>(null);
   const queryClient = useQueryClient();
 
-  function toggleInstallment(id: string) {
-    setExpandedInstallments((prev) => {
+  function toggleExpandTransaction(id: string) {
+    setExpandedTransactions((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -197,6 +200,26 @@ export function TimelinePage() {
       queryClient.invalidateQueries({ queryKey: ["insights"] });
     },
   });
+
+  const closeInvoiceMutation = useMutation({
+    mutationFn: (cardId: string) =>
+      apiFetchJson(`/cards/${cardId}/close-invoice`, { method: "POST" }),
+    onSuccess: () => {
+      invalidateTimeline();
+      queryClient.invalidateQueries({ queryKey: ["cards"] });
+    },
+  });
+
+  const payInvoiceMutation = useMutation({
+    mutationFn: (cardId: string) => {
+      const card = cardsQuery.data?.find((c) => c.id === cardId);
+      if (card) {
+        setEditingCard(card);
+      }
+      return Promise.resolve();
+    },
+  });
+
   const scheduledHandlers: ScheduledHandlers = {
     onConfirm: (id) => confirmMutation.mutate(id),
     onSkip: (id) => skipMutation.mutate(id),
@@ -238,6 +261,13 @@ export function TimelinePage() {
     queryKey: ["recurring", "pending"],
     queryFn: () =>
       apiFetchJson<PendingRecurringDto[]>("/recurring-transactions/pending"),
+    enabled: hasSession,
+  });
+
+  // Documentos com transações em staging prontas para análise
+  const importsQuery = useQuery({
+    queryKey: ["imports"],
+    queryFn: () => apiFetchJson<ImportedDocumentDto[]>("/imports"),
     enabled: hasSession,
   });
 
@@ -401,21 +431,42 @@ export function TimelinePage() {
               </Body>
             </div>
             {/* Hidden during ativação (§6.11): sem conta/cartão cadastrado, os
-                selects de destino do NewTransactionDialog ficam vazios e o
-                usuário nunca consegue submeter o formulário — um beco sem
-                saída em vez de um botão utilizável. "Importar" (§2) fica de fora:
-                o pipeline de importação/revisão ainda não existe no app (design
-                doc de conformância, decisão de escopo #1). */}
+                selects de destino do NewTransactionDialog (e do
+                ImportTransactionsDialog) ficam vazios e o usuário nunca
+                consegue submeter o formulário — um beco sem saída em vez de
+                um botão utilizável. */}
             {hasAnyTransactionDestination ? (
-              <Button
-                variant="primary"
-                icon={<PlusIcon />}
-                onClick={() => setTxDialogOpen(true)}
-              >
-                Nova transação
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="primary"
+                  icon={<UploadIcon />}
+                  onClick={() => setImportDialogOpen(true)}
+                >
+                  Importar transações
+                </Button>
+                <Button
+                  variant="primary"
+                  icon={<PlusIcon />}
+                  onClick={() => setTxDialogOpen(true)}
+                >
+                  Nova transação
+                </Button>
+              </div>
             ) : null}
           </div>
+          <ImportTransactionsDialog
+            open={importDialogOpen}
+            onClose={() => setImportDialogOpen(false)}
+            accounts={accountsQuery.data ?? []}
+            cards={cardsQuery.data ?? []}
+            institutions={institutionsQuery.data ?? []}
+            onAccountsCreated={() => {
+              accountsQuery.refetch?.();
+            }}
+            onCardsCreated={() => {
+              cardsQuery.refetch?.();
+            }}
+          />
           <NewTransactionDialog
             open={txDialogOpen}
             onClose={() => setTxDialogOpen(false)}
@@ -579,13 +630,19 @@ export function TimelinePage() {
             categoriesById={categoriesById}
             accountsById={accountsById}
             cardsById={cardsById}
-            expandedInstallments={expandedInstallments}
-            onToggleInstallment={toggleInstallment}
+            expandedTransactions={expandedTransactions}
+            onToggleExpandTransaction={toggleExpandTransaction}
             onEditTransaction={(t) => setEditingTx(t)}
             onEditAccount={(a) => setEditingAccount(a)}
             onEditCard={(c) => setEditingCard(c)}
             onManageRecurring={(id) =>
               navigate({ to: "/recurring", search: { edit: id } })
+            }
+            onCloseInvoice={(cardId) => closeInvoiceMutation.mutate(cardId)}
+            onPayInvoice={(cardId) => payInvoiceMutation.mutate(cardId)}
+            importedDocuments={importsQuery.data ?? []}
+            onNavigateToImport={(id) =>
+              navigate({ to: "/imports/$id", params: { id } })
             }
           />
         </div>

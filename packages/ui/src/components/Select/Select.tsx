@@ -191,7 +191,8 @@ export function Select({
           }}
           onKeyDown={handleKeyDown}
           className={[
-            "w-full min-h-11 rounded-[var(--lr-r-md)] pl-3.5 pr-9 text-[.9375rem]",
+            "w-full min-h-11 rounded-[var(--lr-r-md)] pr-9 text-[.9375rem]",
+            selectedOption?.icon ? "pl-12" : "pl-3.5",
             "bg-[var(--lr-surface)] text-[var(--lr-text)] border transition-colors duration-150",
             "placeholder:text-[var(--lr-text-secondary)]",
             "disabled:bg-[var(--lr-surface-sunken)] disabled:text-[var(--lr-text-secondary)]",
@@ -203,6 +204,14 @@ export function Select({
                 : "border-[var(--lr-border)] hover:border-[var(--lr-night-300)]",
           ].join(" ")}
         />
+        {selectedOption?.icon && !open ? (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-1/2 inline-flex h-[24px] w-[24px] flex-none -translate-y-1/2 overflow-hidden rounded-[var(--lr-r-sm)] text-[var(--lr-petrol-700)] dark:text-[var(--lr-petrol-300)] [&>svg]:h-full [&>svg]:w-full"
+          >
+            {selectedOption.icon}
+          </span>
+        ) : null}
         <ChevronDownIcon
           className={[
             "pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--lr-text-secondary)]",
@@ -303,7 +312,7 @@ export function Select({
                     {option.icon ? (
                       <span
                         aria-hidden="true"
-                        className="inline-flex h-[18px] w-[18px] flex-none text-[var(--lr-petrol-700)] dark:text-[var(--lr-petrol-300)] [&>svg]:h-full [&>svg]:w-full"
+                        className="inline-flex h-[24px] w-[24px] flex-none overflow-hidden rounded-[var(--lr-r-sm)] text-[var(--lr-petrol-700)] dark:text-[var(--lr-petrol-300)] [&>svg]:h-full [&>svg]:w-full"
                       >
                         {option.icon}
                       </span>

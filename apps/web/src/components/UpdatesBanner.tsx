@@ -9,6 +9,7 @@ import { Alert } from "@lurem/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useAuth } from "../auth/AuthContext";
 import { apiFetchJson } from "../auth/api-client";
 import type { ReleaseDto } from "../auth/types";
 
@@ -17,10 +18,13 @@ const LAST_SEEN_KEY = "lurem.lastSeenReleaseId";
 export function UpdatesBanner() {
   const navigate = useNavigate();
   const [dismissedId, setDismissedId] = useState<string | null>(null);
+  const { isBooting, user } = useAuth();
+  const hasSession = !isBooting && Boolean(user);
 
   const releasesQuery = useQuery({
     queryKey: ["releases"],
     queryFn: () => apiFetchJson<ReleaseDto[]>("/releases"),
+    enabled: hasSession,
   });
 
   const latest = releasesQuery.data?.[0];

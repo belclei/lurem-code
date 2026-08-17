@@ -93,6 +93,9 @@ export interface DomainEventPayload {
 export interface TimelineEventRowProps {
   type: DomainEventType;
   payload: DomainEventPayload;
+  aggregateId?: string;
+  onCloseInvoice?: (cardId: string) => void;
+  onPayInvoice?: (cardId: string) => void;
 }
 
 function pct(
@@ -232,22 +235,64 @@ function eventVariant(type: DomainEventType): AlertVariant {
 /**
  * Lurem's generic structural timeline event line. Dumb component: reads a
  * `type` + loosely-typed `payload` and renders one of the catalog's
- * pt-BR copy templates (IMPLEMENTACAO.md §6, BACKLOG US-2.4) as an inline
- * Alert — never decides which event happened. Three of those templates
- * (`card.invoice_closing_upcoming`/`.due_upcoming`, `calendar.global_entry`)
- * are never backed by a real `DomainEvent` row — the API synthesizes them
- * ahead of time (timeline/aggregate.ts's `synthesizeStructuralDates`); this
- * component can't tell the difference and doesn't need to.
+ * pt-BR copy templates (IMPLEMENTACAO.md §6, BACKLOG US-2.4) as an Alert.
+ * Invoice alerts use layout="box" with action buttons; others are inline.
  */
-export function TimelineEventRow({ type, payload }: TimelineEventRowProps) {
-  // Defensive: EVENT_TEXT is a TypeScript Record keyed by the DomainEventType
-  // union, but `type` at runtime is whatever string is in the DB column —
-  // TS can't stop a real event type from outrunning this catalog (found in
-  // prod 15/08: admin.access_approved existed in the DB for months before
-  // this catalog had an entry for it, crashing the whole Timeline for any
-  // admin with that history). A missing entry now degrades to a generic
-  // line instead of throwing and blanking the page.
+export function TimelineEventRow({
+  type,
+  payload,
+  aggregateId,
+  onCloseInvoice,
+  onPayInvoice,
+}: TimelineEventRowProps) {
   const renderText = EVENT_TEXT[type] ?? (() => "Um evento aconteceu.");
+
+  // Invoice alerts: use box layout with action buttons
+  if (type === "card.invoice_closing_upcoming") {
+    return (
+      <Alert
+        layout="box"
+        variant="info"
+        emoji={eventEmoji(type)}
+        title={renderText(payload)}
+        actions={
+          onCloseInvoice && aggregateId
+            ? [
+                {
+                  label: "Fechar fatura",
+                  onClick: () => onCloseInvoice(aggregateId),
+                  variant: "secondary",
+                },
+              ]
+            : undefined
+        }
+      />
+    );
+  }
+
+  if (type === "card.invoice_due_upcoming") {
+    return (
+      <Alert
+        layout="box"
+        variant="warning"
+        emoji={eventEmoji(type)}
+        title={renderText(payload)}
+        actions={
+          onPayInvoice && aggregateId
+            ? [
+                {
+                  label: "Pagar fatura",
+                  onClick: () => onPayInvoice(aggregateId),
+                  variant: "secondary",
+                },
+              ]
+            : undefined
+        }
+      />
+    );
+  }
+
+  // All other events: inline layout, no actions
   return (
     <Alert
       layout="inline"

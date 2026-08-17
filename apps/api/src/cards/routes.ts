@@ -357,4 +357,84 @@ export async function registerCardRoutes(
       );
     },
   );
+
+  // POST /v1/cards/:id/close-invoice — manually close the current invoice period
+  fastify.post(
+    "/v1/cards/:id/close-invoice",
+    { preHandler: requireUser(fastify) },
+    async (request) => {
+      // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler, which runs before this handler and throws if auth fails
+      const userId = request.userId!;
+      const { id } = request.params as { id: string };
+
+      const card = await fastify.prisma.creditCard.findFirst({
+        where: { id, userId },
+      });
+      if (!card) {
+        throw NOT_FOUND();
+      }
+
+      // Compute the currently open month
+      const today = new Date();
+      const openMonth = {
+        year: today.getUTCFullYear(),
+        month: today.getUTCMonth() + 1,
+      };
+
+      // Only allow closing if not already manually closed for this period
+      if (
+        card.manualClosureYear === openMonth.year &&
+        card.manualClosureMonth === openMonth.month
+      ) {
+        throw VALIDATION_FAILED([
+          { field: "card", message: "Fatura já foi fechada neste período." },
+        ]);
+      }
+
+      await fastify.prisma.creditCard.update({
+        where: { id },
+        data: {
+          manualClosureYear: openMonth.year,
+          manualClosureMonth: openMonth.month,
+        },
+      });
+
+      return { success: true };
+    },
+  );
+
+  // POST /v1/cards/:id/reopen-invoice — revert manual closure
+  fastify.post(
+    "/v1/cards/:id/reopen-invoice",
+    { preHandler: requireUser(fastify) },
+    async (request) => {
+      // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler, which runs before this handler and throws if auth fails
+      const userId = request.userId!;
+      const { id } = request.params as { id: string };
+
+      const card = await fastify.prisma.creditCard.findFirst({
+        where: { id, userId },
+      });
+      if (!card) {
+        throw NOT_FOUND();
+      }
+
+      // Only allow reopening if currently manually closed
+      if (!card.manualClosureYear || !card.manualClosureMonth) {
+        throw VALIDATION_FAILED([
+          { field: "card", message: "Fatura não foi fechada manualmente." },
+        ]);
+      }
+
+      await fastify.prisma.creditCard.update({
+        where: { id },
+        data: {
+          manualClosureYear: null,
+          manualClosureMonth: null,
+        },
+      });
+
+      return { success: true };
+    },
+  );
 }
