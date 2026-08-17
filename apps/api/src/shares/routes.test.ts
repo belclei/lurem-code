@@ -47,8 +47,20 @@ afterAll(async () => {
   await server.close();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   sendMock.mockResolvedValue({ data: { id: "email_test" }, error: null });
+
+  // Enable connections feature flag for testing
+  await server.prisma.featureFlag.upsert({
+    where: { key: "connections" },
+    update: { state: "on" },
+    create: {
+      key: "connections",
+      description: "Test",
+      state: "on",
+      rolloutPercent: 100,
+    },
+  });
 });
 
 async function authedUser(email?: string) {
