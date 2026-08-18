@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "../Button/Button";
 import { ChevronLeftIcon, ChevronRightIcon } from "../shared/icons";
 
@@ -65,6 +65,25 @@ function addMonths(date: Date, amount: number): Date {
   return new Date(date.getFullYear(), date.getMonth() + amount, 1);
 }
 
+// Generous range centered on nothing in particular — this is a navigation
+// aid, not a business rule (a birthdate picker needs ~100 years back;
+// `isDisabled` on the day grid is still what actually blocks a bad pick).
+const YEAR_RANGE_PAST = 120;
+const YEAR_RANGE_FUTURE = 10;
+
+function buildYearList(anchor: Date): number[] {
+  const current = anchor.getFullYear();
+  const years: number[] = [];
+  for (
+    let y = current + YEAR_RANGE_FUTURE;
+    y >= current - YEAR_RANGE_PAST;
+    y--
+  ) {
+    years.push(y);
+  }
+  return years;
+}
+
 function buildMonthGrid(month: Date): Date[] {
   const firstOfMonth = new Date(month.getFullYear(), month.getMonth(), 1);
   const start = new Date(firstOfMonth);
@@ -118,6 +137,25 @@ export function Calendar({
   const selectedRange =
     mode === "range" ? ((selected as CalendarRange | null) ?? {}) : {};
 
+  // Jumping 3 years by clicking "next month" 36 times is the exact
+  // complaint this view exists to fix (birthdate is the canonical case) —
+  // clicking the month/year label swaps the day grid for a scrollable year
+  // list instead. Internal-only: purely a navigation affordance, not part
+  // of the controlled `month`/`selected` contract callers own.
+  const [view, setView] = useState<"days" | "years">("days");
+  const activeYearRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (view === "years") {
+      activeYearRef.current?.scrollIntoView({ block: "center" });
+    }
+  }, [view]);
+
+  function handleYearSelect(year: number) {
+    onMonthChange(new Date(year, month.getMonth(), 1));
+    setView("days");
+  }
+
   function handleDayClick(date: Date) {
     if (isDisabled?.(date)) return;
     if (mode === "single") {
@@ -146,136 +184,177 @@ export function Calendar({
           size="sm"
           icon={<ChevronLeftIcon />}
           aria-label="Mês anterior"
+          disabled={view === "years"}
+          className={view === "years" ? "invisible" : ""}
           onClick={() => onMonthChange(addMonths(month, -1))}
         />
-        <span className="font-mono text-[.875rem] text-[var(--lr-text)]">
-          {MONTH_NAMES[month.getMonth()]} {month.getFullYear()}
-        </span>
+        <button
+          type="button"
+          onClick={() => setView(view === "days" ? "years" : "days")}
+          aria-expanded={view === "years"}
+          className="rounded-[var(--lr-r-sm)] px-1.5 py-0.5 font-mono text-[.875rem] text-[var(--lr-text)] transition-colors duration-150 hover:bg-[var(--lr-surface-sunken)]"
+        >
+          {view === "days"
+            ? `${MONTH_NAMES[month.getMonth()]} ${month.getFullYear()}`
+            : "Selecione o ano"}
+        </button>
         <Button
           variant="tertiary"
           size="sm"
           icon={<ChevronRightIcon />}
           aria-label="Próximo mês"
+          disabled={view === "years"}
+          className={view === "years" ? "invisible" : ""}
           onClick={() => onMonthChange(addMonths(month, 1))}
         />
       </div>
 
-      <div
-        // biome-ignore lint/a11y/useSemanticElements: a native <fieldset> groups form controls with a <legend>, not a day-grid widget — role="group" + aria-label is the correct APG substitute here
-        role="group"
-        aria-label={label}
-        className="grid grid-cols-7 gap-0.5"
-      >
-        {WEEKDAY_LABELS.map((weekday, index) => (
-          <span
-            // biome-ignore lint/suspicious/noArrayIndexKey: fixed 7-item static list, no identity beyond position
-            key={index}
-            aria-hidden="true"
-            className="pb-1.5 text-center text-[.625rem] tracking-[.1em] text-[var(--lr-label)] uppercase"
-          >
-            {weekday}
-          </span>
-        ))}
-        {grid.map((date) => {
-          const outside = date.getMonth() !== month.getMonth();
-          const isToday = isSameDay(date, todayStart);
-          const isSelected = Boolean(
-            mode === "single"
-              ? selectedSingle && isSameDay(date, selectedSingle)
-              : (selectedRange.from && isSameDay(date, selectedRange.from)) ||
-                  (selectedRange.to && isSameDay(date, selectedRange.to)),
-          );
-          const isRangeStart = Boolean(
-            mode === "range" &&
-              selectedRange.from &&
-              isSameDay(date, selectedRange.from),
-          );
-          const isRangeEnd = Boolean(
-            mode === "range" &&
-              selectedRange.to &&
-              isSameDay(date, selectedRange.to),
-          );
-          const inRange =
-            mode === "range" &&
-            isBetween(date, selectedRange.from, selectedRange.to);
-          const disabled = isDisabled?.(date) ?? false;
-          const status = dayStatus?.(date);
-          // Exactly one text-color utility per button: Tailwind gives
-          // same-specificity utilities equal precedence, so the winner is
-          // whichever lands last in the compiled stylesheet — not whichever
-          // comes last in this class list. Stacking e.g. the default
-          // text-[var(--lr-text)] alongside a conditional text-[var(--lr-ivory-000)]
-          // let the base class silently win in the built CSS, which made
-          // selected days (ink-900 bg) render their digit in --lr-text
-          // (also ink-900) — invisible. Compute one winner up front instead.
-          const textColorClass = disabled
-            ? "text-[var(--lr-night-300)]"
-            : isSelected
-              ? "text-[var(--lr-ivory-000)]"
-              : outside
-                ? "text-[var(--lr-night-300)]"
-                : "text-[var(--lr-text)]";
-
-          return (
-            <button
-              key={date.toISOString()}
-              type="button"
-              disabled={disabled}
-              onClick={() => handleDayClick(date)}
-              aria-label={formatDayLabel(date, isToday)}
-              aria-current={isToday ? "date" : undefined}
-              aria-pressed={isSelected}
-              className={[
-                "relative aspect-square min-h-9 cursor-pointer border border-transparent",
-                "font-mono text-[.8125rem] transition-colors duration-150",
-                textColorClass,
-                isSelected || inRange
-                  ? ""
-                  : "hover:bg-[var(--lr-surface-sunken)]",
-                isToday ? "border-[var(--lr-gold-600)]" : "",
-                // REBRAND (Task 1.3): blue-100/700 -> petrol-100/700, same
-                // DESIGN_SYSTEM.md §1.2 "componentes selecionados" -> Petrol
-                // spec basis as Select.tsx's selected-item treatment.
-                inRange
-                  ? "rounded-none bg-[var(--lr-petrol-100)] dark:bg-[var(--lr-petrol-700)]/30"
-                  : "rounded-[var(--lr-r-sm)]",
-                isRangeStart ? "rounded-r-none" : "",
-                isRangeEnd ? "rounded-l-none" : "",
-                // dark:bg-ink-700 alone measures 1.29:1 against this card's
-                // --lr-surface (ink-800) — Button's primary variant made the
-                // same ink-900→ink-700 dark-mode step, but that one sits
-                // directly on --lr-bg (ink-900 page), not a --lr-surface
-                // card, so its fill/background gap survives. The border
-                // gives the same 3:1 boundary Card/Dialog/Sheet already lean
-                // on for definition against --lr-surface, without touching
-                // the fill (bone-000 text on ink-700 is already 10.7:1, no
-                // need to trade that away for a lighter fill).
-                isSelected
-                  ? "bg-[var(--lr-night-900)] dark:border-[var(--lr-night-500)] dark:bg-[var(--lr-night-700)]"
-                  : "",
-                disabled ? "cursor-not-allowed hover:bg-transparent" : "",
-              ].join(" ")}
+      {view === "years" ? (
+        <div
+          // biome-ignore lint/a11y/useSemanticElements: same as the day grid below — role="group" + aria-label is the APG substitute for a widget, not a form <fieldset>
+          role="group"
+          aria-label="Selecione o ano"
+          className="grid max-h-[240px] grid-cols-4 gap-1 overflow-y-auto"
+        >
+          {buildYearList(month).map((year) => {
+            const isActive = year === month.getFullYear();
+            return (
+              <button
+                key={year}
+                type="button"
+                ref={isActive ? activeYearRef : undefined}
+                onClick={() => handleYearSelect(year)}
+                aria-current={isActive || undefined}
+                className={[
+                  "min-h-9 rounded-[var(--lr-r-sm)] font-mono text-[.8125rem] transition-colors duration-150",
+                  isActive
+                    ? "bg-[var(--lr-night-900)] text-[var(--lr-ivory-000)] dark:border dark:border-[var(--lr-night-500)] dark:bg-[var(--lr-night-700)]"
+                    : "text-[var(--lr-text)] hover:bg-[var(--lr-surface-sunken)]",
+                ].join(" ")}
+              >
+                {year}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div
+          // biome-ignore lint/a11y/useSemanticElements: a native <fieldset> groups form controls with a <legend>, not a day-grid widget — role="group" + aria-label is the correct APG substitute here
+          role="group"
+          aria-label={label}
+          className="grid grid-cols-7 gap-0.5"
+        >
+          {WEEKDAY_LABELS.map((weekday, index) => (
+            <span
+              // biome-ignore lint/suspicious/noArrayIndexKey: fixed 7-item static list, no identity beyond position
+              key={index}
+              aria-hidden="true"
+              className="pb-1.5 text-center text-[.625rem] tracking-[.1em] text-[var(--lr-label)] uppercase"
             >
-              {date.getDate()}
-              {status ? (
-                <span
-                  aria-hidden="true"
-                  className={[
-                    "absolute bottom-[5px] left-1/2 h-1 w-1 -translate-x-1/2 rounded-full",
-                    status === "scheduled"
-                      ? isSelected
-                        ? "border border-[var(--lr-ivory-000)] bg-transparent"
-                        : "border border-[var(--lr-estimate)] bg-transparent"
-                      : isSelected
-                        ? "bg-[var(--lr-ivory-000)]"
-                        : "bg-[var(--lr-night-600)]",
-                  ].join(" ")}
-                />
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
+              {weekday}
+            </span>
+          ))}
+          {grid.map((date) => {
+            const outside = date.getMonth() !== month.getMonth();
+            const isToday = isSameDay(date, todayStart);
+            const isSelected = Boolean(
+              mode === "single"
+                ? selectedSingle && isSameDay(date, selectedSingle)
+                : (selectedRange.from && isSameDay(date, selectedRange.from)) ||
+                    (selectedRange.to && isSameDay(date, selectedRange.to)),
+            );
+            const isRangeStart = Boolean(
+              mode === "range" &&
+                selectedRange.from &&
+                isSameDay(date, selectedRange.from),
+            );
+            const isRangeEnd = Boolean(
+              mode === "range" &&
+                selectedRange.to &&
+                isSameDay(date, selectedRange.to),
+            );
+            const inRange =
+              mode === "range" &&
+              isBetween(date, selectedRange.from, selectedRange.to);
+            const disabled = isDisabled?.(date) ?? false;
+            const status = dayStatus?.(date);
+            // Exactly one text-color utility per button: Tailwind gives
+            // same-specificity utilities equal precedence, so the winner is
+            // whichever lands last in the compiled stylesheet — not whichever
+            // comes last in this class list. Stacking e.g. the default
+            // text-[var(--lr-text)] alongside a conditional text-[var(--lr-ivory-000)]
+            // let the base class silently win in the built CSS, which made
+            // selected days (ink-900 bg) render their digit in --lr-text
+            // (also ink-900) — invisible. Compute one winner up front instead.
+            const textColorClass = disabled
+              ? "text-[var(--lr-night-300)]"
+              : isSelected
+                ? "text-[var(--lr-ivory-000)]"
+                : outside
+                  ? "text-[var(--lr-night-300)]"
+                  : "text-[var(--lr-text)]";
+
+            return (
+              <button
+                key={date.toISOString()}
+                type="button"
+                disabled={disabled}
+                onClick={() => handleDayClick(date)}
+                aria-label={formatDayLabel(date, isToday)}
+                aria-current={isToday ? "date" : undefined}
+                aria-pressed={isSelected}
+                className={[
+                  "relative aspect-square min-h-9 cursor-pointer border border-transparent",
+                  "font-mono text-[.8125rem] transition-colors duration-150",
+                  textColorClass,
+                  isSelected || inRange
+                    ? ""
+                    : "hover:bg-[var(--lr-surface-sunken)]",
+                  isToday ? "border-[var(--lr-gold-600)]" : "",
+                  // REBRAND (Task 1.3): blue-100/700 -> petrol-100/700, same
+                  // DESIGN_SYSTEM.md §1.2 "componentes selecionados" -> Petrol
+                  // spec basis as Select.tsx's selected-item treatment.
+                  inRange
+                    ? "rounded-none bg-[var(--lr-petrol-100)] dark:bg-[var(--lr-petrol-700)]/30"
+                    : "rounded-[var(--lr-r-sm)]",
+                  isRangeStart ? "rounded-r-none" : "",
+                  isRangeEnd ? "rounded-l-none" : "",
+                  // dark:bg-ink-700 alone measures 1.29:1 against this card's
+                  // --lr-surface (ink-800) — Button's primary variant made the
+                  // same ink-900→ink-700 dark-mode step, but that one sits
+                  // directly on --lr-bg (ink-900 page), not a --lr-surface
+                  // card, so its fill/background gap survives. The border
+                  // gives the same 3:1 boundary Card/Dialog/Sheet already lean
+                  // on for definition against --lr-surface, without touching
+                  // the fill (bone-000 text on ink-700 is already 10.7:1, no
+                  // need to trade that away for a lighter fill).
+                  isSelected
+                    ? "bg-[var(--lr-night-900)] dark:border-[var(--lr-night-500)] dark:bg-[var(--lr-night-700)]"
+                    : "",
+                  disabled ? "cursor-not-allowed hover:bg-transparent" : "",
+                ].join(" ")}
+              >
+                {date.getDate()}
+                {status ? (
+                  <span
+                    aria-hidden="true"
+                    className={[
+                      "absolute bottom-[5px] left-1/2 h-1 w-1 -translate-x-1/2 rounded-full",
+                      status === "scheduled"
+                        ? isSelected
+                          ? "border border-[var(--lr-ivory-000)] bg-transparent"
+                          : "border border-[var(--lr-estimate)] bg-transparent"
+                        : isSelected
+                          ? "bg-[var(--lr-ivory-000)]"
+                          : "bg-[var(--lr-night-600)]",
+                    ].join(" ")}
+                  />
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {footer ? (
         <div className="mt-[var(--lr-s2)] flex gap-2 border-t border-[var(--lr-border)] pt-[var(--lr-s2)]">
