@@ -356,7 +356,7 @@ async function seedFeatureFlags() {
       key: "imports.pipeline",
       description:
         "Pipeline de importação de extratos/faturas (extração client-side + LLM DeepSeek + staging). Kill switch.",
-      state: "off",
+      state: "on",
       rolloutPercent: 100,
     },
   });
@@ -378,17 +378,14 @@ async function seedFeatureFlags() {
     },
   });
 
-  // Feature flag para a funcionalidade geral de conexões (incompleta).
-  // Desabilitada para todos até que a implementação seja concluída.
   await prisma.featureFlag.upsert({
     where: { key: "connections" },
     update: {},
     create: {
       key: "connections",
-      description:
-        "Funcionalidade geral de conexões entre usuários. Incompleta — desabilitada por padrão.",
-      state: "off",
-      rolloutPercent: 0,
+      description: "Funcionalidade geral de conexões entre usuários.",
+      state: "on",
+      rolloutPercent: 100,
     },
   });
 }
