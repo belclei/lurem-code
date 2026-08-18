@@ -142,6 +142,10 @@ export async function registerInviteRoutes(
           { field: "id", message: "Este convite ainda não foi aprovado." },
         ]);
       }
+      const inviter = await fastify.prisma.user.findUniqueOrThrow({
+        where: { id: invite.inviterUserId },
+        select: { name: true },
+      });
 
       const rawToken = randomBytes(24).toString("hex");
       const updated = await fastify.prisma.invite.update({
@@ -154,6 +158,7 @@ export async function registerInviteRoutes(
       await sendInviteEmail(fastify.resend, {
         to: updated.inviteeEmail,
         inviteeName: updated.inviteeName,
+        inviterName: inviter.name,
         link: `${fastify.env.WEB_APP_URL}/register?token=${rawToken}`,
       });
       await fireEvent(fastify, updated.inviterUserId, "invite.resent", id, {

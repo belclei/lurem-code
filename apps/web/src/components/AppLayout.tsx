@@ -55,6 +55,9 @@ export function AppLayout() {
     if (item.to === "/connections" && user && !user.flags.connections) {
       return false;
     }
+    if (item.to === "/imports" && user && !user.flags["imports.pipeline"]) {
+      return false;
+    }
     return true;
   });
 
