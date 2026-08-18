@@ -437,13 +437,15 @@ export function TimelinePage() {
                 um botão utilizável. */}
             {hasAnyTransactionDestination ? (
               <div className="flex gap-2">
-                <Button
-                  variant="primary"
-                  icon={<UploadIcon />}
-                  onClick={() => setImportDialogOpen(true)}
-                >
-                  Importar transações
-                </Button>
+                {user.flags["imports.pipeline"] ? (
+                  <Button
+                    variant="primary"
+                    icon={<UploadIcon />}
+                    onClick={() => setImportDialogOpen(true)}
+                  >
+                    Importar transações
+                  </Button>
+                ) : null}
                 <Button
                   variant="primary"
                   icon={<PlusIcon />}
@@ -455,7 +457,7 @@ export function TimelinePage() {
             ) : null}
           </div>
           <ImportTransactionsDialog
-            open={importDialogOpen}
+            open={importDialogOpen && Boolean(user.flags["imports.pipeline"])}
             onClose={() => setImportDialogOpen(false)}
             accounts={accountsQuery.data ?? []}
             cards={cardsQuery.data ?? []}

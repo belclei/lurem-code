@@ -4,7 +4,7 @@
 // vão pro POST /v1/imports.
 import { Badge, EmptyState } from "@lurem/ui";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Navigate, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { apiFetchJson } from "../auth/api-client";
@@ -41,6 +41,11 @@ export function ImportPage() {
   const navigate = useNavigate();
   const { isBooting, user } = useAuth();
   const hasSession = !isBooting && Boolean(user);
+
+  if (hasSession && user && !user.flags["imports.pipeline"]) {
+    return <Navigate to="/timeline" />;
+  }
+
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [cardDialogOpen, setCardDialogOpen] = useState(false);
 

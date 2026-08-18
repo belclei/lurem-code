@@ -4,6 +4,7 @@ import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   it,
@@ -46,6 +47,19 @@ afterEach(async () => {
 });
 afterAll(async () => {
   await server.close();
+});
+
+beforeEach(async () => {
+  await server.prisma.featureFlag.upsert({
+    where: { key: "imports.pipeline" },
+    update: { state: "on" },
+    create: {
+      key: "imports.pipeline",
+      description: "Test",
+      state: "on",
+      rolloutPercent: 100,
+    },
+  });
 });
 
 async function authedUser() {

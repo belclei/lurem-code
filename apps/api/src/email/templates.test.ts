@@ -22,6 +22,7 @@ describe("sendInviteEmail", () => {
 
     const result = await sendInviteEmail(resend, {
       to: "convidado@example.com",
+      inviteeName: "Ana",
       link: "https://lurem.fasolo.tech/register?token=xyz",
     });
 
@@ -36,7 +37,32 @@ describe("sendInviteEmail", () => {
     expect(call.to).toBe("convidado@example.com");
     expect(call.subject).toBe("Seu convite para o Lurem chegou");
     expect(call.html).toContain("https://lurem.fasolo.tech/register?token=xyz");
+    expect(call.html).toContain("Ana");
     expect(call.text).toContain("https://lurem.fasolo.tech/register?token=xyz");
+  });
+
+  it("mentions the inviter's name when the invite came from another user", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValue({ data: { id: "email_1b" }, error: null });
+    const resend = fakeResend(send);
+
+    await sendInviteEmail(resend, {
+      to: "convidado@example.com",
+      inviteeName: "Ana",
+      inviterName: "Carlos",
+      link: "https://lurem.fasolo.tech/register?token=xyz",
+    });
+
+    // biome-ignore lint/style/noNonNullAssertion: awaited function call above guarantees send was called exactly once
+    const call = send.mock.calls[0]![0] as {
+      subject: string;
+      html: string;
+      text: string;
+    };
+    expect(call.subject).toBe("Carlos te convidou para o Lurem");
+    expect(call.html).toContain("Carlos te convidou");
+    expect(call.text).toContain("Carlos te convidou");
   });
 
   it("throws with the failure reason when Resend returns an error", async () => {
@@ -46,7 +72,11 @@ describe("sendInviteEmail", () => {
     const resend = fakeResend(send);
 
     await expect(
-      sendInviteEmail(resend, { to: "x@example.com", link: "https://x" }),
+      sendInviteEmail(resend, {
+        to: "x@example.com",
+        inviteeName: "X",
+        link: "https://x",
+      }),
     ).rejects.toThrow(/boom/);
   });
 });
@@ -60,6 +90,7 @@ describe("sendPasswordResetEmail", () => {
 
     const result = await sendPasswordResetEmail(resend, {
       to: "user@example.com",
+      userName: "Bel",
       link: "https://lurem.fasolo.tech/reset-password?token=xyz",
     });
 

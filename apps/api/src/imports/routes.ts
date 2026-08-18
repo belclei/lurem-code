@@ -23,7 +23,8 @@ import type { PrismaClient } from "@lurem/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireUser } from "../auth/authenticate.js";
-import { NOT_FOUND, VALIDATION_FAILED } from "../errors.js";
+import { FEATURE_DISABLED, NOT_FOUND, VALIDATION_FAILED } from "../errors.js";
+import { resolveFlags } from "../flags/resolve.js";
 import { belIaChat } from "./bel-ia-client.js";
 import {
   extractDocumentMetadata,
@@ -33,6 +34,16 @@ import {
   toExtractedTransactionResponse,
   toImportedDocumentResponse,
 } from "./serialize.js";
+
+async function requireImportsFeature(
+  fastify: FastifyInstance,
+  userId: string,
+): Promise<void> {
+  const flags = await resolveFlags(fastify.prisma, userId);
+  if (!flags["imports.pipeline"]) {
+    throw FEATURE_DISABLED("Importação de extratos/faturas");
+  }
+}
 
 const ImportType = z.enum(["card_invoice", "account_statement"]);
 
@@ -167,6 +178,7 @@ export async function registerImportRoutes(
     async (request, reply) => {
       // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler
       const userId = request.userId!;
+      await requireImportsFeature(fastify, userId);
       const body = request.body as z.infer<typeof CreateImportBody>;
 
       if (body.type === "card_invoice" && !body.creditCardId) {
@@ -332,6 +344,7 @@ export async function registerImportRoutes(
     async (request) => {
       // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler
       const userId = request.userId!;
+      await requireImportsFeature(fastify, userId);
       const docs = await prisma.importedDocument.findMany({
         where: { userId },
         orderBy: { createdAt: "desc" },
@@ -346,6 +359,7 @@ export async function registerImportRoutes(
     async (request) => {
       // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler
       const userId = request.userId!;
+      await requireImportsFeature(fastify, userId);
       const { id } = request.params as { id: string };
       const doc = await findOwnedDocument(userId, id);
       const lines = await prisma.extractedTransaction.findMany({
@@ -367,6 +381,7 @@ export async function registerImportRoutes(
     async (request, reply) => {
       // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler
       const userId = request.userId!;
+      await requireImportsFeature(fastify, userId);
       const { id } = request.params as { id: string };
       await findOwnedDocument(userId, id);
       // Remove só o staging — Transaction já confirmadas a partir daqui
@@ -398,6 +413,7 @@ export async function registerImportRoutes(
     async (request) => {
       // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler
       const userId = request.userId!;
+      await requireImportsFeature(fastify, userId);
       const { id, lineId } = request.params as { id: string; lineId: string };
       const body = request.body as z.infer<typeof UpdateLineBody>;
       const { line } = await findOwnedLine(userId, id, lineId);
@@ -474,6 +490,7 @@ export async function registerImportRoutes(
     async (request) => {
       // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler
       const userId = request.userId!;
+      await requireImportsFeature(fastify, userId);
       const { id, lineId } = request.params as { id: string; lineId: string };
       const parsedBody = ConfirmBody.safeParse(request.body ?? {});
       if (!parsedBody.success) {
@@ -524,6 +541,7 @@ export async function registerImportRoutes(
     async (request) => {
       // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler
       const userId = request.userId!;
+      await requireImportsFeature(fastify, userId);
       const { id, lineId } = request.params as { id: string; lineId: string };
       const { doc, line } = await findOwnedLine(userId, id, lineId);
       if (line.status !== "pending") {
@@ -546,6 +564,7 @@ export async function registerImportRoutes(
     async (request) => {
       // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler
       const userId = request.userId!;
+      await requireImportsFeature(fastify, userId);
       const { id } = request.params as { id: string };
       const doc = await findOwnedDocument(userId, id);
       const lines = await prisma.extractedTransaction.findMany({

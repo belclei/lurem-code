@@ -163,6 +163,10 @@ export async function registerAdminRoutes(
       const { id } = request.params as { id: string };
       const invite = await fastify.prisma.invite.findUnique({ where: { id } });
       if (!invite || invite.status !== "awaiting_approval") throw NOT_FOUND();
+      const inviter = await fastify.prisma.user.findUniqueOrThrow({
+        where: { id: invite.inviterUserId },
+        select: { name: true },
+      });
 
       const rawToken = randomBytes(24).toString("hex");
       const updated = await fastify.prisma.invite.update({
@@ -178,6 +182,7 @@ export async function registerAdminRoutes(
       await sendInviteEmail(fastify.resend, {
         to: updated.inviteeEmail,
         inviteeName: updated.inviteeName,
+        inviterName: inviter.name,
         link: `${fastify.env.WEB_APP_URL}/register?token=${rawToken}`,
       });
       await fireAdminEvent(
