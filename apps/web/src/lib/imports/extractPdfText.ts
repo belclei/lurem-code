@@ -9,8 +9,15 @@
 // nativa do browser que cumpre a mesma exigência central da spec (extração
 // 100% client-side, PDF nunca sai do dispositivo) — troca de ferramenta,
 // não de decisão de arquitetura.
-import * as pdfjsLib from "pdfjs-dist";
-import workerSrc from "pdfjs-dist/build/pdf.worker.mjs?url";
+// `pdfjs-dist` (no subpath) resolves to the modern build, which assumes
+// JS engine features recent V8 has and Safari/WebKit doesn't yet — this
+// broke PDF extraction on iOS (Chrome-on-iOS is a WebKit wrapper, same
+// engine as Safari, well behind desktop Chrome) with an opaque "undefined
+// is not a function" while desktop Chrome worked fine. pdf.js's own README
+// points at `legacy/` for exactly this: "usage with older browsers/
+// environments, without native support for the latest JavaScript features".
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+import workerSrc from "pdfjs-dist/legacy/build/pdf.worker.mjs?url";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
 
