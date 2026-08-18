@@ -17,9 +17,39 @@
 // points at `legacy/` for exactly this: "usage with older browsers/
 // environments, without native support for the latest JavaScript features".
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+import type { PDFPageProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 import workerSrc from "pdfjs-dist/legacy/build/pdf.worker.mjs?url";
 
+// TextItem/TextMarkedContent aren't part of pdfjs-dist's public type
+// exports — derive the element type from getTextContent()'s own return
+// shape instead of duplicating it.
+type TextContentItem = Awaited<
+  ReturnType<PDFPageProxy["getTextContent"]>
+>["items"][number];
+
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+
+// pdfjsLib's own `page.getTextContent()` drains its ReadableStream with
+// `for await (const value of readableStream)` — WebKit (so Safari, and
+// Chrome-on-iOS since it's a WebKit wrapper) doesn't support async
+// iteration over a ReadableStream, throwing an opaque "undefined is not a
+// function (near '...value of readableStream...')" the instant this runs.
+// The stream itself is a genuine native ReadableStream (pdf.js's own
+// messageHandler.sendWithStream constructs one directly), so draining it
+// by hand with the much older, universally-supported .getReader() API
+// sidesteps the gap entirely — same data, same shape, just without the
+// unsupported iterator sugar. streamTextContent() is the same public API
+// getTextContent() calls internally, just not yet consumed.
+async function readTextItems(page: PDFPageProxy): Promise<TextContentItem[]> {
+  const reader = page.streamTextContent().getReader();
+  const items: TextContentItem[] = [];
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    items.push(...value.items);
+  }
+  return items;
+}
 
 export class PdfPasswordRequiredError extends Error {
   constructor() {
@@ -63,8 +93,8 @@ export async function extractPdfText(
   const pages: string[] = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
-    const content = await page.getTextContent();
-    const text = content.items
+    const items = await readTextItems(page);
+    const text = items
       .map((item) => ("str" in item ? item.str : ""))
       .join(" ")
       .trim();
