@@ -1,9 +1,22 @@
 // apps/web/src/routes/timeline/EditTransactionDialog.tsx
-import { Alert, Button, DateField, Dialog, Input, Select } from "@lurem/ui";
+import {
+  Alert,
+  Button,
+  DateField,
+  Dialog,
+  Input,
+  Select,
+  TagInput,
+} from "@lurem/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { type FormEvent, useMemo, useState } from "react";
 import { ApiError, apiFetchJson } from "../../auth/api-client";
-import type { AccountDto, CardDto, TransactionDto } from "../../auth/types";
+import type {
+  AccountDto,
+  CardDto,
+  TagDto,
+  TransactionDto,
+} from "../../auth/types";
 import { fieldErrorsFrom } from "../../lib/field-errors";
 import { reaisToCentsPositive } from "../../lib/money";
 import type { CategoryDto } from "./types";
@@ -15,6 +28,7 @@ interface UpdateTxPayload {
   amountCents?: number;
   accountId?: string;
   creditCardId?: string;
+  tagNames?: string[];
 }
 
 /** Edits description/category/date/amount/account-cartão for an existing
@@ -56,6 +70,7 @@ export function EditTransactionDialog({
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [tagNames, setTagNames] = useState<string[]>([]);
   // "acc:<id>" | "card:<id>" — same convention as NewTransactionDialog's
   // sourceValue, so a Select can offer both lists as one flat option set.
   const [sourceValue, setSourceValue] = useState<string | null>(null);
@@ -74,6 +89,7 @@ export function EditTransactionDialog({
     setAmount((tx.amountCents / 100).toFixed(2).replace(".", ","));
     setDate(tx.transactionDate.slice(0, 10));
     setCategoryId(tx.categoryId);
+    setTagNames(tx.tags.map((t) => t.name));
     setSourceValue(
       tx.accountId
         ? `acc:${tx.accountId}`
@@ -111,6 +127,17 @@ export function EditTransactionDialog({
     queryFn: () => apiFetchJson<CategoryDto[]>("/categories"),
     enabled: tx !== null,
   });
+  const tagsQuery = useQuery({
+    queryKey: ["tags"],
+    queryFn: () => apiFetchJson<TagDto[]>("/tags"),
+    enabled: tx !== null,
+  });
+  const tagSuggestions = (tagsQuery.data ?? []).map((t) => t.name);
+  // Same server-side gap NewTransactionDialog already works around: tags
+  // only apply to a plain manual income/expense row — a transfer leg or an
+  // installment row's PATCH never reaches the tag-writing branch
+  // (apps/api/src/transactions/routes.ts).
+  const showTags = tx ? !tx.transferPairId && !tx.installmentGroupId : false;
 
   const categoryOptions = useMemo(
     () =>
@@ -245,6 +272,7 @@ export function EditTransactionDialog({
       amountCents: cents,
       ...(prefix === "acc" ? { accountId: targetId as string } : {}),
       ...(prefix === "card" ? { creditCardId: targetId as string } : {}),
+      ...(showTags ? { tagNames } : {}),
     });
   }
 
@@ -292,6 +320,14 @@ export function EditTransactionDialog({
           placeholder="Sem categoria"
           error={fieldErrors.categoryId}
         />
+        {showTags ? (
+          <TagInput
+            label="Tags"
+            value={tagNames}
+            onChange={setTagNames}
+            suggestions={tagSuggestions}
+          />
+        ) : null}
         {formError ? (
           <Alert variant="error" layout="inline" title={formError} />
         ) : null}
