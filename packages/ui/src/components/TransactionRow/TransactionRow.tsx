@@ -26,6 +26,13 @@ interface TransactionRowCommon {
   categoryName?: string;
   /** Category's `colorToken` (a CSS custom-property name, e.g. `"--lr-petrol-600"`) — paints a left accent border. Absent → no border. Suppressed on dashed (scheduled/recurringPreview) cards: the estimate treatment always wins, never two border signals competing. */
   categoryColorToken?: string;
+  /** Which specific account/card this ran on, e.g. "Nubank · Conta" or
+   * "Inter · Cartão" — the one thing the collapsed row can't already show:
+   * the institution mark's badge signals conta-vs-cartão at a glance, but
+   * not *which* account when the user holds more than one at the same
+   * institution. Shown in the expanded detail. Absent → that detail block
+   * is skipped rather than shown empty. */
+  accountLabel?: string;
   /** Whether this row is expanded to show details. */
   expanded?: boolean;
   /** Fired when the user clicks the chevron to toggle expand. */
@@ -331,13 +338,14 @@ export function TransactionRow(props: TransactionRowProps) {
           {isInstallment ? (
             // biome-ignore lint/style/noNonNullAssertion: isInstallment guard guarantees installment is defined
             <InstallmentDetails installment={props.installment!} />
-          ) : (
+          ) : props.accountLabel ? (
             <div className="mt-3 border-t border-[var(--lr-border)] pt-3">
-              <Body muted className="text-[.8125rem]">
-                {formatDate(props.date)}
+              <p className="lr-label mb-1">Origem</p>
+              <Body as="span" className="text-[.8125rem]">
+                {props.accountLabel}
               </Body>
             </div>
-          )}
+          ) : null}
 
           <div className="mt-3 flex justify-end gap-2 border-t border-[var(--lr-border)] pt-3">
             {props.onDelete ? (
