@@ -39,9 +39,18 @@ async function seedAdminUser() {
 }
 
 // Categorias de sistema (userId nulo, read-only, ARQUITETURA.md §6.5).
-// colorToken usa a paleta real de brand/tokens/harmon-tokens.css (famílias
-// blue/clay/sage/sand) — sem clichê financeiro nos ícones (nome de ícone
-// lucide-style, resolvido pela UI).
+// colorToken usa a paleta atual de brand/tokens/lurem-tokens.css (famílias
+// petrol/gold/night/negative) — sem clichê financeiro nos ícones (nome de
+// ícone lucide-style, resolvido pela UI).
+//
+// Migrado de --hm-* (Harmon, pré-rebrand) conforme
+// docs/superpowers/plans/2026-08-02-lurem-rebrand.md §"tabela de
+// correspondência": sage→petrol, sand→gold, ink→night (1:1 pelo número),
+// clay→família --lr-negative-* (clay-100→negative-100, clay-500→negative-500,
+// clay-650→negative-on-tint, clay-600→negative). `blue` era um mapeamento em
+// aberto no rebrand ("undecided product question") — resolvido para este uso
+// (cor de categoria) como blue→petrol, mesma família já usada para "estado
+// selecionado" no resto do app (transaction-card redesign, 2026-08).
 const SYSTEM_CATEGORIES: Array<{
   name: string;
   kind: "income" | "expense";
@@ -52,92 +61,92 @@ const SYSTEM_CATEGORIES: Array<{
     name: "Salário",
     kind: "income",
     icon: "hm-cat-renda",
-    colorToken: "--hm-sage-600",
+    colorToken: "--lr-petrol-600",
   },
   {
     name: "Freelance e extras",
     kind: "income",
     icon: "hm-cat-renda",
-    colorToken: "--hm-sage-500",
+    colorToken: "--lr-petrol-500",
   },
   {
     name: "Investimentos",
     kind: "income",
     icon: "trending-up",
-    colorToken: "--hm-blue-600",
+    colorToken: "--lr-petrol-600",
   },
   {
     name: "Reembolso",
     kind: "income",
     icon: "hm-cat-renda",
-    colorToken: "--hm-blue-500",
+    colorToken: "--lr-petrol-500",
   },
   {
     name: "Outras receitas",
     kind: "income",
     icon: "plus-circle",
-    colorToken: "--hm-sand-500",
+    colorToken: "--lr-gold-500",
   },
 
   {
     name: "Moradia",
     kind: "expense",
     icon: "hm-cat-moradia",
-    colorToken: "--hm-clay-600",
+    colorToken: "--lr-negative",
   },
   {
     name: "Alimentação",
     kind: "expense",
     icon: "hm-cat-alimentacao",
-    colorToken: "--hm-clay-500",
+    colorToken: "--lr-negative-500",
   },
   {
     name: "Transporte",
     kind: "expense",
     icon: "hm-cat-transporte",
-    colorToken: "--hm-clay-100",
+    colorToken: "--lr-negative-100",
   },
   {
     name: "Saúde",
     kind: "expense",
     icon: "hm-cat-saude",
-    colorToken: "--hm-blue-700",
+    colorToken: "--lr-petrol-700",
   },
   {
     name: "Lazer",
     kind: "expense",
     icon: "hm-cat-lazer",
-    colorToken: "--hm-sand-600",
+    colorToken: "--lr-gold-600",
   },
   {
     name: "Compras",
     kind: "expense",
     icon: "hm-cat-compras",
-    colorToken: "--hm-sand-500",
+    colorToken: "--lr-gold-500",
   },
   {
     name: "Assinaturas",
     kind: "expense",
     icon: "hm-cat-assinaturas",
-    colorToken: "--hm-blue-300",
+    colorToken: "--lr-petrol-300",
   },
   {
     name: "Educação",
     kind: "expense",
     icon: "graduation-cap",
-    colorToken: "--hm-sage-700",
+    colorToken: "--lr-petrol-700",
   },
   {
     name: "Cuidados pessoais",
     kind: "expense",
     icon: "hm-cat-saude",
-    colorToken: "--hm-clay-650",
+    colorToken: "--lr-negative-on-tint",
   },
   {
     name: "Outras despesas",
     kind: "expense",
     icon: "more-horizontal",
-    colorToken: "--hm-ink-500",
+    colorToken: "--lr-night-500",
   },
 ];
 

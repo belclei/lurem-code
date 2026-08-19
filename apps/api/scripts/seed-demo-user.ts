@@ -72,14 +72,14 @@ async function main(): Promise<void> {
           name: "Mercado",
           kind: "expense",
           icon: "cart",
-          colorToken: "--hm-clay-500",
+          colorToken: "--lr-negative-500",
         },
         {
           userId: user.id,
           name: "Salário",
           kind: "income",
           icon: "wallet",
-          colorToken: "--hm-sage-500",
+          colorToken: "--lr-petrol-500",
         },
       ],
     });

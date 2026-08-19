@@ -29,6 +29,8 @@ export function transactionRowProps(
   expandedTransactions: Set<string>,
   onToggleExpand: (id: string) => void,
   onEditTransaction: (tx: TransactionDto) => void,
+  selectedTransactionIds: Set<string>,
+  onToggleSelect: (id: string) => void,
 ) {
   const category = tx.categoryId
     ? categoriesById.get(tx.categoryId)
@@ -45,6 +47,7 @@ export function transactionRowProps(
       name={institution || "Conta"}
       tone={account.type === "cash" ? "gold" : "petrol"}
       size="sm"
+      kind="account"
     />
   ) : card ? (
     <InstitutionMark
@@ -52,6 +55,7 @@ export function transactionRowProps(
       name={institution || "Cartão"}
       tone="petrol"
       size="sm"
+      kind="card"
     />
   ) : undefined;
 
@@ -89,8 +93,11 @@ export function transactionRowProps(
     institutionMark,
     categoryEmoji,
     categoryName: category?.name,
+    categoryColorToken: category?.colorToken,
     expanded: expandedTransactions.has(tx.id),
     onToggleExpand: () => onToggleExpand(tx.id),
+    selected: selectedTransactionIds.has(tx.id),
+    onToggleSelect: () => onToggleSelect(tx.id),
   };
 
   if (tx.isScheduled) {

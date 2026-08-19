@@ -38,6 +38,7 @@ import type {
   PendingRecurringDto,
   TimelinePageDto,
   TransactionDto,
+  TxKind,
 } from "../auth/types";
 import {
   deserializeDate,
@@ -58,6 +59,7 @@ import { ImportTransactionsDialog } from "./timeline/ImportTransactionsDialog";
 import { NewAccountDialog } from "./timeline/NewAccountDialog";
 import { NewCardDialog } from "./timeline/NewCardDialog";
 import { NewTransactionDialog } from "./timeline/NewTransactionDialog";
+import { SelectionSummaryBar } from "./timeline/SelectionSummaryBar";
 import { TimelineActivationSection } from "./timeline/TimelineActivationSection";
 import { TimelineFeed } from "./timeline/TimelineFeed";
 import { TimelineFilterBar } from "./timeline/TimelineFilterBar";
@@ -123,6 +125,46 @@ export function TimelinePage() {
   const [expandedTransactions, setExpandedTransactions] = useState<Set<string>>(
     new Set(),
   );
+  // Manual-sum selection (transaction-card redesign, 2026-08): real
+  // transactions are looked up live from `days` by id (so editing a
+  // selected row's amount updates the sum for free) — recurringPreview
+  // items are synthetic (a `recurring.occurrence_upcoming` event payload,
+  // not a real `Transaction`, keyed by the event's own id, not a
+  // transaction id) and have nothing to look up later, so their
+  // kind/amount are snapshotted at the moment of selection instead.
+  const [selectedTransactionIds, setSelectedTransactionIds] = useState<
+    Set<string>
+  >(new Set());
+  const [selectedRecurringPreviews, setSelectedRecurringPreviews] = useState<
+    Map<string, { kind: TxKind; amountCents: number }>
+  >(new Map());
+
+  function toggleSelectTransaction(id: string) {
+    setSelectedTransactionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectRecurringPreview(
+    id: string,
+    kind: TxKind,
+    amountCents: number,
+  ) {
+    setSelectedRecurringPreviews((prev) => {
+      const next = new Map(prev);
+      if (next.has(id)) next.delete(id);
+      else next.set(id, { kind, amountCents });
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedTransactionIds(new Set());
+    setSelectedRecurringPreviews(new Map());
+  }
   // Task 18/19 (§5b/§5c) — the transaction currently open in
   // EditTransactionDialog; null means closed.
   const [editingTx, setEditingTx] = useState<TransactionDto | null>(null);
@@ -186,18 +228,32 @@ export function TimelinePage() {
   const skipMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/transactions/${id}/skip`, { method: "POST" }),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       invalidateTimeline();
       queryClient.invalidateQueries({ queryKey: ["recurring"] });
+      setSelectedTransactionIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     },
   });
   const deleteMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/transactions/${id}`, { method: "DELETE" }),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       invalidateTimeline();
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       queryClient.invalidateQueries({ queryKey: ["insights"] });
+      // Selected transaction just got deleted from under the selection —
+      // drop it so the summary bar doesn't sum a ghost id.
+      setSelectedTransactionIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     },
   });
 
@@ -481,7 +537,7 @@ export function TimelinePage() {
             }}
           />
           <EditTransactionDialog
-            key={editingTx?.id ?? "closed"}
+            key={editingTx?.id ?? "edit-tx-closed"}
             tx={editingTx}
             accounts={accountsQuery.data ?? []}
             cards={cardsQuery.data ?? []}
@@ -523,7 +579,7 @@ export function TimelinePage() {
           ) : null}
 
           <NewAccountDialog
-            key={accountDialogOpen ? "open" : "closed"}
+            key={accountDialogOpen ? "new-account-open" : "new-account-closed"}
             open={accountDialogOpen}
             onClose={() => setAccountDialogOpen(false)}
             institutions={institutionsQuery.data ?? []}
@@ -533,7 +589,7 @@ export function TimelinePage() {
             }}
           />
           <NewCardDialog
-            key={cardDialogOpen ? "open" : "closed"}
+            key={cardDialogOpen ? "new-card-open" : "new-card-closed"}
             open={cardDialogOpen}
             onClose={() => setCardDialogOpen(false)}
             institutions={institutionsQuery.data ?? []}
@@ -544,7 +600,7 @@ export function TimelinePage() {
             }}
           />
           <EditAccountDialog
-            key={editingAccount?.id ?? "closed"}
+            key={editingAccount?.id ?? "edit-account-closed"}
             account={editingAccount}
             institutions={institutionsQuery.data ?? []}
             onClose={() => setEditingAccount(null)}
@@ -554,7 +610,7 @@ export function TimelinePage() {
             }}
           />
           <EditCardDialog
-            key={editingCard?.id ?? "closed"}
+            key={editingCard?.id ?? "edit-card-closed"}
             card={editingCard}
             accounts={accountsQuery.data ?? []}
             institutions={institutionsQuery.data ?? []}
@@ -634,6 +690,12 @@ export function TimelinePage() {
             cardsById={cardsById}
             expandedTransactions={expandedTransactions}
             onToggleExpandTransaction={toggleExpandTransaction}
+            selectedTransactionIds={selectedTransactionIds}
+            onToggleSelectTransaction={toggleSelectTransaction}
+            selectedRecurringPreviewIds={
+              new Set(selectedRecurringPreviews.keys())
+            }
+            onToggleSelectRecurringPreview={toggleSelectRecurringPreview}
             onEditTransaction={(t) => setEditingTx(t)}
             onEditAccount={(a) => setEditingAccount(a)}
             onEditCard={(c) => setEditingCard(c)}
@@ -660,6 +722,13 @@ export function TimelinePage() {
           />
         </aside>
       </div>
+
+      <SelectionSummaryBar
+        days={days}
+        selectedTransactionIds={selectedTransactionIds}
+        selectedRecurringPreviews={selectedRecurringPreviews}
+        onClear={clearSelection}
+      />
     </div>
   );
 }

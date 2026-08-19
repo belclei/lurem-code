@@ -6,7 +6,7 @@ import { Body } from "../Typography/Body";
 import { Mono } from "../Typography/Mono";
 import { formatDate } from "../shared/formatDate";
 import { formatMoney } from "../shared/formatMoney";
-import { ChevronDownIcon } from "../shared/icons";
+import { CheckIcon, ChevronDownIcon } from "../shared/icons";
 
 export type TransactionKind = "income" | "expense" | "transfer";
 export type TransactionSource = "manual" | "import";
@@ -24,9 +24,11 @@ interface TransactionRowCommon {
   /** Category emoji + name for the second line. */
   categoryEmoji?: string;
   categoryName?: string;
+  /** Category's `colorToken` (a CSS custom-property name, e.g. `"--lr-petrol-600"`) — paints a left accent border. Absent → no border. Suppressed on dashed (scheduled/recurringPreview) cards: the estimate treatment always wins, never two border signals competing. */
+  categoryColorToken?: string;
   /** Whether this row is expanded to show details. */
   expanded?: boolean;
-  /** Fired when the user clicks the chevron or the whole card to toggle expand. */
+  /** Fired when the user clicks the chevron to toggle expand. */
   onToggleExpand?: () => void;
   /** Scheduled-only: fired when the user clicks Confirmar. */
   onConfirm?: () => void;
@@ -34,8 +36,16 @@ interface TransactionRowCommon {
   onEdit?: () => void;
   /** Called when the user clicks Apagar — except recurringPreview (no button). */
   onDelete?: () => void;
-  /** Used only by recurringPreview: fired when clicking the entire card to manage the series. */
-  onClick?: () => void;
+  /**
+   * Fired when the user clicks anywhere on the card that isn't one of its
+   * own buttons (chevron/Editar/Apagar/Confirmar/Gerenciar) — the whole card
+   * toggles selection, every variant, the same way. Absent → the row isn't
+   * selectable (e.g. transfer legs, rendered by a different component
+   * entirely, never reach this prop).
+   */
+  onToggleSelect?: () => void;
+  /** Whether this row is currently selected (transaction-card redesign, 2026-08 — selection is used for a manual sum, not an official calculated value). */
+  selected?: boolean;
 }
 
 export interface InstallmentDetail {
@@ -61,9 +71,10 @@ export type TransactionRowProps =
       isScheduled?: boolean;
     })
   | (TransactionRowCommon & {
-      /** Pure preview of a future recurring occurrence — no expansion, no actions, click through to series. */
+      /** Pure preview of a future recurring occurrence — no expansion, no actions/edit/delete. */
       variant: "recurringPreview";
-      onClick: () => void;
+      /** Opens series management — a dedicated button, not the whole-card click (that's reserved for selection, same as every other variant). */
+      onManage: () => void;
       isScheduled?: never;
       onToggleExpand?: never;
       expanded?: never;
@@ -101,6 +112,24 @@ function RowHeader(props: TransactionRowProps) {
 
   return (
     <div className="flex items-center gap-3">
+      {props.onToggleSelect ? (
+        <span
+          aria-hidden="true"
+          className={[
+            "flex h-5 w-5 flex-none items-center justify-center rounded-[var(--lr-r-sm)] border transition-colors duration-150",
+            props.selected
+              ? "border-[var(--lr-night-900)] bg-[var(--lr-night-900)] dark:border-[var(--lr-night-700)] dark:bg-[var(--lr-night-700)]"
+              : "border-[var(--lr-night-300)] bg-[var(--lr-surface)]",
+          ].join(" ")}
+        >
+          {props.selected ? (
+            <CheckIcon
+              strokeWidth={3}
+              className="h-3 w-3 text-[var(--lr-ivory-000)]"
+            />
+          ) : null}
+        </span>
+      ) : null}
       {props.institutionMark ? (
         <span aria-hidden="true" className="flex-none">
           {props.institutionMark}
@@ -156,7 +185,19 @@ function RowHeader(props: TransactionRowProps) {
           {KIND_SIGN[props.kind]}
           {formatMoney(props.amountCents)}
         </Mono>
-        {!isRecurringPreview ? (
+        {props.variant === "recurringPreview" ? (
+          <Button
+            variant="link"
+            size="sm"
+            className="flex-none"
+            onClick={(event) => {
+              event.stopPropagation();
+              props.onManage();
+            }}
+          >
+            Gerenciar
+          </Button>
+        ) : (
           <button
             type="button"
             aria-label={
@@ -175,7 +216,7 @@ function RowHeader(props: TransactionRowProps) {
               ].join(" ")}
             />
           </button>
-        ) : null}
+        )}
       </div>
     </div>
   );
@@ -259,12 +300,29 @@ export function TransactionRow(props: TransactionRowProps) {
   const isRecurringPreview = props.variant === "recurringPreview";
   const isInstallment = props.variant === "installment" && props.installment;
   const isScheduled = props.variant === "scheduled" || props.isScheduled;
+  const isDashed = isScheduled || isRecurringPreview;
 
   return (
     <Card
-      interactive={isRecurringPreview}
-      onClick={isRecurringPreview ? props.onClick : undefined}
-      dashed={isScheduled || isRecurringPreview}
+      interactive={Boolean(props.onToggleSelect)}
+      onClick={props.onToggleSelect}
+      // No aria-label here on purpose: an aria-label would replace the
+      // card's accessible name outright, so a screen reader would announce
+      // just "toggle selection" instead of the transaction's own
+      // description/amount. aria-pressed alone conveys the toggle state on
+      // top of the card's own text content.
+      aria-pressed={props.onToggleSelect ? Boolean(props.selected) : undefined}
+      dashed={isDashed}
+      // Estimate treatment (dashed border) always wins over category color —
+      // never two border signals competing on the same edge.
+      style={
+        !isDashed && props.categoryColorToken
+          ? {
+              borderLeftColor: `var(${props.categoryColorToken})`,
+              borderLeftWidth: "3px",
+            }
+          : undefined
+      }
     >
       <RowHeader {...props} />
 
@@ -287,18 +345,35 @@ export function TransactionRow(props: TransactionRowProps) {
                 variant="danger"
                 size="sm"
                 className="mr-auto"
-                onClick={props.onDelete}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  props.onDelete?.();
+                }}
               >
                 Apagar
               </Button>
             ) : null}
             {props.onEdit ? (
-              <Button variant="secondary" size="sm" onClick={props.onEdit}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  props.onEdit?.();
+                }}
+              >
                 Editar
               </Button>
             ) : null}
             {isScheduled && props.onConfirm ? (
-              <Button variant="primary" size="sm" onClick={props.onConfirm}>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  props.onConfirm?.();
+                }}
+              >
                 Confirmar
               </Button>
             ) : null}
