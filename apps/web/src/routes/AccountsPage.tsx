@@ -9,7 +9,9 @@ import {
   AccountCard,
   Alert,
   Button,
+  ChevronDownIcon,
   CreditCardCard,
+  EmptyState,
   Toast,
   formatMoney,
 } from "@lurem/ui";
@@ -53,6 +55,11 @@ export function AccountsPage() {
   const [editingAccount, setEditingAccount] = useState<AccountDto | null>(null);
   const [editingCard, setEditingCard] = useState<CardDto | null>(null);
   const [archiveUndo, setArchiveUndo] = useState<ArchiveUndo | null>(null);
+  // Backlog achado 2.3 P1: arquivados sempre inline dobrava o tamanho da
+  // tela pra quem tem histórico — escondidos por padrão, atrás de um
+  // disclosure, igual ao resto do app trata "coisas inativas/secundárias".
+  const [showArchivedAccounts, setShowArchivedAccounts] = useState(false);
+  const [showArchivedCards, setShowArchivedCards] = useState(false);
   const archiveUndoTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
@@ -245,6 +252,18 @@ export function AccountsPage() {
             title="Não foi possível carregar suas contas."
           />
         ) : null}
+        {accountsQuery.data && activeAccounts.length === 0 ? (
+          <EmptyState
+            title="Nenhuma conta ainda"
+            description="Cadastre sua carteira, conta corrente ou poupança."
+            actions={[
+              {
+                label: "Adicionar conta",
+                onClick: () => setAccountDialogOpen(true),
+              },
+            ]}
+          />
+        ) : null}
         {accountsQuery.data ? (
           <div className="grid gap-3">
             {activeAccounts.map((account) => (
@@ -265,43 +284,56 @@ export function AccountsPage() {
         ) : null}
         {archivedAccounts.length > 0 ? (
           <div className="mt-6">
-            <h3 className="mb-3 text-[.6875rem] tracking-[.16em] text-[var(--lr-text-secondary)] uppercase">
-              Arquivados
-            </h3>
-            <div className="grid gap-3">
-              {archivedAccounts.map((account) => (
-                <div key={account.id} className="flex flex-col gap-1.5">
-                  <div className="opacity-60">
-                    <AccountCard
-                      institutionName={account.institutionName}
-                      logoUrl={account.logoUrl}
-                      name={account.name}
-                      type={account.type}
-                      balanceCents={account.balanceCents}
-                      overdraftLimitCents={account.overdraftLimitCents}
-                      isActive={account.isActive}
-                      overLimit={account.isOverLimit}
-                      onClick={() => setEditingAccount(account)}
-                    />
+            <button
+              type="button"
+              onClick={() => setShowArchivedAccounts((v) => !v)}
+              aria-expanded={showArchivedAccounts}
+              className="mb-3 flex items-center gap-1.5 text-[.6875rem] tracking-[.16em] text-[var(--lr-text-secondary)] uppercase"
+            >
+              Arquivados ({archivedAccounts.length})
+              <ChevronDownIcon
+                className={[
+                  "h-3.5 w-3.5 transition-transform duration-150",
+                  showArchivedAccounts ? "rotate-180" : "",
+                ].join(" ")}
+              />
+            </button>
+            {showArchivedAccounts ? (
+              <div className="grid gap-3">
+                {archivedAccounts.map((account) => (
+                  <div key={account.id} className="flex flex-col gap-1.5">
+                    <div className="opacity-60">
+                      <AccountCard
+                        institutionName={account.institutionName}
+                        logoUrl={account.logoUrl}
+                        name={account.name}
+                        type={account.type}
+                        balanceCents={account.balanceCents}
+                        overdraftLimitCents={account.overdraftLimitCents}
+                        isActive={account.isActive}
+                        overLimit={account.isOverLimit}
+                        onClick={() => setEditingAccount(account)}
+                      />
+                    </div>
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        loading={
+                          unarchiveAccountMutation.isPending &&
+                          unarchiveAccountMutation.variables === account.id
+                        }
+                        onClick={() =>
+                          unarchiveAccountMutation.mutate(account.id)
+                        }
+                      >
+                        Desarquivar
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex justify-end">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      loading={
-                        unarchiveAccountMutation.isPending &&
-                        unarchiveAccountMutation.variables === account.id
-                      }
-                      onClick={() =>
-                        unarchiveAccountMutation.mutate(account.id)
-                      }
-                    >
-                      Desarquivar
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </section>
@@ -318,6 +350,18 @@ export function AccountsPage() {
             variant="error"
             layout="inline"
             title="Não foi possível carregar seus cartões."
+          />
+        ) : null}
+        {cardsQuery.data && activeCards.length === 0 ? (
+          <EmptyState
+            title="Nenhum cartão ainda"
+            description="Cadastre seu cartão de crédito."
+            actions={[
+              {
+                label: "Adicionar cartão",
+                onClick: () => setCardDialogOpen(true),
+              },
+            ]}
           />
         ) : null}
         {cardsQuery.data ? (
@@ -345,45 +389,58 @@ export function AccountsPage() {
         ) : null}
         {archivedCards.length > 0 ? (
           <div className="mt-6">
-            <h3 className="mb-3 text-[.6875rem] tracking-[.16em] text-[var(--lr-text-secondary)] uppercase">
-              Arquivados
-            </h3>
-            <div className="grid gap-3">
-              {archivedCards.map((card) => (
-                <div key={card.id} className="flex flex-col gap-1.5">
-                  <div className="opacity-60">
-                    <CreditCardCard
-                      institutionName={card.institutionName}
-                      logoUrl={card.logoUrl}
-                      name={card.name}
-                      usedCents={card.usedCents}
-                      limitCents={card.limitCents}
-                      invoiceStatus={card.invoiceStatus}
-                      closingDay={card.closingDay}
-                      dueDay={card.dueDay}
-                      autoDebitAccountLabel={resolveAutoDebitLabel(
-                        card,
-                        accountsById,
-                      )}
-                      onClick={() => setEditingCard(card)}
-                    />
+            <button
+              type="button"
+              onClick={() => setShowArchivedCards((v) => !v)}
+              aria-expanded={showArchivedCards}
+              className="mb-3 flex items-center gap-1.5 text-[.6875rem] tracking-[.16em] text-[var(--lr-text-secondary)] uppercase"
+            >
+              Arquivados ({archivedCards.length})
+              <ChevronDownIcon
+                className={[
+                  "h-3.5 w-3.5 transition-transform duration-150",
+                  showArchivedCards ? "rotate-180" : "",
+                ].join(" ")}
+              />
+            </button>
+            {showArchivedCards ? (
+              <div className="grid gap-3">
+                {archivedCards.map((card) => (
+                  <div key={card.id} className="flex flex-col gap-1.5">
+                    <div className="opacity-60">
+                      <CreditCardCard
+                        institutionName={card.institutionName}
+                        logoUrl={card.logoUrl}
+                        name={card.name}
+                        usedCents={card.usedCents}
+                        limitCents={card.limitCents}
+                        invoiceStatus={card.invoiceStatus}
+                        closingDay={card.closingDay}
+                        dueDay={card.dueDay}
+                        autoDebitAccountLabel={resolveAutoDebitLabel(
+                          card,
+                          accountsById,
+                        )}
+                        onClick={() => setEditingCard(card)}
+                      />
+                    </div>
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        loading={
+                          unarchiveCardMutation.isPending &&
+                          unarchiveCardMutation.variables === card.id
+                        }
+                        onClick={() => unarchiveCardMutation.mutate(card.id)}
+                      >
+                        Desarquivar
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex justify-end">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      loading={
-                        unarchiveCardMutation.isPending &&
-                        unarchiveCardMutation.variables === card.id
-                      }
-                      onClick={() => unarchiveCardMutation.mutate(card.id)}
-                    >
-                      Desarquivar
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </section>

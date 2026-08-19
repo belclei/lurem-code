@@ -303,6 +303,7 @@ export function TransactionsPage() {
           ]}
         />
         <Input
+          id="tx-description-input"
           label={kind === "transfer" ? "Descrição (opcional)" : "Descrição"}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -380,6 +381,13 @@ export function TransactionsPage() {
           <EmptyState
             title="Nenhuma transação ainda"
             description="Registre seu primeiro lançamento no formulário acima."
+            actions={[
+              {
+                label: "Registrar transação",
+                onClick: () =>
+                  document.getElementById("tx-description-input")?.focus(),
+              },
+            ]}
           />
         ) : null}
         <div className="flex flex-col gap-2">

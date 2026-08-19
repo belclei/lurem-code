@@ -121,6 +121,13 @@ export function ImportPage() {
         <EmptyState
           title="Nenhuma importação ainda"
           description="Suas faturas e extratos importados aparecem aqui."
+          actions={[
+            {
+              label: "Importar um PDF",
+              onClick: () =>
+                document.getElementById("import-file-input")?.click(),
+            },
+          ]}
         />
       ) : (
         <div className="flex flex-col gap-2">
