@@ -41,6 +41,15 @@ export function transactionRowProps(
   const card = tx.creditCardId ? cardsById.get(tx.creditCardId) : undefined;
   const institution = account?.institutionName || card?.institutionName;
 
+  // The row's expanded detail: *which* account/card, not just the
+  // institution — the badge on institutionMark already signals conta vs.
+  // cartão, but not which one when the same institution has both.
+  const accountLabel = account
+    ? `${account.name || institution || "Conta"} · Conta`
+    : card
+      ? `${card.name || institution || "Cartão"} · Cartão`
+      : undefined;
+
   const institutionMark = account ? (
     <InstitutionMark
       logoUrl={account.logoUrl}
@@ -94,6 +103,7 @@ export function transactionRowProps(
     categoryEmoji,
     categoryName: category?.name,
     categoryColorToken: category?.colorToken,
+    accountLabel,
     expanded: expandedTransactions.has(tx.id),
     onToggleExpand: () => onToggleExpand(tx.id),
     selected: selectedTransactionIds.has(tx.id),
