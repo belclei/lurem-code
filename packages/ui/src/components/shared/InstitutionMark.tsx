@@ -1,5 +1,6 @@
 export type InstitutionMarkTone = "petrol" | "gold";
 export type InstitutionMarkSize = "sm" | "md";
+export type InstitutionMarkKind = "account" | "card";
 
 export interface InstitutionMarkProps {
   /** Logo image URL — absent renders the initial-in-brand-color fallback (same rule as AccountCard's own institution mark, §6.4). */
@@ -10,12 +11,29 @@ export interface InstitutionMarkProps {
   tone?: InstitutionMarkTone;
   /** `sm` (28px, `.hmc-inst--sm` in the design handoff) for inline rows — TransferPairCard's account legs, the Timeline aside's per-account rows. `md` (48px, the default) matches AccountCard's own square. */
   size?: InstitutionMarkSize;
+  /**
+   * Shape-only distinction between a bank account and a credit card — never
+   * color, since petrol/gold are already reserved for other meanings
+   * (transaction-card redesign, 2026-08). `"card"` swaps the square box for
+   * a landscape one (credit-card-shaped); `"account"` (default) keeps the
+   * square, unchanged from before this prop existed.
+   */
+  kind?: InstitutionMarkKind;
   className?: string;
 }
 
 const SIZE_BOX_CLASSES: Record<InstitutionMarkSize, string> = {
   sm: "h-7 w-7",
   md: "h-12 w-12",
+};
+
+/** Only `sm` gets a card shape today — `md` is AccountCard/CreditCardCard's
+ * own square context, which has its own local (unrelated) InstitutionMark
+ * and never passes `kind`. Landscape box, same area as the `sm` square
+ * (~700px²) so a card row doesn't visibly grow next to an account row —
+ * only the proportion changes. */
+const CARD_SIZE_BOX_CLASSES: Partial<Record<InstitutionMarkSize, string>> = {
+  sm: "h-[22px] w-8",
 };
 
 const SIZE_TEXT_CLASSES: Record<InstitutionMarkSize, string> = {
@@ -67,38 +85,58 @@ export function InstitutionMark({
   name,
   tone = "petrol",
   size = "md",
+  kind,
   className = "",
 }: InstitutionMarkProps) {
+  const boxClass =
+    kind === "card"
+      ? (CARD_SIZE_BOX_CLASSES[size] ?? SIZE_BOX_CLASSES[size])
+      : SIZE_BOX_CLASSES[size];
+  // Decorative-only shape cue (aria-hidden below) — screen-reader users get
+  // the same conta/cartão fact through this text instead. Only rendered
+  // when a caller explicitly passes `kind`: call sites that don't (e.g.
+  // TransferPairCard's legs, the Timeline aside's account list) haven't
+  // been taught which one applies here, and asserting "Conta" by default
+  // would be wrong for a card leg — silence beats a confident lie.
+  const kindLabel =
+    kind === "card" ? "Cartão" : kind === "account" ? "Conta" : undefined;
+
   if (logoUrl) {
     return (
-      <img
-        src={logoUrl}
-        alt=""
-        aria-hidden="true"
-        className={[
-          "flex-none rounded-[var(--lr-r-md)] object-contain",
-          SIZE_BOX_CLASSES[size],
-          className,
-        ].join(" ")}
-      />
+      <span className="relative inline-flex flex-none">
+        <img
+          src={logoUrl}
+          alt=""
+          aria-hidden="true"
+          className={[
+            "flex-none rounded-[var(--lr-r-md)] object-contain",
+            boxClass,
+            className,
+          ].join(" ")}
+        />
+        {kindLabel ? <span className="sr-only">{kindLabel}</span> : null}
+      </span>
     );
   }
   return (
-    <span
-      aria-hidden="true"
-      className={[
-        "flex flex-none items-center justify-center rounded-[var(--lr-r-md)] font-bold",
-        SIZE_BOX_CLASSES[size],
-        SIZE_TEXT_CLASSES[size],
-        TONE_CLASSES[tone],
-        className,
-      ].join(" ")}
-    >
-      {tone === "gold" ? (
-        <CashIcon size={size} />
-      ) : (
-        name.charAt(0).toUpperCase()
-      )}
+    <span className="relative inline-flex flex-none">
+      <span
+        aria-hidden="true"
+        className={[
+          "flex flex-none items-center justify-center rounded-[var(--lr-r-md)] font-bold",
+          boxClass,
+          SIZE_TEXT_CLASSES[size],
+          TONE_CLASSES[tone],
+          className,
+        ].join(" ")}
+      >
+        {tone === "gold" ? (
+          <CashIcon size={size} />
+        ) : (
+          name.charAt(0).toUpperCase()
+        )}
+      </span>
+      {kindLabel ? <span className="sr-only">{kindLabel}</span> : null}
     </span>
   );
 }

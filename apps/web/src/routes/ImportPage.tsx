@@ -93,7 +93,7 @@ export function ImportPage() {
       </div>
 
       <NewAccountDialog
-        key={accountDialogOpen ? "open" : "closed"}
+        key={accountDialogOpen ? "new-account-open" : "new-account-closed"}
         open={accountDialogOpen}
         onClose={() => setAccountDialogOpen(false)}
         institutions={institutionsQuery.data ?? []}
@@ -103,7 +103,7 @@ export function ImportPage() {
         }}
       />
       <NewCardDialog
-        key={cardDialogOpen ? "open" : "closed"}
+        key={cardDialogOpen ? "new-card-open" : "new-card-closed"}
         open={cardDialogOpen}
         onClose={() => setCardDialogOpen(false)}
         institutions={institutionsQuery.data ?? []}

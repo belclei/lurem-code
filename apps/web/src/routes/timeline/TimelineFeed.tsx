@@ -17,6 +17,7 @@ import type {
   ImportedDocumentDto,
   TimelineDayDto,
   TransactionDto,
+  TxKind,
 } from "../../auth/types";
 import { TimelineRailDot, TimelineRailLine } from "./TimelineRail";
 import {
@@ -60,6 +61,14 @@ export interface TimelineFeedProps {
   cardsById: Map<string, CardDto>;
   expandedTransactions: Set<string>;
   onToggleExpandTransaction: (id: string) => void;
+  selectedTransactionIds: Set<string>;
+  onToggleSelectTransaction: (id: string) => void;
+  selectedRecurringPreviewIds: Set<string>;
+  onToggleSelectRecurringPreview: (
+    id: string,
+    kind: TxKind,
+    amountCents: number,
+  ) => void;
   onEditTransaction: (tx: TransactionDto) => void;
   onEditAccount: (account: AccountDto) => void;
   onEditCard: (card: CardDto) => void;
@@ -90,6 +99,10 @@ export function TimelineFeed({
   cardsById,
   expandedTransactions,
   onToggleExpandTransaction,
+  selectedTransactionIds,
+  onToggleSelectTransaction,
+  selectedRecurringPreviewIds,
+  onToggleSelectRecurringPreview,
   onEditTransaction,
   onEditAccount,
   onEditCard,
@@ -222,8 +235,16 @@ export function TimelineFeed({
                           kind={payload.kind}
                           amountCents={payload.amountCents}
                           source="manual"
-                          onClick={() =>
+                          onManage={() =>
                             onManageRecurring(payload.recurringTransactionId)
+                          }
+                          selected={selectedRecurringPreviewIds.has(item.id)}
+                          onToggleSelect={() =>
+                            onToggleSelectRecurringPreview(
+                              item.id,
+                              payload.kind,
+                              payload.amountCents,
+                            )
                           }
                         />
                       );
@@ -333,6 +354,8 @@ export function TimelineFeed({
                       expandedTransactions,
                       onToggleExpandTransaction,
                       onEditTransaction,
+                      selectedTransactionIds,
+                      onToggleSelectTransaction,
                     );
                   })}
                 </div>

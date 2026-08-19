@@ -162,14 +162,14 @@ export function AccountsPage() {
       </div>
 
       <NewAccountDialog
-        key={accountDialogOpen ? "open" : "closed"}
+        key={accountDialogOpen ? "new-account-open" : "new-account-closed"}
         open={accountDialogOpen}
         onClose={() => setAccountDialogOpen(false)}
         institutions={institutionsQuery.data ?? []}
         onCreated={invalidateAccounts}
       />
       <NewCardDialog
-        key={cardDialogOpen ? "open" : "closed"}
+        key={cardDialogOpen ? "new-card-open" : "new-card-closed"}
         open={cardDialogOpen}
         onClose={() => setCardDialogOpen(false)}
         institutions={institutionsQuery.data ?? []}
@@ -177,7 +177,7 @@ export function AccountsPage() {
         onCreated={invalidateCards}
       />
       <PayInvoiceDialog
-        key={payingCard?.id ?? "closed"}
+        key={payingCard?.id ?? "paying-card-closed"}
         card={payingCard}
         accounts={accountsQuery.data ?? []}
         onClose={() => setPayingCard(null)}
@@ -187,7 +187,7 @@ export function AccountsPage() {
         }}
       />
       <EditAccountDialog
-        key={editingAccount?.id ?? "closed"}
+        key={editingAccount?.id ?? "edit-account-closed"}
         account={editingAccount}
         institutions={institutionsQuery.data ?? []}
         onClose={() => setEditingAccount(null)}
@@ -205,7 +205,7 @@ export function AccountsPage() {
         onDeleted={invalidateAccounts}
       />
       <EditCardDialog
-        key={editingCard?.id ?? "closed"}
+        key={editingCard?.id ?? "edit-card-closed"}
         card={editingCard}
         accounts={accountsQuery.data ?? []}
         institutions={institutionsQuery.data ?? []}
