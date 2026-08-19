@@ -370,6 +370,199 @@ describe("line review", () => {
   });
 });
 
+describe("description alias", () => {
+  it("learns a friendly name when a confirmed line's description was edited away from the raw text", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    const { documentId, lineId } = await createImportWithOneLine(
+      accessToken,
+      c.id,
+    );
+
+    await server.inject({
+      method: "PATCH",
+      url: `/v1/imports/${documentId}/lines/${lineId}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { description: "Loja A — mercado do bairro" },
+    });
+
+    const alias = await server.prisma.descriptionAlias.findUnique({
+      where: { userId_rawDescription: { userId, rawDescription: "Loja A" } },
+    });
+    expect(alias?.friendlyName).toBe("Loja A — mercado do bairro");
+  });
+
+  it("pre-fills a later line with the learned name while keeping the raw text as originalDescription", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+
+    // First invoice: user renames "AMAZONMKTPLC*MASTERLIN" on confirm.
+    fakeLlmResponse([
+      { description: "AMAZONMKTPLC*MASTERLIN", amountCents: 3000 },
+    ]);
+    const first = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: `hash-${Math.random()}`,
+        text: "...",
+      },
+    });
+    const firstDocumentId = first.json().document.id;
+    const firstLineId = first.json().lines[0].id;
+    await server.inject({
+      method: "PATCH",
+      url: `/v1/imports/${firstDocumentId}/lines/${firstLineId}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { description: "Amazon" },
+    });
+
+    // Second, later invoice: same raw merchant string reappears.
+    fakeLlmResponse([
+      { description: "AMAZONMKTPLC*MASTERLIN", amountCents: 4500 },
+    ]);
+    const second = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: `hash-${Math.random()}`,
+        text: "...",
+      },
+    });
+
+    const line = second.json().lines[0];
+    expect(line.description).toBe("Amazon");
+    expect(line.originalDescription).toBe("AMAZONMKTPLC*MASTERLIN");
+
+    const alias = await server.prisma.descriptionAlias.findUnique({
+      where: {
+        userId_rawDescription: {
+          userId,
+          rawDescription: "AMAZONMKTPLC*MASTERLIN",
+        },
+      },
+    });
+    expect(alias?.friendlyName).toBe("Amazon");
+  });
+});
+
+describe("tags", () => {
+  it("learns a tag when a confirmed line was tagged, and attaches it to the confirmed Transaction", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    const { documentId, lineId } = await createImportWithOneLine(
+      accessToken,
+      c.id,
+    );
+
+    await server.inject({
+      method: "PATCH",
+      url: `/v1/imports/${documentId}/lines/${lineId}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { tagNames: ["uber"] },
+    });
+    const confirmRes = await server.inject({
+      method: "POST",
+      url: `/v1/imports/${documentId}/lines/${lineId}/confirm`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    const confirmedTransactionId = confirmRes.json().confirmedTransactionId;
+
+    const tag = await server.prisma.tag.findUnique({
+      where: { userId_name: { userId, name: "uber" } },
+    });
+    expect(tag).not.toBeNull();
+
+    const link = await server.prisma.transactionTag.findUnique({
+      where: {
+        transactionId_tagId: {
+          transactionId: confirmedTransactionId,
+          tagId: tag?.id as string,
+        },
+      },
+    });
+    expect(link).not.toBeNull();
+
+    const suggestion = await server.prisma.descriptionTagSuggestion.findFirst({
+      where: { userId, rawDescription: "Loja A", tagId: tag?.id },
+    });
+    expect(suggestion).not.toBeNull();
+  });
+
+  it("pre-fills a later line's suggestedTagNames from the learned rawDescription mapping", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+
+    fakeLlmResponse([{ description: "UBER *TRIP", amountCents: 2500 }]);
+    const first = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: `hash-${Math.random()}`,
+        text: "...",
+      },
+    });
+    const firstLineId = first.json().lines[0].id;
+    await server.inject({
+      method: "PATCH",
+      url: `/v1/imports/${first.json().document.id}/lines/${firstLineId}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { tagNames: ["uber"] },
+    });
+
+    fakeLlmResponse([{ description: "UBER *TRIP", amountCents: 3100 }]);
+    const second = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: `hash-${Math.random()}`,
+        text: "...",
+      },
+    });
+
+    expect(second.json().lines[0].suggestedTagNames).toEqual(["uber"]);
+  });
+
+  it("never suggests a tag name the LLM invented outside the user's existing vocabulary", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    // No tags exist yet for this user — belIaChatMock still returns a
+    // "tags" field (simulating a model that ignored the prompt's "only
+    // from the existing list" rule) to prove extractor.ts's defensive
+    // re-filter, not just the prompt wording, is what keeps it out.
+    belIaChatMock.mockResolvedValue(
+      JSON.stringify([
+        { description: "UBER *TRIP", amountCents: 2500, tags: ["corridas"] },
+      ]),
+    );
+    const res = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: `hash-${Math.random()}`,
+        text: "...",
+      },
+    });
+
+    expect(res.json().lines[0].suggestedTagNames).toEqual([]);
+  });
+});
+
 describe("duplicate detection", () => {
   it("flags an extracted line as a possible duplicate of an existing Transaction", async () => {
     const { userId, accessToken } = await authedUser();

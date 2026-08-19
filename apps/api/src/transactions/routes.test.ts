@@ -164,6 +164,55 @@ describe("POST /v1/transactions — manual (US-3.5)", () => {
     });
     expect(res.statusCode).toBe(201);
   });
+
+  it("attaches tags on create and returns them, deduped/normalized to lowercase", async () => {
+    const { userId, accessToken } = await authedUser();
+    const acc = await account(userId, { openingBalanceCents: 100_000 });
+    const res = await post(accessToken, {
+      kind: "expense",
+      accountId: acc.id,
+      description: "Corrida",
+      transactionDate: TODAY,
+      amountCents: 2_500,
+      tagNames: ["Uber", "uber", "trabalho"],
+    });
+    expect(res.statusCode).toBe(201);
+    const names = res
+      .json()
+      .tags.map((t: { name: string }) => t.name)
+      .sort();
+    expect(names).toEqual(["trabalho", "uber"]);
+  });
+
+  it("PATCH replaces a transaction's tags", async () => {
+    const { userId, accessToken } = await authedUser();
+    const acc = await account(userId, { openingBalanceCents: 100_000 });
+    const created = await post(accessToken, {
+      kind: "expense",
+      accountId: acc.id,
+      description: "Corrida",
+      transactionDate: TODAY,
+      amountCents: 2_500,
+      tagNames: ["uber"],
+    });
+    const id = created.json().id;
+
+    const patched = await server.inject({
+      method: "PATCH",
+      url: `/v1/transactions/${id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { tagNames: ["trabalho"] },
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().tags.map((t: { name: string }) => t.name)).toEqual([
+      "trabalho",
+    ]);
+
+    const links = await server.prisma.transactionTag.findMany({
+      where: { transactionId: id },
+    });
+    expect(links).toHaveLength(1);
+  });
 });
 
 describe("POST /v1/transactions — transfer & installment (US-3.6)", () => {

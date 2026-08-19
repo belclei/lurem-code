@@ -25,6 +25,7 @@ import { z } from "zod";
 import { requireUser } from "../auth/authenticate.js";
 import { FEATURE_DISABLED, NOT_FOUND, VALIDATION_FAILED } from "../errors.js";
 import { resolveFlags } from "../flags/resolve.js";
+import { setTransactionTags, upsertTags } from "../tags/service.js";
 import { belIaChat } from "./bel-ia-client.js";
 import {
   extractDocumentMetadata,
@@ -65,6 +66,7 @@ const UpdateLineBody = z
       .optional(),
     kind: z.enum(["income", "expense"]).optional(),
     categoryId: z.string().min(1).nullable().optional(),
+    tagNames: z.array(z.string().min(1)).optional(),
   })
   .strict();
 
@@ -246,6 +248,8 @@ export async function registerImportRoutes(
         where: { OR: [{ userId: null }, { userId }] },
       });
 
+      const userTags = await prisma.tag.findMany({ where: { userId } });
+
       try {
         const items = await extractTransactionsFromText(
           body.text,
@@ -257,6 +261,7 @@ export async function registerImportRoutes(
               action,
               messages,
             ),
+          userTags.map((t) => t.name),
         );
 
         const categoryByName = new Map(
@@ -275,28 +280,75 @@ export async function registerImportRoutes(
           parsedItems.map((p) => p.date),
         );
 
+        // Apply any learned renames (§ description-alias) before staging:
+        // an exact match on the raw description swaps `description` to the
+        // user's own friendly name, keeping the LLM's raw string in
+        // `originalDescription` so the review screen can still show it and
+        // the substitution is never silent.
+        const aliases = await prisma.descriptionAlias.findMany({
+          where: {
+            userId,
+            rawDescription: {
+              in: [...new Set(items.map((i) => i.description))],
+            },
+          },
+        });
+        const aliasByRawDescription = new Map(
+          aliases.map((a) => [a.rawDescription, a.friendlyName]),
+        );
+
+        // Learned tag suggestions (§ description-tag-suggestion) — same
+        // precedence rule as the alias above: a raw description this user
+        // already tagged before wins over whatever the LLM guessed this
+        // time (see extractor.ts's own tag-suggestion prompt/rules).
+        const tagSuggestions = await prisma.descriptionTagSuggestion.findMany({
+          where: {
+            userId,
+            rawDescription: {
+              in: [...new Set(items.map((i) => i.description))],
+            },
+          },
+        });
+        const tagIdById = new Map(userTags.map((t) => [t.id, t.name]));
+        const learnedTagNamesByRawDescription = new Map<string, string[]>();
+        for (const s of tagSuggestions) {
+          const name = tagIdById.get(s.tagId);
+          if (!name) continue;
+          const list =
+            learnedTagNamesByRawDescription.get(s.rawDescription) ?? [];
+          list.push(name);
+          learnedTagNamesByRawDescription.set(s.rawDescription, list);
+        }
+
         await prisma.$transaction([
           prisma.extractedTransaction.createMany({
-            data: parsedItems.map(({ item, date }) => ({
-              importedDocumentId: doc.id,
-              kind: item.kind,
-              transactionDate: date,
-              amountCents: item.amountCents,
-              currency: item.currency,
-              description: item.description,
-              suggestedCategoryId: item.suggestedCategoryName
-                ? (categoryByName.get(
-                    `${item.suggestedCategoryName.toLowerCase()}:${item.kind}`,
-                  ) ?? null)
-                : null,
-              confidence: item.confidence,
-              cardHolderRaw: item.cardHolderRaw,
-              installmentNumber: item.installmentNumber,
-              installmentTotal: item.installmentTotal,
-              duplicateOfTxId: duplicateOfTxIdByKey.get(
-                duplicateKey(date, item.amountCents, item.kind),
-              ),
-            })),
+            data: parsedItems.map(({ item, date }) => {
+              const friendlyName = aliasByRawDescription.get(item.description);
+              return {
+                importedDocumentId: doc.id,
+                kind: item.kind,
+                transactionDate: date,
+                amountCents: item.amountCents,
+                currency: item.currency,
+                description: friendlyName ?? item.description,
+                originalDescription: friendlyName ? item.description : null,
+                suggestedCategoryId: item.suggestedCategoryName
+                  ? (categoryByName.get(
+                      `${item.suggestedCategoryName.toLowerCase()}:${item.kind}`,
+                    ) ?? null)
+                  : null,
+                suggestedTagNames:
+                  learnedTagNamesByRawDescription.get(item.description) ??
+                  item.suggestedTagNames,
+                confidence: item.confidence,
+                cardHolderRaw: item.cardHolderRaw,
+                installmentNumber: item.installmentNumber,
+                installmentTotal: item.installmentTotal,
+                duplicateOfTxId: duplicateOfTxIdByKey.get(
+                  duplicateKey(date, item.amountCents, item.kind),
+                ),
+              };
+            }),
           }),
           prisma.importedDocument.update({
             where: { id: doc.id },
@@ -424,6 +476,10 @@ export async function registerImportRoutes(
         ]);
       }
 
+      // The raw text this line's description originally was — whether or
+      // not an alias already renamed it before staging (see POST /v1/imports).
+      const rawDescription = line.originalDescription ?? line.description;
+
       const updated = await prisma.extractedTransaction.update({
         where: { id: line.id },
         data: {
@@ -440,8 +496,58 @@ export async function registerImportRoutes(
           ...(body.categoryId !== undefined
             ? { suggestedCategoryId: body.categoryId }
             : {}),
+          // suggestedTagNames doubles as "current tag selection" the same
+          // way `description` doubles as "current text" — starts out as a
+          // suggestion (learned + LLM, see POST /v1/imports), the user's
+          // edits here become the final value applied at confirm.
+          ...(body.tagNames !== undefined
+            ? { suggestedTagNames: body.tagNames }
+            : {}),
         },
       });
+
+      // Learn from this edit (§ description-alias): the user renamed the
+      // line away from its raw text, so the same raw string pre-fills this
+      // friendly name next time — always a suggestion (originalDescription
+      // keeps the raw text visible), never a silent takeover of the data.
+      if (
+        body.description !== undefined &&
+        body.description !== rawDescription
+      ) {
+        await prisma.descriptionAlias.upsert({
+          where: {
+            userId_rawDescription: { userId, rawDescription },
+          },
+          create: { userId, rawDescription, friendlyName: body.description },
+          update: { friendlyName: body.description },
+        });
+      }
+
+      // Same idea for tags (§ description-tag-suggestion): every tag the
+      // user attached here gets remembered against the raw description, so
+      // it's pre-suggested next time this merchant string shows up. Tags
+      // the user removed are simply not re-upserted — a stale learned
+      // suggestion the user keeps rejecting stays a one-click removal, not
+      // a hard error, same tradeoff already accepted for aliases.
+      if (body.tagNames !== undefined && body.tagNames.length > 0) {
+        const tags = await upsertTags(prisma, userId, body.tagNames);
+        await Promise.all(
+          tags.map((tag) =>
+            prisma.descriptionTagSuggestion.upsert({
+              where: {
+                userId_rawDescription_tagId: {
+                  userId,
+                  rawDescription,
+                  tagId: tag.id,
+                },
+              },
+              create: { userId, rawDescription, tagId: tag.id },
+              update: {},
+            }),
+          ),
+        );
+      }
+
       return toExtractedTransactionResponse(updated);
     },
   );
@@ -457,6 +563,7 @@ export async function registerImportRoutes(
       currency: string;
       description: string;
       suggestedCategoryId: string | null;
+      suggestedTagNames: string[];
       installmentNumber: number | null;
       installmentTotal: number | null;
     },
@@ -478,6 +585,9 @@ export async function registerImportRoutes(
         installmentTotal: line.installmentTotal,
       },
     });
+    if (line.suggestedTagNames.length > 0) {
+      await setTransactionTags(prisma, userId, tx.id, line.suggestedTagNames);
+    }
     await prisma.extractedTransaction.update({
       where: { id: line.id },
       data: { status: "confirmed", confirmedTransactionId: tx.id },
