@@ -200,6 +200,7 @@ export function ImportUploadForm({
             ? "Processando…"
             : "Clique para escolher um PDF"}
           <input
+            id="import-file-input"
             type="file"
             accept="application/pdf"
             className="hidden"

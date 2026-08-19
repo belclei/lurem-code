@@ -1,6 +1,10 @@
 // apps/web/src/routes/timeline/transactionRowHelpers.ts
 import { CategoryIcon, InstitutionMark, TransactionRow } from "@lurem/ui";
-import type { TransferAccount } from "@lurem/ui";
+import type {
+  InstitutionMarkKind,
+  InstitutionMarkTone,
+  TransferAccount,
+} from "@lurem/ui";
 import type {
   AccountDto,
   CardDto,
@@ -12,6 +16,10 @@ import type { CategoryDto } from "./types";
 export interface Chip {
   id: string;
   label: string;
+  institutionName: string;
+  logoUrl?: string;
+  tone: InstitutionMarkTone;
+  kind: InstitutionMarkKind;
 }
 
 export interface ScheduledHandlers {
@@ -104,6 +112,7 @@ export function transactionRowProps(
     categoryName: category?.name,
     categoryColorToken: category?.colorToken,
     accountLabel,
+    tagNames: tx.tags.map((t) => t.name),
     expanded: expandedTransactions.has(tx.id),
     onToggleExpand: () => onToggleExpand(tx.id),
     selected: selectedTransactionIds.has(tx.id),
@@ -232,27 +241,4 @@ export function resolveTransferParty(
     };
   }
   return { name: "Conta", institution: "", balanceAfterCents: 0 };
-}
-
-// §3's accounts popover row: "ponto colorido da instituição" — neither
-// AccountDto/CardDto nor InstitutionDto carries a color field, and no
-// per-institution color table exists anywhere in the app (verified: no
-// hit for institutionColor/brandColor/hashColor). The dot is purely a
-// "these are different institutions" visual cue, not a source of truth
-// for any institution's real brand color, so a stable hash into the
-// existing brand palette is enough. Judgment call — flagged in the
-// plan's report.
-const ACCOUNT_DOT_HUES = [
-  "bg-[var(--lr-petrol-600)]",
-  "bg-[var(--lr-gold-600)]",
-  "bg-[var(--lr-terracota-600)]",
-  "bg-[var(--lr-graphite-600)]",
-];
-
-export function institutionDotColor(id: string): string {
-  let hash = 0;
-  for (let i = 0; i < id.length; i += 1) {
-    hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  }
-  return ACCOUNT_DOT_HUES[Math.abs(hash) % ACCOUNT_DOT_HUES.length] as string;
 }
