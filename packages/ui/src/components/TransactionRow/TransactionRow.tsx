@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Badge } from "../Badge/Badge";
 import { Button } from "../Button/Button";
 import { Card } from "../Card/Card";
@@ -122,15 +122,21 @@ function RowHeader(props: TransactionRowProps) {
   const isRecurringPreview = props.variant === "recurringPreview";
 
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
       {props.onToggleSelect ? (
-        <span
-          aria-hidden="true"
+        <button
+          type="button"
+          aria-label={props.selected ? "Remover da seleção" : "Selecionar"}
+          aria-pressed={props.selected}
+          onClick={(event) => {
+            event.stopPropagation();
+            props.onToggleSelect?.();
+          }}
           className={[
             "flex h-5 w-5 flex-none items-center justify-center rounded-[var(--lr-r-sm)] border transition-colors duration-150",
             props.selected
               ? "border-[var(--lr-night-900)] bg-[var(--lr-night-900)] dark:border-[var(--lr-night-700)] dark:bg-[var(--lr-night-700)]"
-              : "border-[var(--lr-night-300)] bg-[var(--lr-surface)]",
+              : "border-[var(--lr-night-300)] bg-[var(--lr-surface)] hover:border-[var(--lr-night-500)]",
           ].join(" ")}
         >
           {props.selected ? (
@@ -139,14 +145,14 @@ function RowHeader(props: TransactionRowProps) {
               className="h-3 w-3 text-[var(--lr-ivory-000)]"
             />
           ) : null}
-        </span>
+        </button>
       ) : null}
       {props.institutionMark ? (
         <span aria-hidden="true" className="flex-none">
           {props.institutionMark}
         </span>
       ) : null}
-      <div className="min-w-0 flex-1">
+      <div className="min-w-[8rem] flex-1">
         <div className="flex items-baseline gap-2">
           <Body weight="medium" className="truncate">
             {props.description}
@@ -179,7 +185,7 @@ function RowHeader(props: TransactionRowProps) {
           {props.categoryName}
         </Body>
       </div>
-      <div className="flex flex-none items-center gap-1.5">
+      <div className="ml-auto flex flex-none items-center gap-1.5">
         <Mono
           variant="number"
           tone={
@@ -308,17 +314,29 @@ export function TransactionRow(props: TransactionRowProps) {
   const isScheduled = props.variant === "scheduled" || props.isScheduled;
   const isDashed = isScheduled || isRecurringPreview;
 
+  // Card-body click means "view details" (expand), never "select" — a
+  // dedicated checkbox owns selection so browsing a day's activity can't
+  // silently build a bulk-selection total. recurringPreview is the one
+  // exception: it never expands (no detail to view), so its card click
+  // keeps the old select behavior instead of doing nothing.
+  const onCardClick = isRecurringPreview
+    ? props.onToggleSelect
+    : props.onToggleExpand;
+
+  // Delete is a real financial-data-loss action with no undo surfaced on
+  // this row — a single misclick during a review session shouldn't be
+  // enough. One click arms an inline "apagar mesmo?" step; collapsing the
+  // card (or a second click elsewhere) disarms it again.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  useEffect(() => {
+    if (!props.expanded) setConfirmingDelete(false);
+  }, [props.expanded]);
+
   return (
     <Card
       className="relative"
-      interactive={Boolean(props.onToggleSelect)}
-      onClick={props.onToggleSelect}
-      // No aria-label here on purpose: an aria-label would replace the
-      // card's accessible name outright, so a screen reader would announce
-      // just "toggle selection" instead of the transaction's own
-      // description/amount. aria-pressed alone conveys the toggle state on
-      // top of the card's own text content.
-      aria-pressed={props.onToggleSelect ? Boolean(props.selected) : undefined}
+      interactive={Boolean(onCardClick)}
+      onClick={onCardClick}
       dashed={isDashed}
       // Estimate treatment (dashed border) always wins over category color —
       // never two border signals competing on the same edge.
@@ -375,17 +393,49 @@ export function TransactionRow(props: TransactionRowProps) {
 
           <div className="mt-3 flex justify-end gap-2 border-t border-[var(--lr-border)] pt-3">
             {props.onDelete ? (
-              <Button
-                variant="danger"
-                size="sm"
-                className="mr-auto"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  props.onDelete?.();
-                }}
-              >
-                Apagar
-              </Button>
+              confirmingDelete ? (
+                <>
+                  <Body
+                    as="span"
+                    className="mr-auto text-[.8125rem] text-[var(--lr-negative)]"
+                  >
+                    Apagar esta transação?
+                  </Body>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setConfirmingDelete(false);
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setConfirmingDelete(false);
+                      props.onDelete?.();
+                    }}
+                  >
+                    Sim, apagar
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  className="mr-auto"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setConfirmingDelete(true);
+                  }}
+                >
+                  Apagar
+                </Button>
+              )
             ) : null}
             {props.onEdit ? (
               <Button
