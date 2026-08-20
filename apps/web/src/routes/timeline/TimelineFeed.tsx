@@ -5,6 +5,7 @@ import {
   EmptyState,
   Mono,
   Skeleton,
+  TimelineEventGroupRow,
   TimelineEventRow,
   TransactionRow,
   TransferPairCard,
@@ -30,6 +31,7 @@ import {
 import type { ScheduledHandlers } from "./transactionRowHelpers";
 import {
   findTransferPair,
+  groupConsecutiveAuditEvents,
   hasOutTransferPair,
   resolveTransferParty,
   transactionRowProps,
@@ -230,7 +232,17 @@ export function TimelineFeed({
                       ]}
                     />
                   ))}
-                  {day.items.map((item) => {
+                  {groupConsecutiveAuditEvents(day.items).map((item) => {
+                    if (item.itemType === "eventGroup") {
+                      return (
+                        <TimelineEventGroupRow
+                          key={item.id}
+                          type={item.type as DomainEventType}
+                          payload={item.payload}
+                          count={item.count}
+                        />
+                      );
+                    }
                     // Backlog "Recorrência integrada ao dialog": a próxima
                     // ocorrência ainda não vencida de uma série recorrente
                     // (não é uma Transaction real ainda — só um evento

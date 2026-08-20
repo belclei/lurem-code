@@ -8,10 +8,104 @@ import type {
 import type {
   AccountDto,
   CardDto,
+  TimelineEventDto,
   TimelineItemDto,
   TransactionDto,
 } from "../../auth/types";
 import type { CategoryDto } from "./types";
+
+// Routine/audit event types (no financial alert content of their own) —
+// eligible for collapsing into one demoted line when 3+ land back-to-back
+// on the same day. Deliberately excludes anything a user should never miss:
+// over-limit alerts, invoice events, calendar entries, and the recurring
+// occurrence preview (already its own dedicated row).
+const QUIET_EVENT_TYPES = new Set<string>([
+  "transaction.created",
+  "transaction.updated",
+  "transaction.deleted",
+  "scheduled.confirmed",
+  "scheduled.skipped",
+  "scheduled.deleted",
+  "recurring.created",
+  "recurring.paused",
+  "recurring.ended",
+  "import.completed",
+  "invite.created",
+  "invite.deleted",
+  "invite.resent",
+  "connection.requested",
+  "connection.accepted",
+  "connection.rejected",
+  "connection.deleted",
+  "connection.resent",
+  "share.granted",
+  "share.permission_changed",
+  "share.revoked",
+  "portador.assigned",
+  "portador.accepted",
+  "portador.rejected",
+  "portador.settled",
+  "admin.access_approved",
+  "admin.access_rejected",
+]);
+
+export interface TimelineEventGroup {
+  itemType: "eventGroup";
+  /** Stable key for React — the first event's id, prefixed so it can never
+   * collide with a real item's own id. */
+  id: string;
+  type: string;
+  payload: Record<string, unknown>;
+  count: number;
+}
+
+export type TimelineRenderItem = TimelineItemDto | TimelineEventGroup;
+
+/** Collapses consecutive runs (≥3) of the same quiet event type into a
+ * single `TimelineEventGroup` marker — see TIMELINE.md critique: routine
+ * audit events (e.g. six "transação removida" in a row) were outweighing
+ * the day's actual money movements. Runs of 1-2 render individually as
+ * before; nothing outside `QUIET_EVENT_TYPES` is ever grouped. */
+export function groupConsecutiveAuditEvents(
+  items: TimelineItemDto[],
+): TimelineRenderItem[] {
+  const result: TimelineRenderItem[] = [];
+  let run: TimelineEventDto[] = [];
+
+  const flushRun = () => {
+    const first = run[0];
+    if (!first) return;
+    if (run.length >= 3) {
+      result.push({
+        itemType: "eventGroup",
+        id: `group:${first.id}`,
+        type: first.type,
+        payload: first.payload,
+        count: run.length,
+      });
+    } else {
+      result.push(...run);
+    }
+    run = [];
+  };
+
+  for (const item of items) {
+    const runHead = run[0];
+    if (item.itemType === "event" && QUIET_EVENT_TYPES.has(item.type)) {
+      if (runHead && runHead.type === item.type) {
+        run.push(item);
+      } else {
+        flushRun();
+        run.push(item);
+      }
+    } else {
+      flushRun();
+      result.push(item);
+    }
+  }
+  flushRun();
+  return result;
+}
 
 export interface Chip {
   id: string;
