@@ -349,6 +349,8 @@ export interface ExtractedTransactionDto {
   originalDescription: string | null;
   suggestedCategoryId: string | null;
   suggestedTagNames: string[];
+  suggestedRecurringId: string | null;
+  recurringSuggestionLabel: string | null;
   confidence: number;
   cardHolderRaw: string | null;
   installmentNumber: number | null;
