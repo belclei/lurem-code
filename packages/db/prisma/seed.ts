@@ -124,12 +124,11 @@ const SYSTEM_CATEGORIES: Array<{
     icon: "hm-cat-compras",
     colorToken: "--lr-gold-500",
   },
-  {
-    name: "Assinaturas",
-    kind: "expense",
-    icon: "hm-cat-assinaturas",
-    colorToken: "--lr-petrol-300",
-  },
+  // "Assinaturas" saiu daqui de propósito: uma assinatura é uma série
+  // (RecurringTransaction), não uma categoria. Netflix é Lazer, Adobe é
+  // Trabalho — a recorrência é *como* a despesa se repete, não *o que* ela
+  // é. Mantê-la como categoria fazia o usuário escolher entre classificar
+  // o gasto e marcar que ele se repete.
   {
     name: "Educação",
     kind: "expense",

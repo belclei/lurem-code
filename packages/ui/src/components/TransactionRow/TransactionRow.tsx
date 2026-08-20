@@ -6,7 +6,7 @@ import { Body } from "../Typography/Body";
 import { Mono } from "../Typography/Mono";
 import { formatDate } from "../shared/formatDate";
 import { formatMoney } from "../shared/formatMoney";
-import { CheckIcon, ChevronDownIcon, UploadIcon } from "../shared/icons";
+import { CheckIcon, ChevronDownIcon, ImportNavIcon } from "../shared/icons";
 
 export type TransactionKind = "income" | "expense" | "transfer";
 export type TransactionSource = "manual" | "import";
@@ -333,18 +333,14 @@ export function TransactionRow(props: TransactionRowProps) {
     >
       {props.source === "import" ? (
         <>
-          {/* Top-right, not bottom-right: the expanded action row (Editar/
-              Apagar/Confirmar) sits flush against the card's bottom edge,
-              so a bottom corner mark would collide with it there. This
-              corner stays clear of the chevron too — it's anchored outside
-              the card's own box, the chevron sits inset by the card's
-              padding. Always visible (no hover/tooltip) — a provenance
-              fact, not something worth hiding behind an interaction. */}
+          {/* Top-right badge: same glyph as the Importar nav item, fully inside
+              the card bounds. Positioned inset so it doesn't collide with
+              expanded action buttons (Editar/Apagar) or the chevron. */}
           <span
             aria-hidden="true"
-            className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--lr-surface-sunken)] text-[var(--lr-text-secondary)] ring-2 ring-[var(--lr-surface)] dark:bg-white/10"
+            className="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--lr-surface-sunken)] text-[var(--lr-text-secondary)] ring-1 ring-[var(--lr-border)] dark:bg-white/10"
           >
-            <UploadIcon className="h-2.5 w-2.5" />
+            <ImportNavIcon />
           </span>
           <span className="sr-only">Importada</span>
         </>

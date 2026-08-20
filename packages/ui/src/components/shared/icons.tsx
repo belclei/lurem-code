@@ -96,6 +96,26 @@ export function UploadIcon({ className = "h-4 w-4" }: IconProps) {
   );
 }
 
+/** Import-out-of-tray icon — imported transaction badge, Importar nav item. */
+export function ImportNavIcon({ className = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M12 15 V4" />
+      <path d="M7 9 L12 4 L17 9" />
+      <path d="M4 15 V18 A2 2 0 0 0 6 20 H18 A2 2 0 0 0 20 18 V15" />
+    </svg>
+  );
+}
+
 /** Bidirectional transfer arrows — TransferPairCard's header. */
 export function TransferIcon({ className = "h-4 w-4" }: IconProps) {
   return (
