@@ -232,6 +232,34 @@ function eventVariant(type: DomainEventType): AlertVariant {
   return "info";
 }
 
+export interface TimelineEventGroupRowProps {
+  type: DomainEventType;
+  payload: DomainEventPayload;
+  count: number;
+}
+
+/** Collapses a run of ≥3 consecutive same-type audit/structural events (e.g.
+ * several "Você removeu uma transação" rows in a row) into one demoted line,
+ * so real money movements stay visually dominant on busy days — a day full
+ * of routine audit events was outweighing the day's actual transactions.
+ * Reuses the exact catalog copy from EVENT_TEXT (same wording, same tone),
+ * just count-prefixed, so there's no separate plural catalog to maintain. */
+export function TimelineEventGroupRow({
+  type,
+  payload,
+  count,
+}: TimelineEventGroupRowProps) {
+  const renderText = EVENT_TEXT[type] ?? (() => "Um evento aconteceu.");
+  return (
+    <div className="flex items-center gap-2 px-3 py-1 text-[.75rem] text-[var(--lr-text-secondary)]">
+      <span aria-hidden="true">{eventEmoji(type)}</span>
+      <span>
+        {count}× {renderText(payload)}
+      </span>
+    </div>
+  );
+}
+
 /**
  * Lurem's generic structural timeline event line. Dumb component: reads a
  * `type` + loosely-typed `payload` and renders one of the catalog's
