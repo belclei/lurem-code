@@ -15,6 +15,7 @@ import {
   TableHead,
   TableHeaderCell,
   TableRow,
+  TagInput,
   formatMoney,
 } from "@lurem/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -23,6 +24,7 @@ import { ApiError, apiFetchJson } from "../../auth/api-client";
 import type {
   AccountDto,
   CardDto,
+  TagDto,
   TransactionDto,
   TxKind,
 } from "../../auth/types";
@@ -46,6 +48,7 @@ interface CreateTxPayload {
   recurringDayOfMonth?: number;
   recurringConfirmMonthly?: boolean;
   recurringEndDate?: string | null;
+  tagNames?: string[];
 }
 
 export function NewTransactionDialog({
@@ -68,6 +71,7 @@ export function NewTransactionDialog({
   const [sourceValue, setSourceValue] = useState<string | null>(null);
   const [destValue, setDestValue] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [tagNames, setTagNames] = useState<string[]>([]);
   const [installmentEnabled, setInstallmentEnabled] = useState(false);
   const [installmentTotalStr, setInstallmentTotalStr] = useState("2");
   // Backlog "Recorrência integrada ao dialog": checkbox "Recorrente",
@@ -90,6 +94,12 @@ export function NewTransactionDialog({
   // parcelamento (ver comentário acima).
   const canRecur = kind !== "transfer" && !installmentEnabled;
   const showRecurring = canRecur && recurringEnabled;
+  // #tags (§ tags spec): the API only applies tagNames on the plain manual
+  // income/expense path (apps/api/src/transactions/routes.ts) — transfer (2
+  // legs) and installment (N legs) both return before ever touching tags,
+  // so the field would silently do nothing there. Hidden rather than shown-
+  // and-ignored.
+  const showTags = kind !== "transfer" && !installmentEnabled;
 
   const installmentTotalCount = Number(installmentTotalStr);
   const installmentTotalValid =
@@ -114,6 +124,11 @@ export function NewTransactionDialog({
     queryKey: ["categories"],
     queryFn: () => apiFetchJson<CategoryDto[]>("/categories"),
   });
+  const tagsQuery = useQuery({
+    queryKey: ["tags"],
+    queryFn: () => apiFetchJson<TagDto[]>("/tags"),
+  });
+  const tagSuggestions = (tagsQuery.data ?? []).map((t) => t.name);
 
   const sourceOptions = useMemo(
     () => [
@@ -188,6 +203,7 @@ export function NewTransactionDialog({
       setSourceValue(null);
       setDestValue(null);
       setCategoryId(null);
+      setTagNames([]);
       setInstallmentEnabled(false);
       setInstallmentTotalStr("2");
       setRecurringEnabled(false);
@@ -268,6 +284,7 @@ export function NewTransactionDialog({
       transactionDate: date,
       amountCents: cents,
       categoryId: categoryId ?? undefined,
+      ...(showTags && tagNames.length > 0 ? { tagNames } : {}),
       ...(showInstallments
         ? {
             installmentTotal: installmentTotalCount,
@@ -475,6 +492,14 @@ export function NewTransactionDialog({
             placeholder="Sem categoria"
           />
         )}
+        {showTags ? (
+          <TagInput
+            label="Tags (opcional)"
+            value={tagNames}
+            onChange={setTagNames}
+            suggestions={tagSuggestions}
+          />
+        ) : null}
         {overLimitWarning ? (
           <Alert variant="warning" layout="inline" title={overLimitWarning} />
         ) : null}

@@ -21,6 +21,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireUser } from "../auth/authenticate.js";
 import { nextInvoiceMilestones } from "../cards/invoice-status.js";
+import { getTagsByTransactionId } from "../tags/service.js";
 import {
   type StructuralDateSource,
   birthdayJoinSource,
@@ -395,6 +396,11 @@ export async function registerTimelineRoutes(
         }),
       ]);
 
+      const tagsByTransactionId = await getTagsByTransactionId(
+        fastify.prisma,
+        transactions.map((tx) => tx.id),
+      );
+
       const institutionById = new Map(
         activeCards.length > 0
           ? (
@@ -459,6 +465,7 @@ export async function registerTimelineRoutes(
         limit: query.limit,
         structuralDates,
         structuralItems,
+        tagsByTransactionId,
       });
 
       // Calculate current balance by summing all accounts

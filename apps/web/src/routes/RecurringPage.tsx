@@ -14,7 +14,7 @@ import {
   Select,
 } from "@lurem/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Navigate } from "@tanstack/react-router";
+import { Navigate, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError, apiFetchJson } from "../auth/api-client";
@@ -245,6 +245,7 @@ export function RecurringPage() {
   const { isBooting, user } = useAuth();
   const hasSession = !isBooting && Boolean(user);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const accountsQuery = useQuery({
     queryKey: ["accounts"],
@@ -346,6 +347,12 @@ export function RecurringPage() {
           <EmptyState
             title="Nenhuma recorrência ainda"
             description='Marque "Recorrente" ao criar uma transação na Timeline para começar uma série.'
+            actions={[
+              {
+                label: "Ir para a Timeline",
+                onClick: () => navigate({ to: "/timeline" }),
+              },
+            ]}
           />
         ) : null}
         <div className="flex flex-col gap-3">

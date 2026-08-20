@@ -17,18 +17,31 @@ export interface ExtractedItem {
   currency: string;
   confidence: number;
   suggestedCategoryName: string | null;
+  suggestedTagNames: string[];
 }
 
 function buildSystemPrompt(
   categories: { name: string; kind: string }[],
+  existingTagNames: string[],
 ): string {
   const catList = categories.map((c) => `- ${c.name} (${c.kind})`).join("\n");
+  // Tags are user-created vocabulary (§ description-tag-suggestion) — the
+  // model may only pick from what already exists, never invent a new one,
+  // or "Uber"/"uber ride"/"corridas" would fragment into near-duplicate tags
+  // every import instead of converging on one the user already uses.
+  const tagList =
+    existingTagNames.length > 0
+      ? existingTagNames.map((t) => `- ${t}`).join("\n")
+      : "(none yet)";
 
   return `You are a financial data extraction assistant.
 Extract all transactions from the bank statement or credit card invoice provided (markdown format — use its headings/tables/lists to identify transaction lines accurately).
 
 AVAILABLE CATEGORIES (use the exact name for the category field):
 ${catList}
+
+EXISTING TAGS (only suggest from this list — never invent a new tag name):
+${tagList}
 
 Return a JSON array of objects with these exact fields:
 - date: ISO 8601 date string (YYYY-MM-DD); null if not determinable
@@ -37,6 +50,7 @@ Return a JSON array of objects with these exact fields:
 - kind: "expense" for purchases/debits, "income" for payments/refunds/credits
 - currency: "BRL" by default; use "USD", "EUR" etc. only when clearly foreign currency
 - category: EXACT name from the categories list above that best fits; null if none fits
+- tags: array of EXACT names from the existing tags list above that clearly apply (e.g. an existing "uber" tag on a ride-share charge); empty array if none clearly apply or the list is empty — never invent a tag not in that list
 - cardHolder: cardholder name if identifiable (e.g. "TITULAR", "ADICIONAL - JOAO"); null if not
 - installmentNumber: current installment integer if parcelado (e.g. 3 from "03/12"); null otherwise
 - installmentTotal: total installments integer (e.g. 12 from "03/12"); null otherwise
@@ -69,6 +83,7 @@ interface RawItem {
   installmentNumber?: number | null;
   installmentTotal?: number | null;
   confidence?: number;
+  tags?: string[];
 }
 
 // Same 3-tier recovery as the money-flow precedent: full parse, then trim to
@@ -189,9 +204,13 @@ export async function extractTransactionsFromText(
   text: string,
   categories: { name: string; kind: string }[],
   chat: ChatFn,
+  existingTagNames: string[] = [],
 ): Promise<ExtractedItem[]> {
   const raw = await chat("pdf-extract", [
-    { role: "system", content: buildSystemPrompt(categories) },
+    {
+      role: "system",
+      content: buildSystemPrompt(categories, existingTagNames),
+    },
     {
       role: "user",
       content: `Extract all transactions from this document (markdown format):\n\n${text}`,
@@ -199,6 +218,7 @@ export async function extractTransactionsFromText(
   ]);
 
   const parsed = parseJsonArray(cleanJson(raw));
+  const existingTagSet = new Set(existingTagNames.map((t) => t.toLowerCase()));
 
   return parsed.map((t) => ({
     description: t.description,
@@ -211,5 +231,11 @@ export async function extractTransactionsFromText(
     currency: t.currency ?? "BRL",
     confidence: t.confidence ?? 1,
     suggestedCategoryName: t.category ?? null,
+    // Defensive re-filter against the model's own vocabulary — a hallucinated
+    // tag name here would otherwise create a new Tag row nobody asked for
+    // (routes.ts resolves these names into Tag rows, see § description-tag-suggestion).
+    suggestedTagNames: (t.tags ?? []).filter((name) =>
+      existingTagSet.has(name.toLowerCase()),
+    ),
   }));
 }

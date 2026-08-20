@@ -14,6 +14,7 @@ import {
   VALIDATION_FAILED,
 } from "../errors.js";
 import { createRecurringTransactionSeries } from "../recurring-transactions/create.js";
+import { getTagsByTransactionId, setTransactionTags } from "../tags/service.js";
 import { toTransactionResponse } from "./serialize.js";
 
 const IsoDate = z
@@ -47,6 +48,11 @@ const CreateTransactionBody = z
     // confirmada depois que o usuário aprovar o valor real (§6.7 item 3).
     recurringConfirmMonthly: z.boolean().optional(),
     recurringEndDate: IsoDate.nullable().optional(),
+    // #tags (livres): só a criação simples de income/expense abaixo aplica
+    // isto — transferência (2 pernas) e parcelamento (N linhas) não têm um
+    // "dono" único óbvio da tag entre as linhas geradas, fora de escopo por
+    // ora.
+    tagNames: z.array(z.string().min(1)).optional(),
   })
   .strict()
   .refine((data) => data.kind === "transfer" || Boolean(data.description), {
@@ -69,6 +75,7 @@ const UpdateTransactionBody = z
     // moving a single row's account/card would break.
     accountId: z.string().min(1).optional(),
     creditCardId: z.string().min(1).optional(),
+    tagNames: z.array(z.string().min(1)).optional(),
   })
   .strict()
   .refine(
@@ -315,6 +322,11 @@ export async function registerTransactionRoutes(
         },
       });
 
+      const tags = body.tagNames?.length
+        ? await setTransactionTags(prisma, userId, tx.id, body.tagNames)
+        : [];
+      const tagsByTransactionId = new Map([[tx.id, tags]]);
+
       // ---- Recorrência na criação (US-3.8): série com esta tx como 1ª ocorrência ----
       // (transfer/parcelada já retornaram acima — aqui kind é income|expense simples)
       if (body.recurring === true) {
@@ -338,10 +350,14 @@ export async function registerTransactionRoutes(
           where: { id: tx.id },
           data: { recurringTransactionId: series.id },
         });
-        return reply.code(201).send(toTransactionResponse(linked));
+        return reply
+          .code(201)
+          .send(toTransactionResponse(linked, undefined, tagsByTransactionId));
       }
 
-      return reply.code(201).send(toTransactionResponse(tx));
+      return reply
+        .code(201)
+        .send(toTransactionResponse(tx, undefined, tagsByTransactionId));
     },
   );
 
@@ -377,7 +393,13 @@ export async function registerTransactionRoutes(
           if (list) list.push(tx);
         }
       }
-      return txs.map((tx) => toTransactionResponse(tx, installmentsByGroupId));
+      const tagsByTransactionId = await getTagsByTransactionId(
+        prisma,
+        txs.map((tx) => tx.id),
+      );
+      return txs.map((tx) =>
+        toTransactionResponse(tx, installmentsByGroupId, tagsByTransactionId),
+      );
     },
   );
 
@@ -582,7 +604,17 @@ export async function registerTransactionRoutes(
           payload: {},
         },
       });
-      return toTransactionResponse(updated);
+      const tags =
+        body.tagNames !== undefined
+          ? await setTransactionTags(prisma, userId, updated.id, body.tagNames)
+          : ((await getTagsByTransactionId(prisma, [updated.id])).get(
+              updated.id,
+            ) ?? []);
+      return toTransactionResponse(
+        updated,
+        undefined,
+        new Map([[updated.id, tags]]),
+      );
     },
   );
 

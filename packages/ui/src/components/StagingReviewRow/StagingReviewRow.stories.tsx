@@ -10,7 +10,7 @@ const meta: Meta<typeof StagingReviewRow> = {
       description: {
         component:
           "Linha de revisão de importação (IMPLEMENTACAO.md §10.1b item 8, §6.8 arq). " +
-          "Confiança em 3 pips discretos, nunca percentual.",
+          "Todo campo editável já vem ativo — sem alternar pra um modo de edição.",
       },
     },
   },
@@ -19,36 +19,53 @@ const meta: Meta<typeof StagingReviewRow> = {
 export default meta;
 type Story = StoryObj<typeof StagingReviewRow>;
 
+const CATEGORY_OPTIONS = [
+  { value: "transporte", label: "Transporte" },
+  { value: "alimentacao", label: "Alimentação" },
+  { value: "assinaturas", label: "Assinaturas" },
+];
+
 export const Pending: Story = {
   render: () => (
     <div style={{ width: "30rem" }}>
       <StagingReviewRow
         description="Uber"
-        amountCents={2890}
-        date="2026-07-20T12:00:00.000Z"
-        confidencePips={2}
-        suggestedCategoryLabel="Transporte"
+        onDescriptionChange={() => {}}
+        amount="28,90"
+        onAmountChange={() => {}}
+        categoryOptions={CATEGORY_OPTIONS}
+        categoryId="transporte"
+        onCategoryIdChange={() => {}}
+        tagNames={[]}
+        onTagNamesChange={() => {}}
+        date="2026-07-20"
+        confidence={0.6}
         status="pending"
         onConfirm={() => {}}
-        onEdit={() => {}}
         onReject={() => {}}
       />
     </div>
   ),
 };
 
-export const AltaConfianca: Story = {
+export const BaixaConfianca: Story = {
   render: () => (
     <div style={{ width: "30rem" }}>
       <StagingReviewRow
         description="Supermercado Extra"
-        amountCents={18790}
-        date="2026-07-20T12:00:00.000Z"
-        confidencePips={3}
-        suggestedCategoryLabel="Alimentação"
+        onDescriptionChange={() => {}}
+        amount="187,90"
+        onAmountChange={() => {}}
+        categoryOptions={CATEGORY_OPTIONS}
+        categoryId="alimentacao"
+        onCategoryIdChange={() => {}}
+        tagNames={["mercado"]}
+        onTagNamesChange={() => {}}
+        tagSuggestions={["mercado", "uber", "trabalho"]}
+        date="2026-07-20"
+        confidence={0.35}
         status="pending"
         onConfirm={() => {}}
-        onEdit={() => {}}
         onReject={() => {}}
       />
     </div>
@@ -60,15 +77,45 @@ export const Duplicata: Story = {
     <div style={{ width: "30rem" }}>
       <StagingReviewRow
         description="Netflix"
-        amountCents={3990}
-        date="2026-07-05T12:00:00.000Z"
-        confidencePips={3}
-        suggestedCategoryLabel="Assinaturas"
+        onDescriptionChange={() => {}}
+        amount="39,90"
+        onAmountChange={() => {}}
+        categoryOptions={CATEGORY_OPTIONS}
+        categoryId="assinaturas"
+        onCategoryIdChange={() => {}}
+        tagNames={[]}
+        onTagNamesChange={() => {}}
+        date="2026-07-05"
+        confidence={0.95}
         status="pending"
-        isDuplicate
-        duplicateReason="Já existe transação com mesma data e valor"
+        duplicateDescription="Já existe: Netflix · 05/07/2026 · R$ 39,90"
         onConfirm={() => {}}
-        onEdit={() => {}}
+        onReject={() => {}}
+        onReplace={() => {}}
+      />
+    </div>
+  ),
+};
+
+export const AssinaturaDetectada: Story = {
+  render: () => (
+    <div style={{ width: "30rem" }}>
+      <StagingReviewRow
+        description="Netflix"
+        onDescriptionChange={() => {}}
+        amount="39,90"
+        onAmountChange={() => {}}
+        categoryOptions={CATEGORY_OPTIONS}
+        categoryId="assinaturas"
+        onCategoryIdChange={() => {}}
+        tagNames={[]}
+        onTagNamesChange={() => {}}
+        date="2026-07-05"
+        confidence={0.95}
+        status="pending"
+        recurringSuggestionLabel="Netflix"
+        onCreateRecurring={() => {}}
+        onConfirm={() => {}}
         onReject={() => {}}
       />
     </div>
@@ -80,10 +127,16 @@ export const Confirmed: Story = {
     <div style={{ width: "30rem" }}>
       <StagingReviewRow
         description="Salário"
-        amountCents={520000}
-        date="2026-07-05T12:00:00.000Z"
-        confidencePips={3}
-        suggestedCategoryLabel="Salário"
+        onDescriptionChange={() => {}}
+        amount="5200,00"
+        onAmountChange={() => {}}
+        categoryOptions={CATEGORY_OPTIONS}
+        categoryId={null}
+        onCategoryIdChange={() => {}}
+        tagNames={[]}
+        onTagNamesChange={() => {}}
+        date="2026-07-05"
+        confidence={0.95}
         status="confirmed"
       />
     </div>
@@ -95,9 +148,16 @@ export const Rejected: Story = {
     <div style={{ width: "30rem" }}>
       <StagingReviewRow
         description="Estorno não reconhecido"
-        amountCents={5000}
-        date="2026-07-12T12:00:00.000Z"
-        confidencePips={1}
+        onDescriptionChange={() => {}}
+        amount="50,00"
+        onAmountChange={() => {}}
+        categoryOptions={CATEGORY_OPTIONS}
+        categoryId={null}
+        onCategoryIdChange={() => {}}
+        tagNames={[]}
+        onTagNamesChange={() => {}}
+        date="2026-07-12"
+        confidence={0.2}
         status="rejected"
       />
     </div>

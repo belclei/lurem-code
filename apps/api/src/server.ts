@@ -36,6 +36,7 @@ import { registerRecurringTransactionRoutes } from "./recurring-transactions/rou
 import { registerReleaseRoutes } from "./releases/routes.js";
 import { registerSettingsRoutes } from "./settings/routes.js";
 import { registerShareRoutes } from "./shares/routes.js";
+import { registerTagRoutes } from "./tags/routes.js";
 import { registerTimelineRoutes } from "./timeline/routes.js";
 import { registerTransactionRoutes } from "./transactions/routes.js";
 
@@ -86,6 +87,7 @@ export async function buildServer(
   await registerAccessRoutes(fastify);
   await registerReleaseRoutes(fastify);
   await registerImportRoutes(fastify);
+  await registerTagRoutes(fastify);
 
   // Invalidação do cache de insights (§5.6/§7.8): qualquer escrita autenticada
   // (não-GET, 2xx, com userId) aposenta o cache do usuário incrementando sua

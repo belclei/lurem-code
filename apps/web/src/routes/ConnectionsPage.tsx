@@ -134,6 +134,7 @@ function NewInviteForm({ onCreated }: { onCreated: () => void }) {
       className="mb-6 flex flex-col gap-3 rounded-[var(--lr-r-lg)] border border-[var(--lr-border)] p-4"
     >
       <Input
+        id="invite-name-input"
         label="Nome de quem você quer convidar"
         value={inviteeName}
         onChange={(event) => setInviteeName(event.target.value)}
@@ -650,6 +651,13 @@ export function ConnectionsPage() {
           <EmptyState
             title="Nenhuma conexão ainda"
             description="Conecte-se com alguém para compartilhar contas ou dividir despesas."
+            actions={[
+              {
+                label: "Convidar alguém",
+                onClick: () =>
+                  document.getElementById("invite-name-input")?.focus(),
+              },
+            ]}
           />
         ) : (
           <div className="flex flex-col gap-2">

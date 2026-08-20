@@ -10,6 +10,7 @@ import { Navigate } from "@tanstack/react-router";
 import { useAuth } from "../auth/AuthContext";
 import { apiFetchJson } from "../auth/api-client";
 import { type DashboardInsights, DashboardView } from "./DashboardView";
+import { SpendBreakdownSection } from "./SpendBreakdownSection";
 
 function DashboardSkeleton() {
   return (
@@ -62,6 +63,7 @@ export function DashboardPage() {
         </div>
       ) : null}
       {query.data ? <DashboardView insights={query.data} /> : null}
+      {query.data ? <SpendBreakdownSection /> : null}
     </div>
   );
 }

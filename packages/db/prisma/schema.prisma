@@ -458,7 +458,22 @@ model ExtractedTransaction {
   amountCents             Int
   currency                String          @default("BRL")
   description             String
+  // Set only when a DescriptionAlias matched at extraction time and
+  // `description` above was swapped to the friendly name — the raw text a
+  // future extraction will key off of stays here so the substitution is
+  // reversible/visible, never silent (see DescriptionAlias's own comment).
+  // Null means `description` already IS the raw text (the common case, no
+  // alias on file yet).
+  originalDescription     String?
   suggestedCategoryId     String?
+  // §3 (part 3 spec) — resolved once at extraction time: DescriptionTagSuggestion
+  // (learned from this user's own past tagging of the same raw description)
+  // takes precedence, falls back to the LLM's suggestion (itself constrained
+  // to the user's existing tag vocabulary — see extractor.ts). Names, not
+  // ids: the review screen's TagInput works in free-form names either way,
+  // and names stay valid even if resolved before the Tag row technically
+  // exists yet (brand-new suggestion, first time seen).
+  suggestedTagNames       String[]        @default([])
   confidence               Float // 0..1 interno; exibido em PIPS (§3.6)
   cardHolderRaw            String? // "ADICIONAL - MARIA"
   suggestedPortadorUserId String?
@@ -466,10 +481,83 @@ model ExtractedTransaction {
   installmentTotal        Int?
   duplicateOfTxId         String? // possível duplicata (§6.8)
   suggestedRecurringId    String? // possível vínculo com série (§6.7)
+  // Set quando NENHUMA série ativa bate com a descrição (suggestedRecurringId
+  // fica null nesse caso) mas um padrão de assinatura foi detectado — nome
+  // amigável pronto pra exibir no banner ("Netflix") e usar como description
+  // da série se o usuário confirmar a criação (ver imports/routes.ts,
+  // createRecurringFromSuggestion). Null = nenhuma sugestão de nova série.
+  recurringSuggestionLabel String?
   confirmedTransactionId  String? // set ao confirmar
   createdAt               DateTime        @default(now())
 
   @@index([importedDocumentId])
+}
+
+// Learned rename for a raw statement/invoice description (e.g.
+// "AMAZONMKTPLC*MASTERLIN" -> "Amazon"), so the same illegible merchant
+// string doesn't have to be manually retyped on every import. Exact-match
+// on the raw string as produced by the extractor (no fuzzy/case-insensitive
+// matching): in practice the same merchant yields a stable, identical raw
+// string issuer-to-issuer, so this stays deliberately simple rather than
+// guessing at near-matches. Scoped to the user only, not per account/card —
+// a merchant's raw descriptor is the same string regardless of which of the
+// user's cards it shows up on. Upserted whenever the user edits a line's
+// description away from its raw text and confirms (see imports/routes.ts) —
+// always a suggestion applied to `ExtractedTransaction.description`, never
+// a silent overwrite: `originalDescription` on that row keeps the raw
+// reference visible/editable every time.
+model DescriptionAlias {
+  id             String   @id @default(cuid())
+  userId         String
+  rawDescription String
+  friendlyName   String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, rawDescription])
+  @@index([userId])
+}
+
+// Free-form hashtag-style label a user attaches to a Transaction — orthogonal
+// to Category (e.g. "#uber" cuts across whatever category individual rides
+// land in). name is always stored lowercase so "Uber"/"uber"/"UBER" collapse
+// into one tag instead of fragmenting.
+model Tag {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+// Explicit join table (this schema's convention throughout — see the file's
+// top-of-file note on plain scalar FKs over Prisma @relation sugar): a
+// Transaction can carry multiple Tags at once.
+model TransactionTag {
+  transactionId String
+  tagId         String
+
+  @@id([transactionId, tagId])
+  @@index([tagId])
+}
+
+// Learned tag suggestion for a raw import description — same mechanism as
+// DescriptionAlias (see its comment), extended to tags: every time a user
+// applies a tag to a line while confirming/editing an import, one row is
+// upserted per tag. The next import with the same raw description pre-fills
+// those tags (removable, never silently applied — see imports/routes.ts).
+// Multiple rows can share a rawDescription (many tags per description).
+model DescriptionTagSuggestion {
+  id             String   @id @default(cuid())
+  userId         String
+  rawDescription String
+  tagId          String
+  createdAt      DateTime @default(now())
+
+  @@unique([userId, rawDescription, tagId])
+  @@index([userId, rawDescription])
 }
 
 // ---------------------------------------------------------------------------

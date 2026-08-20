@@ -15,12 +15,16 @@ import type { PrismaClient } from "@lurem/db";
 // children-before-parents is kept anyway for readability.
 export async function resetTestDb(prisma: PrismaClient): Promise<void> {
   await prisma.$transaction([
+    prisma.descriptionTagSuggestion.deleteMany(),
+    prisma.descriptionAlias.deleteMany(),
     prisma.extractedTransaction.deleteMany(),
     prisma.importedDocument.deleteMany(),
     prisma.recurringFulfillment.deleteMany(),
     prisma.recurringTransaction.deleteMany(),
     prisma.investmentMovement.deleteMany(),
     prisma.investment.deleteMany(),
+    prisma.transactionTag.deleteMany(),
+    prisma.tag.deleteMany(),
     prisma.transaction.deleteMany(),
     prisma.sharedItem.deleteMany(),
     prisma.userConnection.deleteMany(),

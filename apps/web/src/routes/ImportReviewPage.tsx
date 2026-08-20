@@ -5,16 +5,13 @@
 // a extração não tem.
 import {
   Alert,
-  Badge,
-  Body,
   Button,
   EmptyState,
-  Input,
-  Select,
+  StagingReviewRow,
   formatMoney,
 } from "@lurem/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError, apiFetchJson } from "../auth/api-client";
@@ -23,40 +20,27 @@ import type {
   DuplicateTransactionSummary,
   ExtractedTransactionDto,
   ImportedDocumentDto,
+  RecurringDto,
+  TagDto,
 } from "../auth/types";
 import { reaisToCentsPositive } from "../lib/money";
 import type { CategoryDto } from "./timeline/types";
 
-function ConfidencePips({ confidence }: { confidence: number }) {
-  const lit = confidence >= 0.8 ? 3 : confidence >= 0.5 ? 2 : 1;
-  return (
-    <span
-      className="flex items-center gap-0.5"
-      title={`Confiança: ${Math.round(confidence * 100)}%`}
-    >
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className={`h-1.5 w-1.5 rounded-full ${
-            i < lit ? "bg-[var(--lr-text)]" : "bg-[var(--lr-border)]"
-          }`}
-        />
-      ))}
-    </span>
-  );
-}
-
 function LineRow({
   line,
   categories,
+  tagSuggestions,
   duplicate,
   connections,
+  recurringSeriesOptions,
   onSaved,
 }: {
   line: ExtractedTransactionDto;
   categories: CategoryDto[];
+  tagSuggestions: string[];
   duplicate: DuplicateTransactionSummary | undefined;
   connections: ConnectionDto[];
+  recurringSeriesOptions: { value: string; label: string }[];
   onSaved: () => void;
 }) {
   const [description, setDescription] = useState(line.description);
@@ -64,7 +48,11 @@ function LineRow({
     (line.amountCents / 100).toFixed(2).replace(".", ","),
   );
   const [categoryId, setCategoryId] = useState(line.suggestedCategoryId);
+  const [tagNames, setTagNames] = useState(line.suggestedTagNames);
   const [portadorUserId, setPortadorUserId] = useState<string | null>(null);
+  const [recurringTransactionId, setRecurringTransactionId] = useState<
+    string | null
+  >(line.suggestedRecurringId);
   const [error, setError] = useState<string | null>(null);
 
   const categoryOptions = categories
@@ -97,25 +85,47 @@ function LineRow({
   });
 
   const confirmMutation = useMutation({
-    mutationFn: async (resolution?: "keep_both" | "replace") => {
+    mutationFn: async (options?: {
+      resolution?: "keep_both" | "replace";
+      createRecurringFromSuggestion?: boolean;
+    }) => {
       const cents = reaisToCentsPositive(amount);
       if (cents === null) throw new Error("Valor inválido.");
+      const tagsChanged =
+        tagNames.length !== line.suggestedTagNames.length ||
+        tagNames.some((t) => !line.suggestedTagNames.includes(t));
+      const recurringChanged =
+        recurringTransactionId !== line.suggestedRecurringId;
       if (
         description !== line.description ||
         cents !== line.amountCents ||
-        categoryId !== line.suggestedCategoryId
+        categoryId !== line.suggestedCategoryId ||
+        tagsChanged ||
+        recurringChanged
       ) {
         await patchMutation.mutateAsync({
           description,
           amountCents: cents,
           categoryId,
+          ...(tagsChanged ? { tagNames } : {}),
+          ...(recurringChanged ? { recurringTransactionId } : {}),
         });
       }
       const confirmed = await apiFetchJson<ExtractedTransactionDto>(
         `/imports/${line.importedDocumentId}/lines/${line.id}/confirm`,
         {
           method: "POST",
-          body: resolution ? JSON.stringify({ resolution }) : undefined,
+          body:
+            options?.resolution || options?.createRecurringFromSuggestion
+              ? JSON.stringify({
+                  ...(options.resolution
+                    ? { resolution: options.resolution }
+                    : {}),
+                  ...(options.createRecurringFromSuggestion
+                    ? { createRecurringFromSuggestion: true }
+                    : {}),
+                })
+              : undefined,
         },
       );
       if (portadorUserId && confirmed.confirmedTransactionId) {
@@ -142,109 +152,82 @@ function LineRow({
     onSuccess: onSaved,
   });
 
-  if (line.status !== "pending") {
-    return (
-      <div className="flex items-center justify-between rounded-[var(--lr-r-lg)] border border-[var(--lr-border)] p-3 opacity-60">
-        <Body>{line.description}</Body>
-        <Badge
-          kind="status"
-          status={line.status === "confirmed" ? "active" : "inactive"}
-        >
-          {line.status === "confirmed" ? "Confirmada" : "Rejeitada"}
-        </Badge>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-2 rounded-[var(--lr-r-lg)] border border-[var(--lr-border)] p-3">
-      <div className="flex items-center justify-between gap-2">
-        <ConfidencePips confidence={line.confidence} />
-        <Body muted className="text-xs">
-          {line.transactionDate.split("-").reverse().join("/")}
-          {line.installmentNumber && line.installmentTotal
-            ? ` · ${line.installmentNumber}/${line.installmentTotal}`
-            : ""}
-          {line.cardHolderRaw ? ` · ${line.cardHolderRaw}` : ""}
-        </Body>
-      </div>
-      <div className="grid gap-2 sm:grid-cols-[1fr_auto_1fr]">
-        <Input
-          label="Descrição"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-        <Input
-          label="Valor"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          money
-          affix="R$"
-        />
-        <Select
-          label="Categoria"
-          options={categoryOptions}
-          value={categoryId}
-          onChange={setCategoryId}
-          placeholder="Sem categoria"
-        />
-      </div>
-      {line.cardHolderRaw && connectionOptions.length > 0 ? (
-        <Select
-          label={`Atribuir "${line.cardHolderRaw}" a um conectado`}
-          options={connectionOptions}
-          value={portadorUserId}
-          onChange={setPortadorUserId}
-          placeholder="Não atribuir"
-        />
-      ) : null}
-      {duplicate ? (
-        <Alert
-          variant="warning"
-          layout="inline"
-          title="Possível duplicata"
-          description={`Já existe: ${duplicate.description} · ${duplicate.transactionDate.split("-").reverse().join("/")} · ${formatMoney(duplicate.amountCents)}`}
-        />
-      ) : null}
-      {error ? <Alert variant="error" layout="inline" title={error} /> : null}
-      <div className="flex justify-end gap-2">
-        <Button
-          type="button"
-          variant="secondary"
-          loading={rejectMutation.isPending}
-          onClick={() => rejectMutation.mutate()}
-        >
-          {duplicate ? "Pular" : "Rejeitar"}
-        </Button>
-        {duplicate ? (
-          <Button
-            type="button"
-            variant="secondary"
-            loading={
-              confirmMutation.isPending &&
-              confirmMutation.variables === "replace"
-            }
-            onClick={() => confirmMutation.mutate("replace")}
-          >
-            Substituir
-          </Button>
-        ) : null}
-        <Button
-          type="button"
-          loading={
-            confirmMutation.isPending && confirmMutation.variables !== "replace"
-          }
-          onClick={() => confirmMutation.mutate(undefined)}
-        >
-          {duplicate ? "Manter os dois" : "Confirmar"}
-        </Button>
-      </div>
-    </div>
+    <StagingReviewRow
+      description={description}
+      onDescriptionChange={setDescription}
+      descriptionHint={
+        line.originalDescription
+          ? `Original: ${line.originalDescription}`
+          : undefined
+      }
+      amount={amount}
+      onAmountChange={setAmount}
+      categoryOptions={categoryOptions}
+      categoryId={categoryId}
+      onCategoryIdChange={setCategoryId}
+      tagNames={tagNames}
+      onTagNamesChange={setTagNames}
+      tagSuggestions={tagSuggestions}
+      date={line.transactionDate}
+      installmentNumber={line.installmentNumber}
+      installmentTotal={line.installmentTotal}
+      cardHolderRaw={line.cardHolderRaw}
+      confidence={line.confidence}
+      status={line.status}
+      portadorOptions={connectionOptions}
+      portadorUserId={portadorUserId}
+      onPortadorUserIdChange={setPortadorUserId}
+      duplicateDescription={
+        duplicate
+          ? `Já existe: ${duplicate.description} · ${duplicate.transactionDate.split("-").reverse().join("/")} · ${formatMoney(duplicate.amountCents)}`
+          : undefined
+      }
+      error={error}
+      onConfirm={
+        line.status === "pending"
+          ? () => confirmMutation.mutate(undefined)
+          : undefined
+      }
+      onReject={
+        line.status === "pending" ? () => rejectMutation.mutate() : undefined
+      }
+      onReplace={
+        line.status === "pending" && duplicate
+          ? () => confirmMutation.mutate({ resolution: "replace" })
+          : undefined
+      }
+      onCreateRecurring={
+        line.status === "pending" && line.recurringSuggestionLabel
+          ? () =>
+              confirmMutation.mutate({ createRecurringFromSuggestion: true })
+          : undefined
+      }
+      confirmLoading={
+        confirmMutation.isPending &&
+        !confirmMutation.variables?.resolution &&
+        !confirmMutation.variables?.createRecurringFromSuggestion
+      }
+      rejectLoading={rejectMutation.isPending}
+      replaceLoading={
+        confirmMutation.isPending &&
+        confirmMutation.variables?.resolution === "replace"
+      }
+      createRecurringLoading={
+        confirmMutation.isPending &&
+        Boolean(confirmMutation.variables?.createRecurringFromSuggestion)
+      }
+      recurringSuggestionLabel={line.recurringSuggestionLabel}
+      recurringSeriesOptions={recurringSeriesOptions}
+      recurringTransactionId={recurringTransactionId}
+      onRecurringTransactionIdChange={setRecurringTransactionId}
+    />
   );
 }
 
 export function ImportReviewPage() {
   const { id } = useParams({ from: "/app-layout/imports/$id" });
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isBooting, user } = useAuth();
   const hasSession = !isBooting && Boolean(user);
@@ -272,6 +255,20 @@ export function ImportReviewPage() {
   const acceptedConnections = (connectionsQuery.data ?? []).filter(
     (c) => c.status === "accepted",
   );
+  const tagsQuery = useQuery({
+    queryKey: ["tags"],
+    queryFn: () => apiFetchJson<TagDto[]>("/tags"),
+    enabled: hasSession,
+  });
+  const tagSuggestions = (tagsQuery.data ?? []).map((t) => t.name);
+  const recurringQuery = useQuery({
+    queryKey: ["recurring-transactions"],
+    queryFn: () => apiFetchJson<RecurringDto[]>("/recurring-transactions"),
+    enabled: hasSession,
+  });
+  const recurringSeriesOptions = (recurringQuery.data ?? [])
+    .filter((r) => r.isActive)
+    .map((r) => ({ value: r.id, label: r.description }));
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["imports", id] });
@@ -279,6 +276,8 @@ export function ImportReviewPage() {
     queryClient.invalidateQueries({ queryKey: ["timeline"] });
     queryClient.invalidateQueries({ queryKey: ["accounts"] });
     queryClient.invalidateQueries({ queryKey: ["cards"] });
+    queryClient.invalidateQueries({ queryKey: ["tags"] });
+    queryClient.invalidateQueries({ queryKey: ["recurring-transactions"] });
   };
 
   const confirmHighConfidenceMutation = useMutation({
@@ -336,6 +335,12 @@ export function ImportReviewPage() {
         <EmptyState
           title="Nenhuma transação encontrada"
           description="Não conseguimos extrair transações deste documento."
+          actions={[
+            {
+              label: "Voltar para importações",
+              onClick: () => navigate({ to: "/imports" }),
+            },
+          ]}
         />
       ) : (
         <div className="flex flex-col gap-3">
@@ -344,12 +349,14 @@ export function ImportReviewPage() {
               key={line.id}
               line={line}
               categories={categoriesQuery.data ?? []}
+              tagSuggestions={tagSuggestions}
               duplicate={
                 line.duplicateOfTxId
                   ? duplicates[line.duplicateOfTxId]
                   : undefined
               }
               connections={acceptedConnections}
+              recurringSeriesOptions={recurringSeriesOptions}
               onSaved={invalidate}
             />
           ))}
@@ -358,12 +365,14 @@ export function ImportReviewPage() {
               key={line.id}
               line={line}
               categories={categoriesQuery.data ?? []}
+              tagSuggestions={tagSuggestions}
               duplicate={
                 line.duplicateOfTxId
                   ? duplicates[line.duplicateOfTxId]
                   : undefined
               }
               connections={acceptedConnections}
+              recurringSeriesOptions={recurringSeriesOptions}
               onSaved={invalidate}
             />
           ))}

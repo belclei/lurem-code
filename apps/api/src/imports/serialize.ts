@@ -21,7 +21,11 @@ export interface ExtractedTransactionResponse {
   amountCents: number;
   currency: string;
   description: string;
+  originalDescription: string | null;
   suggestedCategoryId: string | null;
+  suggestedTagNames: string[];
+  suggestedRecurringId: string | null;
+  recurringSuggestionLabel: string | null;
   confidence: number;
   cardHolderRaw: string | null;
   installmentNumber: number | null;
@@ -57,7 +61,11 @@ export function toExtractedTransactionResponse(
     amountCents: line.amountCents,
     currency: line.currency,
     description: line.description,
+    originalDescription: line.originalDescription,
     suggestedCategoryId: line.suggestedCategoryId,
+    suggestedTagNames: line.suggestedTagNames,
+    suggestedRecurringId: line.suggestedRecurringId,
+    recurringSuggestionLabel: line.recurringSuggestionLabel,
     confidence: line.confidence,
     cardHolderRaw: line.cardHolderRaw,
     installmentNumber: line.installmentNumber,

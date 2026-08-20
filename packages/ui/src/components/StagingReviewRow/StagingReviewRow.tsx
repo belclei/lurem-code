@@ -1,152 +1,249 @@
-import type { ReactNode } from "react";
+import { Alert } from "../Alert/Alert";
 import { Badge } from "../Badge/Badge";
 import { Button } from "../Button/Button";
 import { Card } from "../Card/Card";
+import { Input } from "../Input/Input";
+import type { SelectOption } from "../Select/Select";
+import { Select } from "../Select/Select";
+import { TagInput } from "../TagInput/TagInput";
 import { Body } from "../Typography/Body";
-import { Mono } from "../Typography/Mono";
-import { formatDate } from "../shared/formatDate";
-import { formatMoney } from "../shared/formatMoney";
 
 export type StagingReviewStatus = "pending" | "confirmed" | "rejected";
 
 export interface StagingReviewRowProps {
   description: string;
-  amountCents: number;
+  onDescriptionChange: (value: string) => void;
+  /** "Original: <raw>" — set only when a learned alias pre-filled `description`
+   * away from the raw extracted text (§ description-alias). */
+  descriptionHint?: string;
+  /** Money-input string ("25,00"), same convention as Input's `money` mode. */
+  amount: string;
+  onAmountChange: (value: string) => void;
+  categoryOptions: SelectOption[];
+  categoryId: string | null;
+  onCategoryIdChange: (value: string | null) => void;
+  tagNames: string[];
+  onTagNamesChange: (names: string[]) => void;
+  tagSuggestions?: string[];
+  /** ISO date string — meta line only, not editable here (kept out of the
+   * edit surface: the extractor rarely gets the date wrong, and adding a
+   * DateField would be a 4th field competing with description/valor/categoria
+   * for the row's attention). */
   date: string;
-  /** 1–3 discrete pips, never a percentage (§6.8). */
-  confidencePips: 1 | 2 | 3;
-  suggestedCategoryLabel?: string;
-  suggestedCategoryIcon?: ReactNode;
+  installmentNumber?: number | null;
+  installmentTotal?: number | null;
+  cardHolderRaw?: string | null;
+  /** 0..1 — only rendered as a badge below 0.5 (§ import-review-polish):
+   * silence for normal/high confidence, a label only when it's actually
+   * worth a second look. */
+  confidence: number;
   status: StagingReviewStatus;
-  isDuplicate?: boolean;
-  duplicateReason?: string;
-  suggestsRecurringLink?: boolean;
+  /** "Atribuir <cardHolderRaw> a um conectado" — omitted entirely when there's
+   * no cardHolderRaw or no accepted connection to assign to. */
+  portadorOptions?: SelectOption[];
+  portadorUserId?: string | null;
+  onPortadorUserIdChange?: (value: string | null) => void;
+  duplicateDescription?: string;
+  /** Nome amigável de uma assinatura detectada (lista conhecida ou padrão
+   * de 3 ocorrências) quando NENHUMA série ainda existe — dispara o banner
+   * com a ação de criar. Mutuamente exclusivo com recurringTransactionId
+   * vindo preenchido (ver design doc, "Dois campos, dois comportamentos"). */
+  recurringSuggestionLabel?: string | null;
+  onCreateRecurring?: () => void;
+  createRecurringLoading?: boolean;
+  /** Lista de séries recorrentes ativas do usuário, pra edição manual do
+   * vínculo — só renderizada se não-vazia. */
+  recurringSeriesOptions?: SelectOption[];
+  recurringTransactionId?: string | null;
+  onRecurringTransactionIdChange?: (value: string | null) => void;
+  error?: string | null;
   onConfirm?: () => void;
-  onEdit?: () => void;
   onReject?: () => void;
-}
-
-function ConfidencePips({ pips }: { pips: 1 | 2 | 3 }) {
-  return (
-    <span
-      role="img"
-      aria-label={`Confiança: ${pips} de 3`}
-      className="inline-flex items-center gap-0.5"
-    >
-      {[1, 2, 3].map((i) => (
-        <span
-          key={i}
-          aria-hidden="true"
-          className={[
-            "h-1.5 w-1.5 rounded-full",
-            // REBRAND (Task 1.3): blue-700/300 -> petrol-700/300, per the
-            // task-1.3 brief's explicit classification of this "filled"
-            // confidence-pip indicator alongside other selection-state uses.
-            i <= pips
-              ? "bg-[var(--lr-petrol-700)] dark:bg-[var(--lr-petrol-300)]"
-              : "bg-[var(--lr-surface-sunken)]",
-          ].join(" ")}
-        />
-      ))}
-    </span>
-  );
+  /** Only offered when a duplicate was detected — replaces the existing
+   * Transaction instead of keeping both. */
+  onReplace?: () => void;
+  confirmLoading?: boolean;
+  rejectLoading?: boolean;
+  replaceLoading?: boolean;
 }
 
 /**
- * Lurem's import-review line item. Dumb component: `confidencePips` and
- * `status` arrive via props — no extraction/confidence scoring happens here
- * (§6.8, BACKLOG US-2.5). "Alta confiança" styling is `confidencePips === 3`,
- * a read of the same prop, not a separate decision.
+ * Lurem's import-review line item (§6.8, "a tela mais importante do fluxo").
+ * Every editable field is always live — there's no separate "Editar" mode to
+ * toggle into, matching how fast the actual review flow needs to move: read,
+ * correct inline if needed, confirm. Dumb/controlled like Input/Select: all
+ * state and the confirm/reject/replace mutations live with the caller.
  */
 export function StagingReviewRow({
   description,
-  amountCents,
+  onDescriptionChange,
+  descriptionHint,
+  amount,
+  onAmountChange,
+  categoryOptions,
+  categoryId,
+  onCategoryIdChange,
+  tagNames,
+  onTagNamesChange,
+  tagSuggestions = [],
   date,
-  confidencePips,
-  suggestedCategoryLabel,
-  suggestedCategoryIcon,
+  installmentNumber,
+  installmentTotal,
+  cardHolderRaw,
+  confidence,
   status,
-  isDuplicate = false,
-  duplicateReason,
-  suggestsRecurringLink = false,
+  portadorOptions,
+  portadorUserId = null,
+  onPortadorUserIdChange,
+  duplicateDescription,
+  recurringSuggestionLabel,
+  onCreateRecurring,
+  createRecurringLoading = false,
+  recurringSeriesOptions,
+  recurringTransactionId = null,
+  onRecurringTransactionIdChange,
+  error,
   onConfirm,
-  onEdit,
   onReject,
+  onReplace,
+  confirmLoading = false,
+  rejectLoading = false,
+  replaceLoading = false,
 }: StagingReviewRowProps) {
-  const isHighConfidence = confidencePips === 3;
+  if (status !== "pending") {
+    return (
+      <Card className="flex items-center justify-between opacity-60">
+        <Body>{description}</Body>
+        <Badge
+          kind="status"
+          status={status === "confirmed" ? "active" : "inactive"}
+        >
+          {status === "confirmed" ? "Confirmada" : "Rejeitada"}
+        </Badge>
+      </Card>
+    );
+  }
+
+  const isDuplicate = Boolean(duplicateDescription);
 
   return (
-    <Card dashed={status === "rejected"}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <Body weight="medium" className="truncate">
-              {description}
-            </Body>
-            <ConfidencePips pips={confidencePips} />
-            {isHighConfidence ? (
-              <Badge kind="status" status="active">
-                Alta confiança
-              </Badge>
-            ) : null}
-            {isDuplicate ? (
-              <Badge kind="status" status="alert">
-                Possível duplicata
-              </Badge>
-            ) : null}
-            {suggestsRecurringLink ? (
-              <Badge kind="status" status="pending">
-                Vínculo com recorrência
-              </Badge>
-            ) : null}
-            {status === "confirmed" ? (
-              <Badge kind="status" status="active">
-                Confirmada
-              </Badge>
-            ) : null}
-            {status === "rejected" ? (
-              <Badge kind="status" status="inactive">
-                Rejeitada
-              </Badge>
-            ) : null}
-          </div>
-          <Body muted className="text-[.8125rem]">
-            {suggestedCategoryIcon ? (
-              <span
-                aria-hidden="true"
-                className="mr-1 inline-block h-3.5 w-3.5 align-text-bottom"
-              >
-                {suggestedCategoryIcon}
-              </span>
-            ) : null}
-            {suggestedCategoryLabel ? `${suggestedCategoryLabel} · ` : ""}
-            {formatDate(date)}
-            {isDuplicate && duplicateReason ? ` · ${duplicateReason}` : ""}
-          </Body>
+    <Card className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          {confidence < 0.5 ? (
+            <Badge kind="status" status="alert">
+              Confira os dados
+            </Badge>
+          ) : null}
         </div>
-        <Mono variant="number" tone="out" className="flex-none">
-          {formatMoney(amountCents)}
-        </Mono>
+        <Body muted className="text-xs">
+          {date.slice(0, 10).split("-").reverse().join("/")}
+          {installmentNumber && installmentTotal
+            ? ` · ${installmentNumber}/${installmentTotal}`
+            : ""}
+          {cardHolderRaw ? ` · ${cardHolderRaw}` : ""}
+        </Body>
       </div>
-      {status === "pending" ? (
-        <div className="mt-3 flex gap-2 border-t border-[var(--lr-border)] pt-3">
-          {onConfirm ? (
-            <Button variant="primary" size="sm" onClick={onConfirm}>
-              Confirmar
-            </Button>
-          ) : null}
-          {onEdit ? (
-            <Button variant="secondary" size="sm" onClick={onEdit}>
-              Editar
-            </Button>
-          ) : null}
-          {onReject ? (
-            <Button variant="danger" size="sm" onClick={onReject}>
-              Rejeitar
-            </Button>
-          ) : null}
-        </div>
+      <div className="grid gap-2 sm:grid-cols-[2fr_10rem_1fr]">
+        <Input
+          label="Descrição"
+          value={description}
+          onChange={(e) => onDescriptionChange(e.target.value)}
+          hint={descriptionHint}
+        />
+        <Input
+          label="Valor"
+          value={amount}
+          onChange={(e) => onAmountChange(e.target.value)}
+          money
+          affix="R$"
+        />
+        <Select
+          label="Categoria"
+          options={categoryOptions}
+          value={categoryId}
+          onChange={onCategoryIdChange}
+          placeholder="Sem categoria"
+        />
+      </div>
+      <TagInput
+        label="Tags"
+        value={tagNames}
+        onChange={onTagNamesChange}
+        suggestions={tagSuggestions}
+      />
+      {cardHolderRaw && portadorOptions && portadorOptions.length > 0 ? (
+        <Select
+          label={`Atribuir "${cardHolderRaw}" a um conectado`}
+          options={portadorOptions}
+          value={portadorUserId}
+          onChange={onPortadorUserIdChange}
+          placeholder="Não atribuir"
+        />
       ) : null}
+      {recurringSeriesOptions && recurringSeriesOptions.length > 0 ? (
+        <Select
+          label="Série"
+          options={recurringSeriesOptions}
+          value={recurringTransactionId}
+          onChange={onRecurringTransactionIdChange}
+          placeholder="Nenhuma"
+        />
+      ) : null}
+      {duplicateDescription ? (
+        <Alert
+          variant="warning"
+          layout="inline"
+          title="Possível duplicata"
+          description={duplicateDescription}
+        />
+      ) : null}
+      {recurringSuggestionLabel ? (
+        <Alert
+          variant="info"
+          layout="inline"
+          title="Possível assinatura recorrente"
+          description={`Isso parece uma assinatura recorrente (${recurringSuggestionLabel}).`}
+        />
+      ) : null}
+      {error ? <Alert variant="error" layout="inline" title={error} /> : null}
+      <div className="flex justify-end gap-2">
+        {onReject ? (
+          <Button
+            type="button"
+            variant="secondary"
+            loading={rejectLoading}
+            onClick={onReject}
+          >
+            {isDuplicate ? "Pular" : "Rejeitar"}
+          </Button>
+        ) : null}
+        {isDuplicate && onReplace ? (
+          <Button
+            type="button"
+            variant="secondary"
+            loading={replaceLoading}
+            onClick={onReplace}
+          >
+            Substituir
+          </Button>
+        ) : null}
+        {recurringSuggestionLabel && onCreateRecurring ? (
+          <Button
+            type="button"
+            variant="secondary"
+            loading={createRecurringLoading}
+            onClick={onCreateRecurring}
+          >
+            Criar assinatura
+          </Button>
+        ) : null}
+        {onConfirm ? (
+          <Button type="button" loading={confirmLoading} onClick={onConfirm}>
+            {isDuplicate ? "Manter os dois" : "Confirmar"}
+          </Button>
+        ) : null}
+      </div>
     </Card>
   );
 }

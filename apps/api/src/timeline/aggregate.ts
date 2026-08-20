@@ -3,6 +3,7 @@
 // (ARQUITETURA.md §6.12). Função pura: I/O (filtros, fetch) fica em routes.ts;
 // aqui só agrupamento + paginação por cursor, testável sem banco.
 import type { DomainEvent, Transaction } from "@lurem/db";
+import type { TagRef } from "../tags/service.js";
 import {
   type InstallmentDetail,
   toTransactionResponse,
@@ -188,6 +189,7 @@ export function buildTimelinePage(
     limit: number;
     structuralDates?: string[];
     structuralItems?: SyntheticStructuralItem[];
+    tagsByTransactionId?: Map<string, TagRef[]>;
   },
 ): TimelinePageWithoutBalance {
   const installmentsByGroupId = new Map<string, Transaction[]>();
@@ -207,7 +209,11 @@ export function buildTimelinePage(
       timestamp: tx.transactionDate.getTime(),
       item: {
         itemType: "transaction" as const,
-        transaction: toTransactionResponse(tx, installmentsByGroupId),
+        transaction: toTransactionResponse(
+          tx,
+          installmentsByGroupId,
+          opts.tagsByTransactionId,
+        ),
       },
     })),
     ...events.map((event) => ({

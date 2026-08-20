@@ -203,13 +203,19 @@ export function SettingsPage() {
           <Input
             label="Nome completo"
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => {
+              setName(event.target.value);
+              setPersonalSaved(false);
+            }}
             error={personalFieldErrors.name}
           />
           <DateField
             label="Data de nascimento"
             value={birthDate}
-            onChange={setBirthDate}
+            onChange={(value) => {
+              setBirthDate(value);
+              setPersonalSaved(false);
+            }}
             error={personalFieldErrors.birthDate}
           />
           <Input
@@ -300,7 +306,10 @@ export function SettingsPage() {
               type="password"
               label="Senha atual"
               value={currentPassword}
-              onChange={(event) => setCurrentPassword(event.target.value)}
+              onChange={(event) => {
+                setCurrentPassword(event.target.value);
+                setPasswordSaved(false);
+              }}
               error={passwordFieldErrors.currentPassword}
             />
             <Input
@@ -308,14 +317,20 @@ export function SettingsPage() {
               label="Nova senha"
               hint="Mínimo de 8 caracteres."
               value={newPassword}
-              onChange={(event) => setNewPassword(event.target.value)}
+              onChange={(event) => {
+                setNewPassword(event.target.value);
+                setPasswordSaved(false);
+              }}
               error={passwordFieldErrors.newPassword}
             />
             <Input
               type="password"
               label="Confirmar nova senha"
               value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
+              onChange={(event) => {
+                setConfirmPassword(event.target.value);
+                setPasswordSaved(false);
+              }}
               error={passwordFieldErrors.confirmPassword}
             />
             {passwordError ? (
@@ -360,7 +375,7 @@ export function SettingsPage() {
           <Alert variant="error" layout="inline" title={exportError} />
         ) : null}
         <Alert
-          variant="warning"
+          variant="error"
           title="Apagar conta"
           description="Remove suas contas, cartões, transações, recorrências e conexões do banco de dados imediatamente. Cópias em backup seguem a política normal de retenção (7 diários, 4 semanais, 6 mensais) — não é uma exclusão instantânea das cópias de segurança."
           actions={[

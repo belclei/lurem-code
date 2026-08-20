@@ -3,6 +3,7 @@
 // (US-3.7) consomem. Sinal do dinheiro vem de kind/transferDirection, nunca do
 // valor (§1.4): amountCents/amountBRLCents são sempre positivos.
 import type { Transaction } from "@lurem/db";
+import type { TagRef } from "../tags/service.js";
 
 export interface InstallmentDetail {
   originalAmountCents: number;
@@ -39,6 +40,7 @@ export interface TransactionResponse {
   recurringTransactionId: string | null;
   createdAt: string;
   installmentDetails?: InstallmentDetail;
+  tags: TagRef[];
 }
 
 function ymd(date: Date): string {
@@ -92,6 +94,7 @@ function calculateInstallmentDetails(
 export function toTransactionResponse(
   tx: Transaction,
   installmentsByGroupId?: Map<string, Transaction[]>,
+  tagsByTransactionId?: Map<string, TagRef[]>,
 ): TransactionResponse {
   const details = installmentsByGroupId
     ? calculateInstallmentDetails(tx, installmentsByGroupId)
@@ -119,5 +122,6 @@ export function toTransactionResponse(
     recurringTransactionId: tx.recurringTransactionId,
     createdAt: tx.createdAt.toISOString(),
     ...(details ? { installmentDetails: details } : {}),
+    tags: tagsByTransactionId?.get(tx.id) ?? [],
   };
 }

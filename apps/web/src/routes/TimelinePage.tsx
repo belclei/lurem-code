@@ -15,7 +15,6 @@ import {
   Mono,
   PlusIcon,
   ProfileIncompleteAlert,
-  UploadIcon,
   formatDate,
   formatMoney,
 } from "@lurem/ui";
@@ -40,6 +39,7 @@ import type {
   TransactionDto,
   TxKind,
 } from "../auth/types";
+import { ImportNavIcon } from "../components/AppLayoutIcons";
 import {
   deserializeDate,
   deserializeDateRange,
@@ -64,7 +64,12 @@ import { TimelineActivationSection } from "./timeline/TimelineActivationSection"
 import { TimelineFeed } from "./timeline/TimelineFeed";
 import { TimelineFilterBar } from "./timeline/TimelineFilterBar";
 import { TimelineSummaryAside } from "./timeline/TimelineSummaryAside";
-import { greetingAndDate, thisMonthRange, toYmd } from "./timeline/dateHelpers";
+import {
+  greetingAndDate,
+  isThisMonthRange,
+  thisMonthRange,
+  toYmd,
+} from "./timeline/dateHelpers";
 import { EVENT_TYPE_GROUPS } from "./timeline/eventTypeGroups";
 import type { Chip, ScheduledHandlers } from "./timeline/transactionRowHelpers";
 import type { CategoryDto } from "./timeline/types";
@@ -110,6 +115,16 @@ export function TimelinePage() {
     () => new Set(),
     serializeStringSet,
     deserializeStringSet,
+  );
+  // The "connections" group is gated the same way the sidebar nav item and
+  // /connections route already are (AppLayout.tsx, ConnectionsPage.tsx) —
+  // otherwise the type filter lists an event family the user can't reach.
+  const visibleEventTypeGroups = useMemo(
+    () =>
+      EVENT_TYPE_GROUPS.filter(
+        (g) => g.id !== "connections" || user?.flags.connections,
+      ),
+    [user?.flags.connections],
   );
   const [categoryFilterId, setCategoryFilterId] = useSessionState<
     string | null
@@ -202,7 +217,7 @@ export function TimelinePage() {
       // empty `types` CSV the same as "no filter at all" (splitCsv collapses
       // `[]` back to `undefined`), so hiding the last visible group would
       // silently show everything instead of nothing.
-      if (prev.size >= EVENT_TYPE_GROUPS.length - 1) return prev;
+      if (prev.size >= visibleEventTypeGroups.length - 1) return prev;
       next.add(id);
       return next;
     });
@@ -367,11 +382,19 @@ export function TimelinePage() {
     () => [
       ...(accountsQuery.data ?? []).map((a) => ({
         id: a.id,
-        label: a.name || a.institutionName,
+        label: a.name || `${a.institutionName} · Conta`,
+        institutionName: a.institutionName,
+        logoUrl: a.logoUrl,
+        tone: (a.type === "cash" ? "gold" : "petrol") as "gold" | "petrol",
+        kind: "account" as const,
       })),
       ...(cardsQuery.data ?? []).map((c) => ({
         id: c.id,
-        label: c.name || c.institutionName,
+        label: c.name || `${c.institutionName} · Cartão`,
+        institutionName: c.institutionName,
+        logoUrl: c.logoUrl,
+        tone: "petrol" as const,
+        kind: "card" as const,
       })),
     ],
     [accountsQuery.data, cardsQuery.data],
@@ -384,6 +407,22 @@ export function TimelinePage() {
     .map((c) => c.id)
     .filter((id) => !hiddenChipIds.has(id));
   const hasActiveFilter = hiddenChipIds.size > 0;
+  // Broader than hasActiveFilter above (that one's scoped to the account/card
+  // popover's own trigger label) — any of the 4 filters narrower than
+  // default means a zero-result feed is "filtered", not "genuinely empty",
+  // so the empty state's action should be "limpar filtros", not "cadastre
+  // uma conta".
+  const hasAnyActiveFilter =
+    hasActiveFilter ||
+    hiddenEventGroupIds.size > 0 ||
+    categoryFilterId !== null ||
+    !isThisMonthRange(periodRange);
+  function clearFilters() {
+    setHiddenChipIds(new Set());
+    setHiddenEventGroupIds(new Set());
+    setCategoryFilterId(null);
+    setPeriodRange(thisMonthRange());
+  }
 
   const categoriesQuery = useQuery({
     queryKey: ["categories"],
@@ -408,9 +447,9 @@ export function TimelinePage() {
 
   const eventTypesFilterActive = hiddenEventGroupIds.size > 0;
   const visibleEventTypes = eventTypesFilterActive
-    ? EVENT_TYPE_GROUPS.filter((g) => !hiddenEventGroupIds.has(g.id)).flatMap(
-        (g) => g.types,
-      )
+    ? visibleEventTypeGroups
+        .filter((g) => !hiddenEventGroupIds.has(g.id))
+        .flatMap((g) => g.types)
     : undefined;
 
   const timelineQuery = useInfiniteQuery({
@@ -496,14 +535,16 @@ export function TimelinePage() {
                 {user.flags["imports.pipeline"] ? (
                   <Button
                     variant="primary"
-                    icon={<UploadIcon />}
+                    size="sm"
+                    icon={<ImportNavIcon />}
                     onClick={() => setImportDialogOpen(true)}
                   >
-                    Importar transações
+                    Importar
                   </Button>
                 ) : null}
                 <Button
-                  variant="primary"
+                  variant="secondary"
+                  size="sm"
                   icon={<PlusIcon />}
                   onClick={() => setTxDialogOpen(true)}
                 >
@@ -664,6 +705,7 @@ export function TimelinePage() {
             onCalendarMonthChange={setCalendarMonth}
             periodOpen={periodOpen}
             onPeriodOpenChange={setPeriodOpen}
+            eventTypeGroups={visibleEventTypeGroups}
             hiddenEventGroupIds={hiddenEventGroupIds}
             onToggleEventGroup={toggleEventGroup}
             eventTypesOpen={eventTypesOpen}
@@ -684,6 +726,8 @@ export function TimelinePage() {
             onFetchNextPage={() => timelineQuery.fetchNextPage()}
             userBirthDate={user.birthDate}
             userCreatedAt={user.createdAt}
+            hasActiveFilter={hasAnyActiveFilter}
+            onClearFilters={clearFilters}
             scheduledHandlers={scheduledHandlers}
             categoriesById={categoriesById}
             accountsById={accountsById}

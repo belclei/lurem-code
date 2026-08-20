@@ -449,6 +449,7 @@ export function AdminPage() {
         >
           <div className="flex-1 sm:min-w-[200px]">
             <Input
+              id="calendar-title-input"
               label="Título"
               value={calendarTitle}
               onChange={(e) => setCalendarTitle(e.target.value)}
@@ -498,6 +499,13 @@ export function AdminPage() {
           <EmptyState
             title="Nenhuma entrada"
             description="Entradas cadastradas aqui aparecem na Timeline de todo mundo, todo ano."
+            actions={[
+              {
+                label: "Adicionar entrada",
+                onClick: () =>
+                  document.getElementById("calendar-title-input")?.focus(),
+              },
+            ]}
           />
         ) : (
           <div className="flex flex-col gap-2">
@@ -542,6 +550,7 @@ export function AdminPage() {
           <div className="flex flex-col gap-3 sm:flex-row">
             <div className="w-32">
               <Input
+                id="release-version-input"
                 label="Versão"
                 placeholder="2026.08.15"
                 value={releaseVersion}
@@ -589,6 +598,13 @@ export function AdminPage() {
           <EmptyState
             title="Nenhuma release"
             description="Publicadas aqui, aparecem como Alert pra todo mundo que ainda não viu."
+            actions={[
+              {
+                label: "Publicar release",
+                onClick: () =>
+                  document.getElementById("release-version-input")?.focus(),
+              },
+            ]}
           />
         ) : (
           <div className="flex flex-col gap-2">

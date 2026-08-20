@@ -63,6 +63,12 @@ export interface TimelineFeedProps {
   onToggleExpandTransaction: (id: string) => void;
   selectedTransactionIds: Set<string>;
   onToggleSelectTransaction: (id: string) => void;
+  /** True when any Timeline filter (conta/cartão, período, tipo, categoria)
+   * is narrower than its default — the empty state's action differs: "limpar
+   * filtros" makes sense here, adding an account/card doesn't (there's data,
+   * it's just filtered out). */
+  hasActiveFilter?: boolean;
+  onClearFilters?: () => void;
   selectedRecurringPreviewIds: Set<string>;
   onToggleSelectRecurringPreview: (
     id: string,
@@ -101,6 +107,8 @@ export function TimelineFeed({
   onToggleExpandTransaction,
   selectedTransactionIds,
   onToggleSelectTransaction,
+  hasActiveFilter = false,
+  onClearFilters,
   selectedRecurringPreviewIds,
   onToggleSelectRecurringPreview,
   onEditTransaction,
@@ -124,8 +132,25 @@ export function TimelineFeed({
       ) : null}
       {!isLoading && days.length === 0 ? (
         <EmptyState
-          title="Nada por aqui ainda"
-          description="Suas contas, cartões e transações vão aparecer aqui conforme você usar o Lurem."
+          title={
+            hasActiveFilter ? "Nada com esses filtros" : "Nada por aqui ainda"
+          }
+          description={
+            hasActiveFilter
+              ? "Nenhum resultado no período/filtro selecionado."
+              : "Suas contas, cartões e transações vão aparecer aqui conforme você usar o Lurem."
+          }
+          actions={
+            hasActiveFilter && onClearFilters
+              ? [
+                  {
+                    label: "Limpar filtros",
+                    onClick: onClearFilters,
+                    variant: "secondary",
+                  },
+                ]
+              : undefined
+          }
         />
       ) : null}
 

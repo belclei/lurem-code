@@ -13,6 +13,7 @@ import {
 } from "./cache.js";
 import { computeDashboard } from "./compute.js";
 import { loadInsightsDataset } from "./load.js";
+import { computeSpendBreakdown } from "./spend-breakdown.js";
 
 const DashboardQuery = z.object({
   asOf: z
@@ -31,6 +32,19 @@ function asOfInstant(ymd: string): Date {
   const parts = ymd.split("-");
   return new Date(
     Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12),
+  );
+}
+
+// transactionDate (@db.Date) is always stored as midnight UTC (same
+// convention as imports/routes.ts's parseDateOnly) — unlike asOfInstant
+// above (deliberately noon, for balance-as-of math), a `from`/`to` range
+// bound against that column needs the exact midnight instant, or a `from`
+// bound at noon would wrongly exclude a transaction dated at midnight UTC
+// on that very day.
+function dateOnlyInstant(ymd: string): Date {
+  const parts = ymd.split("-");
+  return new Date(
+    Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])),
   );
 }
 
@@ -71,6 +85,72 @@ export async function registerInsightRoutes(
         JSON.stringify(result),
       );
       return result;
+    },
+  );
+
+  const SpendBreakdownQuery = z.object({
+    by: z.enum(["category", "tag"]),
+    from: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "from no formato AAAA-MM-DD.")
+      .optional(),
+    to: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "to no formato AAAA-MM-DD.")
+      .optional(),
+  });
+
+  fastify.get(
+    "/v1/insights/spend-breakdown",
+    {
+      schema: { querystring: SpendBreakdownQuery },
+      preHandler: requireUser(fastify),
+    },
+    async (request) => {
+      // biome-ignore lint/style/noNonNullAssertion: set by requireUser() preHandler
+      const userId = request.userId!;
+      const { by, from, to } = request.query as z.infer<
+        typeof SpendBreakdownQuery
+      >;
+
+      // Real spend only (§ tags spec §5) — scheduled/not-yet-happened
+      // amounts would overstate "how much I spent", same isScheduled
+      // exclusion the rest of the app treats as "not real money yet".
+      const expenseTransactions = await prisma.transaction.findMany({
+        where: {
+          userId,
+          kind: "expense",
+          isScheduled: false,
+          ...(from || to
+            ? {
+                transactionDate: {
+                  ...(from ? { gte: dateOnlyInstant(from) } : {}),
+                  ...(to ? { lte: dateOnlyInstant(to) } : {}),
+                },
+              }
+            : {}),
+        },
+      });
+
+      if (by === "category") {
+        const categories = await prisma.category.findMany({
+          where: { OR: [{ userId: null }, { userId }] },
+        });
+        return computeSpendBreakdown("category", expenseTransactions, {
+          categories,
+        });
+      }
+
+      const transactionTags = await prisma.transactionTag.findMany({
+        where: {
+          transactionId: { in: expenseTransactions.map((tx) => tx.id) },
+        },
+      });
+      const tags = await prisma.tag.findMany({ where: { userId } });
+      return computeSpendBreakdown("tag", expenseTransactions, {
+        transactionTags,
+        tags,
+      });
     },
   );
 }

@@ -73,6 +73,11 @@ export interface InstallmentDetailDto {
   payoffDate: string;
 }
 
+export interface TagDto {
+  id: string;
+  name: string;
+}
+
 export interface TransactionDto {
   id: string;
   kind: TxKind;
@@ -100,6 +105,7 @@ export interface TransactionDto {
   // variant below is wired for when that backend gap closes, but exercises
   // the categoryLabel ("Parcela N/M") fallback path in the meantime.
   installmentDetails?: InstallmentDetailDto;
+  tags: TagDto[];
 }
 
 export interface RecurringDto {
@@ -340,7 +346,11 @@ export interface ExtractedTransactionDto {
   amountCents: number;
   currency: string;
   description: string;
+  originalDescription: string | null;
   suggestedCategoryId: string | null;
+  suggestedTagNames: string[];
+  suggestedRecurringId: string | null;
+  recurringSuggestionLabel: string | null;
   confidence: number;
   cardHolderRaw: string | null;
   installmentNumber: number | null;

@@ -6,7 +6,7 @@ import { Body } from "../Typography/Body";
 import { Mono } from "../Typography/Mono";
 import { formatDate } from "../shared/formatDate";
 import { formatMoney } from "../shared/formatMoney";
-import { CheckIcon, ChevronDownIcon } from "../shared/icons";
+import { CheckIcon, ChevronDownIcon, UploadIcon } from "../shared/icons";
 
 export type TransactionKind = "income" | "expense" | "transfer";
 export type TransactionSource = "manual" | "import";
@@ -33,6 +33,10 @@ interface TransactionRowCommon {
    * institution. Shown in the expanded detail. Absent → that detail block
    * is skipped rather than shown empty. */
   accountLabel?: string;
+  /** #tag names attached to this transaction (§ tags spec) — shown in the
+   * expanded detail only, same "not worth the collapsed row's space" call
+   * already made for accountLabel above. Empty/absent → no tags block. */
+  tagNames?: string[];
   /** Whether this row is expanded to show details. */
   expanded?: boolean;
   /** Fired when the user clicks the chevron to toggle expand. */
@@ -150,11 +154,6 @@ function RowHeader(props: TransactionRowProps) {
               ? ` · ${props.installment?.installmentNumber}/${props.installment?.installmentTotal}`
               : ""}
           </Body>
-          {props.source === "import" ? (
-            <Badge kind="status" status="pending">
-              Importada
-            </Badge>
-          ) : null}
           {props.variant === "transfer" ? (
             <Badge kind="status" status="active">
               Transferência
@@ -311,6 +310,7 @@ export function TransactionRow(props: TransactionRowProps) {
 
   return (
     <Card
+      className="relative"
       interactive={Boolean(props.onToggleSelect)}
       onClick={props.onToggleSelect}
       // No aria-label here on purpose: an aria-label would replace the
@@ -331,6 +331,25 @@ export function TransactionRow(props: TransactionRowProps) {
           : undefined
       }
     >
+      {props.source === "import" ? (
+        <>
+          {/* Top-right, not bottom-right: the expanded action row (Editar/
+              Apagar/Confirmar) sits flush against the card's bottom edge,
+              so a bottom corner mark would collide with it there. This
+              corner stays clear of the chevron too — it's anchored outside
+              the card's own box, the chevron sits inset by the card's
+              padding. Always visible (no hover/tooltip) — a provenance
+              fact, not something worth hiding behind an interaction. */}
+          <span
+            aria-hidden="true"
+            className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--lr-surface-sunken)] text-[var(--lr-text-secondary)] ring-2 ring-[var(--lr-surface)] dark:bg-white/10"
+          >
+            <UploadIcon className="h-2.5 w-2.5" />
+          </span>
+          <span className="sr-only">Importada</span>
+        </>
+      ) : null}
+
       <RowHeader {...props} />
 
       {!isRecurringPreview && props.expanded ? (
@@ -343,7 +362,18 @@ export function TransactionRow(props: TransactionRowProps) {
               <p className="lr-label mb-1">Origem</p>
               <Body as="span" className="text-[.8125rem]">
                 {props.accountLabel}
+                {props.source === "import" ? " · Importada" : ""}
               </Body>
+            </div>
+          ) : null}
+
+          {props.tagNames && props.tagNames.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-1.5 border-t border-[var(--lr-border)] pt-3">
+              {props.tagNames.map((name) => (
+                <Badge key={name} kind="category" color="ink">
+                  #{name}
+                </Badge>
+              ))}
             </div>
           ) : null}
 

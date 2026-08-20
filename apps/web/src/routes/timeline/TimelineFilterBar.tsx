@@ -1,10 +1,16 @@
 // apps/web/src/routes/timeline/TimelineFilterBar.tsx
-import { Button, Calendar, Checkbox, EyeIcon, Popover } from "@lurem/ui";
+import {
+  Button,
+  Calendar,
+  Checkbox,
+  EyeIcon,
+  InstitutionMark,
+  Popover,
+} from "@lurem/ui";
 import type { CalendarRange } from "@lurem/ui";
 import { periodLabel, thisMonthRange } from "./dateHelpers";
-import { EVENT_TYPE_GROUPS } from "./eventTypeGroups";
+import type { EventTypeGroup } from "./eventTypeGroups";
 import type { Chip } from "./transactionRowHelpers";
-import { institutionDotColor } from "./transactionRowHelpers";
 import type { CategoryDto } from "./types";
 
 export interface TimelineFilterBarProps {
@@ -22,6 +28,7 @@ export interface TimelineFilterBarProps {
   periodOpen: boolean;
   onPeriodOpenChange: (open: boolean) => void;
 
+  eventTypeGroups: EventTypeGroup[];
   hiddenEventGroupIds: Set<string>;
   onToggleEventGroup: (id: string) => void;
   eventTypesOpen: boolean;
@@ -52,6 +59,7 @@ export function TimelineFilterBar({
   onCalendarMonthChange,
   periodOpen,
   onPeriodOpenChange,
+  eventTypeGroups,
   hiddenEventGroupIds,
   onToggleEventGroup,
   eventTypesOpen,
@@ -64,15 +72,17 @@ export function TimelineFilterBar({
 }: TimelineFilterBarProps) {
   const eventTypesFilterActive = hiddenEventGroupIds.size > 0;
   const eventTypesTriggerLabel = eventTypesFilterActive
-    ? `Tipo de evento (${EVENT_TYPE_GROUPS.length - hiddenEventGroupIds.size}/${EVENT_TYPE_GROUPS.length})`
+    ? `Tipo de evento (${eventTypeGroups.length - hiddenEventGroupIds.size}/${eventTypeGroups.length})`
     : "Todos os tipos";
   const categoryFilterLabel = categoryFilterId
     ? (categories.find((c) => c.id === categoryFilterId)?.name ?? "Categoria")
     : "Todas as categorias";
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-2.5 border-y border-[var(--lr-border)] py-3">
-      <span className="lr-label">MOSTRAR</span>
+    <div
+      aria-label="Filtros da timeline"
+      className="mb-4 flex flex-wrap items-center gap-2.5 border-y border-[var(--lr-border)] py-3"
+    >
       {chips.length > 0 ? (
         <Popover
           label="Filtrar por conta ou cartão"
@@ -99,12 +109,12 @@ export function TimelineFilterBar({
                   key={chip.id}
                   className="flex items-center gap-2.5 rounded-[var(--lr-r-sm)] px-2 py-1.5"
                 >
-                  <span
-                    aria-hidden="true"
-                    className={[
-                      "h-2 w-2 flex-none rounded-full",
-                      institutionDotColor(chip.id),
-                    ].join(" ")}
+                  <InstitutionMark
+                    logoUrl={chip.logoUrl}
+                    name={chip.institutionName}
+                    tone={chip.tone}
+                    kind={chip.kind}
+                    size="sm"
                   />
                   <span className="min-w-0 flex-1 truncate text-[.875rem] text-[var(--lr-text)]">
                     {chip.label}
@@ -185,11 +195,10 @@ export function TimelineFilterBar({
         onOpenChange={onEventTypesOpenChange}
       >
         <div className="flex w-64 max-w-[calc(100vw-2rem)] flex-col gap-2.5 rounded-[var(--lr-r-md)] border border-[var(--lr-border)] bg-[var(--lr-surface)] p-3.5 shadow-[var(--lr-e2)]">
-          {EVENT_TYPE_GROUPS.map((group) => {
+          {eventTypeGroups.map((group) => {
             const checked = !hiddenEventGroupIds.has(group.id);
             const isLastVisible =
-              checked &&
-              hiddenEventGroupIds.size >= EVENT_TYPE_GROUPS.length - 1;
+              checked && hiddenEventGroupIds.size >= eventTypeGroups.length - 1;
             return (
               <Checkbox
                 key={group.id}

@@ -178,3 +178,132 @@ describe("GET /v1/insights/dashboard (US-3.10)", () => {
     expect(after.json().disponivelHoje.valueCents).toBe(70_000);
   });
 });
+
+describe("GET /v1/insights/spend-breakdown (Part 3 spec)", () => {
+  it("breaks down expenses by category, percentages summing to 100", async () => {
+    const { userId, accessToken } = await authedUser();
+    const account = await checkingAccount(userId, 1_000_000);
+    const food = await server.prisma.category.create({
+      data: {
+        userId,
+        name: "Alimentação",
+        kind: "expense",
+        icon: "food",
+        colorToken: "--lr-gold-300",
+      },
+    });
+    const transport = await server.prisma.category.create({
+      data: {
+        userId,
+        name: "Transporte",
+        kind: "expense",
+        icon: "car",
+        colorToken: "--lr-petrol-300",
+      },
+    });
+    await server.prisma.transaction.createMany({
+      data: [
+        {
+          userId,
+          accountId: account.id,
+          kind: "expense",
+          source: "manual",
+          description: "Mercado",
+          categoryId: food.id,
+          transactionDate: new Date("2026-07-05"),
+          currency: "BRL",
+          amountCents: 30_000,
+          amountBRLCents: 30_000,
+          isScheduled: false,
+        },
+        {
+          userId,
+          accountId: account.id,
+          kind: "expense",
+          source: "manual",
+          description: "Uber",
+          categoryId: transport.id,
+          transactionDate: new Date("2026-07-06"),
+          currency: "BRL",
+          amountCents: 10_000,
+          amountBRLCents: 10_000,
+          isScheduled: false,
+        },
+        // Scheduled — must be excluded (not real spend yet).
+        {
+          userId,
+          accountId: account.id,
+          kind: "expense",
+          source: "manual",
+          description: "Futura",
+          categoryId: food.id,
+          transactionDate: new Date("2026-08-01"),
+          currency: "BRL",
+          amountCents: 99_999,
+          amountBRLCents: 99_999,
+          isScheduled: true,
+        },
+      ],
+    });
+
+    const res = await server.inject({
+      method: "GET",
+      url: "/v1/insights/spend-breakdown?by=category&from=2026-07-01&to=2026-07-31",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      id: string;
+      label: string;
+      amountCents: number;
+      percentage: number;
+    }[];
+    expect(body).toHaveLength(2);
+    const [first, second] = body;
+    if (!first || !second) throw new Error("linhas de breakdown ausentes");
+    expect(first.label).toBe("Alimentação");
+    expect(first.amountCents).toBe(30_000);
+    expect(first.percentage).toBeCloseTo(75, 5);
+    expect(second.label).toBe("Transporte");
+    expect(second.percentage).toBeCloseTo(25, 5);
+  });
+
+  it("breaks down expenses by tag, letting a multi-tagged transaction count toward each tag", async () => {
+    const { userId, accessToken } = await authedUser();
+    const account = await checkingAccount(userId, 1_000_000);
+
+    const ride = await server.prisma.transaction.create({
+      data: {
+        userId,
+        accountId: account.id,
+        kind: "expense",
+        source: "manual",
+        description: "Corrida a trabalho",
+        transactionDate: new Date("2026-07-05"),
+        currency: "BRL",
+        amountCents: 4_000,
+        amountBRLCents: 4_000,
+        isScheduled: false,
+      },
+    });
+    await server.inject({
+      method: "PATCH",
+      url: `/v1/transactions/${ride.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { tagNames: ["uber", "trabalho"] },
+    });
+
+    const res = await server.inject({
+      method: "GET",
+      url: "/v1/insights/spend-breakdown?by=tag",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { label: string; amountCents: number }[];
+    const labels = body.map((b) => b.label).sort();
+    expect(labels).toEqual(["trabalho", "uber"]);
+    for (const row of body) expect(row.amountCents).toBe(4_000);
+  });
+});
