@@ -191,7 +191,7 @@ export function TimelineFeed({
                     <Mono
                       variant="number"
                       tone={day.balanceCents < 0 ? "out" : "default"}
-                      className="font-bold text-[.8125rem]"
+                      className="font-semibold text-[.8125rem]"
                     >
                       {formatMoney(day.balanceCents)}
                     </Mono>
