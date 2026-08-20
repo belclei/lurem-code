@@ -914,6 +914,84 @@ describe("recurring subscription detection on extraction", () => {
   });
 });
 
+describe("PATCH .../lines/:lineId — recurringTransactionId", () => {
+  it("links the line to an existing series chosen by the user", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    const series = await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Spotify",
+        kind: "expense",
+        creditCardId: c.id,
+        referenceAmountCents: 2190,
+        referenceAmountBRLCents: 2190,
+        dayOfMonth: 5,
+        startDate: new Date(Date.UTC(2026, 5, 5)),
+      },
+    });
+    const { documentId, lineId } = await createImportWithOneLine(accessToken, c.id);
+
+    const response = await server.inject({
+      method: "PATCH",
+      url: `/v1/imports/${documentId}/lines/${lineId}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { recurringTransactionId: series.id },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().suggestedRecurringId).toBe(series.id);
+  });
+
+  it("unlinks when recurringTransactionId is set to null", async () => {
+    const { accessToken, userId } = await authedUser();
+    const c = await card(userId);
+    const { documentId, lineId } = await createImportWithOneLine(accessToken, c.id);
+
+    const response = await server.inject({
+      method: "PATCH",
+      url: `/v1/imports/${documentId}/lines/${lineId}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { recurringTransactionId: null },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().suggestedRecurringId).toBeNull();
+  });
+
+  it("rejects a series that doesn't belong to the user", async () => {
+    const owner = await authedUser();
+    const other = await authedUser();
+    const ownerCard = await card(owner.userId);
+    const otherCard = await card(other.userId);
+    const otherSeries = await server.prisma.recurringTransaction.create({
+      data: {
+        userId: other.userId,
+        description: "Spotify",
+        kind: "expense",
+        creditCardId: otherCard.id,
+        referenceAmountCents: 2190,
+        referenceAmountBRLCents: 2190,
+        dayOfMonth: 5,
+        startDate: new Date(Date.UTC(2026, 5, 5)),
+      },
+    });
+    const { documentId, lineId } = await createImportWithOneLine(
+      owner.accessToken,
+      ownerCard.id,
+    );
+
+    const response = await server.inject({
+      method: "PATCH",
+      url: `/v1/imports/${documentId}/lines/${lineId}`,
+      headers: { authorization: `Bearer ${owner.accessToken}` },
+      payload: { recurringTransactionId: otherSeries.id },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+});
+
 describe("DELETE /v1/imports/:id", () => {
   it("removes the document and its staging lines", async () => {
     const { userId, accessToken } = await authedUser();

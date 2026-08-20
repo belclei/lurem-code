@@ -72,6 +72,7 @@ const UpdateLineBody = z
     kind: z.enum(["income", "expense"]).optional(),
     categoryId: z.string().min(1).nullable().optional(),
     tagNames: z.array(z.string().min(1)).optional(),
+    recurringTransactionId: z.string().min(1).nullable().optional(),
   })
   .strict();
 
@@ -525,6 +526,23 @@ export async function registerImportRoutes(
       // not an alias already renamed it before staging (see POST /v1/imports).
       const rawDescription = line.originalDescription ?? line.description;
 
+      if (
+        body.recurringTransactionId !== undefined &&
+        body.recurringTransactionId !== null
+      ) {
+        const series = await prisma.recurringTransaction.findFirst({
+          where: { id: body.recurringTransactionId, userId },
+        });
+        if (!series) {
+          throw VALIDATION_FAILED([
+            {
+              field: "recurringTransactionId",
+              message: "Série não encontrada.",
+            },
+          ]);
+        }
+      }
+
       const updated = await prisma.extractedTransaction.update({
         where: { id: line.id },
         data: {
@@ -547,6 +565,9 @@ export async function registerImportRoutes(
           // edits here become the final value applied at confirm.
           ...(body.tagNames !== undefined
             ? { suggestedTagNames: body.tagNames }
+            : {}),
+          ...(body.recurringTransactionId !== undefined
+            ? { suggestedRecurringId: body.recurringTransactionId }
             : {}),
         },
       });
