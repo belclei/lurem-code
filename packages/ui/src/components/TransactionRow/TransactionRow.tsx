@@ -122,7 +122,7 @@ function RowHeader(props: TransactionRowProps) {
   const isRecurringPreview = props.variant === "recurringPreview";
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-4">
       {props.onToggleSelect ? (
         <span
           aria-hidden="true"
@@ -147,7 +147,7 @@ function RowHeader(props: TransactionRowProps) {
         </span>
       ) : null}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-baseline gap-2">
           <Body weight="medium" className="truncate">
             {props.description}
             {isInstallment
