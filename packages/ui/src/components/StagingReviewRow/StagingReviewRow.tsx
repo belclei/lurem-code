@@ -44,6 +44,18 @@ export interface StagingReviewRowProps {
   portadorUserId?: string | null;
   onPortadorUserIdChange?: (value: string | null) => void;
   duplicateDescription?: string;
+  /** Nome amigável de uma assinatura detectada (lista conhecida ou padrão
+   * de 3 ocorrências) quando NENHUMA série ainda existe — dispara o banner
+   * com a ação de criar. Mutuamente exclusivo com recurringTransactionId
+   * vindo preenchido (ver design doc, "Dois campos, dois comportamentos"). */
+  recurringSuggestionLabel?: string | null;
+  onCreateRecurring?: () => void;
+  createRecurringLoading?: boolean;
+  /** Lista de séries recorrentes ativas do usuário, pra edição manual do
+   * vínculo — só renderizada se não-vazia. */
+  recurringSeriesOptions?: SelectOption[];
+  recurringTransactionId?: string | null;
+  onRecurringTransactionIdChange?: (value: string | null) => void;
   error?: string | null;
   onConfirm?: () => void;
   onReject?: () => void;
@@ -84,6 +96,12 @@ export function StagingReviewRow({
   portadorUserId = null,
   onPortadorUserIdChange,
   duplicateDescription,
+  recurringSuggestionLabel,
+  onCreateRecurring,
+  createRecurringLoading = false,
+  recurringSeriesOptions,
+  recurringTransactionId = null,
+  onRecurringTransactionIdChange,
   error,
   onConfirm,
   onReject,
@@ -163,12 +181,29 @@ export function StagingReviewRow({
           placeholder="Não atribuir"
         />
       ) : null}
+      {recurringSeriesOptions && recurringSeriesOptions.length > 0 ? (
+        <Select
+          label="Série"
+          options={recurringSeriesOptions}
+          value={recurringTransactionId}
+          onChange={onRecurringTransactionIdChange}
+          placeholder="Nenhuma"
+        />
+      ) : null}
       {duplicateDescription ? (
         <Alert
           variant="warning"
           layout="inline"
           title="Possível duplicata"
           description={duplicateDescription}
+        />
+      ) : null}
+      {recurringSuggestionLabel ? (
+        <Alert
+          variant="info"
+          layout="inline"
+          title="Possível assinatura recorrente"
+          description={`Isso parece uma assinatura recorrente (${recurringSuggestionLabel}).`}
         />
       ) : null}
       {error ? <Alert variant="error" layout="inline" title={error} /> : null}
@@ -191,6 +226,16 @@ export function StagingReviewRow({
             onClick={onReplace}
           >
             Substituir
+          </Button>
+        ) : null}
+        {recurringSuggestionLabel && onCreateRecurring ? (
+          <Button
+            type="button"
+            variant="secondary"
+            loading={createRecurringLoading}
+            onClick={onCreateRecurring}
+          >
+            Criar assinatura
           </Button>
         ) : null}
         {onConfirm ? (

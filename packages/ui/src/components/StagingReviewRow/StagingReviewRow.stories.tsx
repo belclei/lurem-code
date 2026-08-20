@@ -97,6 +97,31 @@ export const Duplicata: Story = {
   ),
 };
 
+export const AssinaturaDetectada: Story = {
+  render: () => (
+    <div style={{ width: "30rem" }}>
+      <StagingReviewRow
+        description="Netflix"
+        onDescriptionChange={() => {}}
+        amount="39,90"
+        onAmountChange={() => {}}
+        categoryOptions={CATEGORY_OPTIONS}
+        categoryId="assinaturas"
+        onCategoryIdChange={() => {}}
+        tagNames={[]}
+        onTagNamesChange={() => {}}
+        date="2026-07-05"
+        confidence={0.95}
+        status="pending"
+        recurringSuggestionLabel="Netflix"
+        onCreateRecurring={() => {}}
+        onConfirm={() => {}}
+        onReject={() => {}}
+      />
+    </div>
+  ),
+};
+
 export const Confirmed: Story = {
   render: () => (
     <div style={{ width: "30rem" }}>
