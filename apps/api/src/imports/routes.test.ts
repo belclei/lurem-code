@@ -1209,6 +1209,92 @@ describe("confirm — recurring link and subscription creation", () => {
     });
     expect(fulfillments).toHaveLength(3); // maio, junho, julho
     expect(fulfillments.every((f) => f.method === "import_link")).toBe(true);
+
+    // Generic-pattern case (knownLabel null): the series' description is
+    // already the raw/resolved description, so no DescriptionAlias should
+    // be created — the exact match in findRecurringSeriesMatches works
+    // without one. See the known-subscription test below for the case
+    // where an alias IS needed.
+    const aliasCount = await server.prisma.descriptionAlias.count({
+      where: { userId },
+    });
+    expect(aliasCount).toBe(0);
+  });
+
+  it("createRecurringFromSuggestion with a known-subscription label: learns a DescriptionAlias so the next import of the same raw description matches the series instead of re-suggesting a new one", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+
+    fakeLlmResponse([
+      {
+        date: "2026-07-10",
+        description: "NETFLIX.COM",
+        amountCents: 3990,
+        kind: "expense",
+        confidence: 0.95,
+      },
+    ]);
+    const firstImportRes = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: "netflix-first-hash",
+        text: "...",
+      },
+    });
+    const firstDoc = firstImportRes.json();
+    expect(firstDoc.lines[0].recurringSuggestionLabel).toBe("Netflix");
+    expect(firstDoc.lines[0].suggestedRecurringId).toBeNull();
+
+    const confirmRes = await server.inject({
+      method: "POST",
+      url: `/v1/imports/${firstDoc.document.id}/lines/${firstDoc.lines[0].id}/confirm`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { createRecurringFromSuggestion: true },
+    });
+    expect(confirmRes.statusCode).toBe(200);
+    const firstTx = await server.prisma.transaction.findUniqueOrThrow({
+      where: { id: confirmRes.json().confirmedTransactionId },
+    });
+    expect(firstTx.recurringTransactionId).not.toBeNull();
+    const series = await server.prisma.recurringTransaction.findUniqueOrThrow({
+      where: { id: firstTx.recurringTransactionId as string },
+    });
+    expect(series.description).toBe("Netflix");
+
+    // Bug reproduction: a second import of the same raw "NETFLIX.COM" text
+    // a month later. Before the fix, no DescriptionAlias existed mapping
+    // "NETFLIX.COM" -> "Netflix", so the extraction step's resolved
+    // description stayed "NETFLIX.COM" — which never equals the series'
+    // "Netflix" description, so Caso A (findRecurringSeriesMatches) never
+    // matched and the line re-suggested Caso B (knownLabel again) instead
+    // of linking to the already-created series.
+    fakeLlmResponse([
+      {
+        date: "2026-08-10",
+        description: "NETFLIX.COM",
+        amountCents: 3990,
+        kind: "expense",
+        confidence: 0.95,
+      },
+    ]);
+    const secondImportRes = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: "netflix-second-hash",
+        text: "...",
+      },
+    });
+    const secondDoc = secondImportRes.json();
+    expect(secondDoc.lines[0].suggestedRecurringId).toBe(series.id);
+    expect(secondDoc.lines[0].recurringSuggestionLabel).toBeNull();
   });
 
   it("createRecurringFromSuggestion fails when the line has no valid suggestion", async () => {

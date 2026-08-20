@@ -872,6 +872,29 @@ export async function registerImportRoutes(
             );
           }
 
+          // Same learning as the description-edit path above (§
+          // description-alias): when a known-subscription label wins over
+          // this line's raw text, remember that mapping so the NEXT import
+          // of the same raw description resolves to the friendly name at
+          // extraction time — which is what lets Caso A (exact-description
+          // match in findRecurringSeriesMatches) find this series instead
+          // of re-triggering Caso B and creating a duplicate. Not needed
+          // for the generic-pattern case (knownLabel null): there the
+          // series' description is already the raw description, so the
+          // exact match works without an alias.
+          if (knownLabel) {
+            const rawDescription = line.originalDescription ?? line.description;
+            if (knownLabel !== rawDescription) {
+              await tx.descriptionAlias.upsert({
+                where: {
+                  userId_rawDescription: { userId, rawDescription },
+                },
+                create: { userId, rawDescription, friendlyName: knownLabel },
+                update: { friendlyName: knownLabel },
+              });
+            }
+          }
+
           await confirmLine(tx, userId, doc, line, series.id);
         });
       } else {
