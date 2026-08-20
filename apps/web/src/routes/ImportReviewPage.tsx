@@ -150,6 +150,11 @@ function LineRow({
         { method: "POST" },
       ),
     onSuccess: onSaved,
+    onError: (err: unknown) => {
+      setError(
+        err instanceof ApiError ? err.message : "Não foi possível descartar.",
+      );
+    },
   });
 
   return (
@@ -280,13 +285,24 @@ export function ImportReviewPage() {
     queryClient.invalidateQueries({ queryKey: ["recurring-transactions"] });
   };
 
+  const [bulkConfirmError, setBulkConfirmError] = useState<string | null>(null);
   const confirmHighConfidenceMutation = useMutation({
     mutationFn: () =>
       apiFetchJson<{ confirmedCount: number }>(
         `/imports/${id}/confirm-high-confidence`,
         { method: "POST" },
       ),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      setBulkConfirmError(null);
+      invalidate();
+    },
+    onError: (err: unknown) => {
+      setBulkConfirmError(
+        err instanceof ApiError
+          ? err.message
+          : "Não foi possível confirmar as transações de alta confiança.",
+      );
+    },
   });
 
   if (!docQuery.data) {
@@ -319,7 +335,10 @@ export function ImportReviewPage() {
       ) : null}
 
       {pendingLines.length > 0 ? (
-        <div className="mb-4 flex justify-end">
+        <div className="mb-4 flex flex-col items-end gap-2">
+          {bulkConfirmError ? (
+            <Alert variant="error" layout="inline" title={bulkConfirmError} />
+          ) : null}
           <Button
             type="button"
             variant="secondary"

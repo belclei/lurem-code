@@ -42,10 +42,6 @@ export function ImportPage() {
   const { isBooting, user } = useAuth();
   const hasSession = !isBooting && Boolean(user);
 
-  if (hasSession && user && !user.flags["imports.pipeline"]) {
-    return <Navigate to="/timeline" />;
-  }
-
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [cardDialogOpen, setCardDialogOpen] = useState(false);
 
@@ -69,6 +65,15 @@ export function ImportPage() {
     queryFn: () => apiFetchJson<ImportedDocumentDto[]>("/imports"),
     enabled: hasSession,
   });
+
+  // Moved below every hook above (was previously the function's first
+  // statement): an early return before useState/useQuery calls violates
+  // the Rules of Hooks — once `hasSession` flips true on a later render
+  // (session finishes loading), React would see fewer hooks than the
+  // previous render and throw. All hooks must run unconditionally first.
+  if (hasSession && user && !user.flags["imports.pipeline"]) {
+    return <Navigate to="/timeline" />;
+  }
 
   const documents = importsQuery.data ?? [];
 

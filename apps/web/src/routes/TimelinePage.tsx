@@ -28,7 +28,7 @@ import {
 import { Navigate, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { apiFetchJson } from "../auth/api-client";
+import { ApiError, apiFetchJson } from "../auth/api-client";
 import type {
   AccountDto,
   CardDto,
@@ -226,10 +226,23 @@ export function TimelinePage() {
   const invalidateTimeline = () =>
     queryClient.invalidateQueries({ queryKey: ["timeline"] });
 
+  // Confirmar/Pular/Apagar all used to fail completely silently — no
+  // onError anywhere, so a failed request looked identical to a slow one.
+  // TransactionRow already arms a confirm step before calling onDelete;
+  // this only covers what happens if the request itself then fails.
+  const [actionError, setActionError] = useState<string | null>(null);
+  const onActionError = (err: unknown) =>
+    setActionError(
+      err instanceof ApiError
+        ? err.message
+        : "Não foi possível concluir a ação.",
+    );
+
   const confirmMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/transactions/${id}/confirm`, { method: "POST" }),
     onSuccess: () => {
+      setActionError(null);
       invalidateTimeline();
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       queryClient.invalidateQueries({ queryKey: ["insights"] });
@@ -239,11 +252,13 @@ export function TimelinePage() {
       // anymore.
       queryClient.invalidateQueries({ queryKey: ["recurring"] });
     },
+    onError: onActionError,
   });
   const skipMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/transactions/${id}/skip`, { method: "POST" }),
     onSuccess: (_data, id) => {
+      setActionError(null);
       invalidateTimeline();
       queryClient.invalidateQueries({ queryKey: ["recurring"] });
       setSelectedTransactionIds((prev) => {
@@ -253,11 +268,13 @@ export function TimelinePage() {
         return next;
       });
     },
+    onError: onActionError,
   });
   const deleteMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/transactions/${id}`, { method: "DELETE" }),
     onSuccess: (_data, id) => {
+      setActionError(null);
       invalidateTimeline();
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       queryClient.invalidateQueries({ queryKey: ["insights"] });
@@ -270,15 +287,18 @@ export function TimelinePage() {
         return next;
       });
     },
+    onError: onActionError,
   });
 
   const closeInvoiceMutation = useMutation({
     mutationFn: (cardId: string) =>
       apiFetchJson(`/cards/${cardId}/close-invoice`, { method: "POST" }),
     onSuccess: () => {
+      setActionError(null);
       invalidateTimeline();
       queryClient.invalidateQueries({ queryKey: ["cards"] });
     },
+    onError: onActionError,
   });
 
   const payInvoiceMutation = useMutation({
@@ -507,6 +527,12 @@ export function TimelinePage() {
           <ProfileIncompleteAlert
             onGoToSettings={() => navigate({ to: "/settings" })}
           />
+        </div>
+      ) : null}
+
+      {actionError ? (
+        <div className="mb-6">
+          <Alert variant="error" layout="inline" title={actionError} />
         </div>
       ) : null}
 

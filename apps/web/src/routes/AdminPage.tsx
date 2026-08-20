@@ -80,30 +80,61 @@ export function AdminPage() {
   const invalidateUsers = () =>
     queryClient.invalidateQueries({ queryKey: ["admin-users"] });
 
+  // Most action mutations on this page had no onError at all — approve/
+  // reject/disable a user, delete an invite, all failed completely
+  // silently. One shared banner covers every one-off admin action below.
+  const [actionError, setActionError] = useState<string | null>(null);
+  const onActionError = (err: unknown) =>
+    setActionError(
+      err instanceof ApiError
+        ? err.message
+        : "Não foi possível concluir a ação.",
+    );
+
   const approveWaitlistMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/admin/access/waitlist/${id}/approve`, { method: "POST" }),
-    onSuccess: invalidateAccess,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateAccess();
+    },
+    onError: onActionError,
   });
   const rejectWaitlistMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/admin/access/waitlist/${id}/reject`, { method: "POST" }),
-    onSuccess: invalidateAccess,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateAccess();
+    },
+    onError: onActionError,
   });
   const approveInviteMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/admin/access/invites/${id}/approve`, { method: "POST" }),
-    onSuccess: invalidateAccess,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateAccess();
+    },
+    onError: onActionError,
   });
   const rejectInviteMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/admin/access/invites/${id}/reject`, { method: "POST" }),
-    onSuccess: invalidateAccess,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateAccess();
+    },
+    onError: onActionError,
   });
   const deleteInviteMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/invites/${id}`, { method: "DELETE" }),
-    onSuccess: invalidateAccess,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateAccess();
+    },
+    onError: onActionError,
   });
 
   const roleMutation = useMutation({
@@ -112,7 +143,11 @@ export function AdminPage() {
         method: "POST",
         body: JSON.stringify({ role }),
       }),
-    onSuccess: invalidateUsers,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateUsers();
+    },
+    onError: onActionError,
   });
   const betaMutation = useMutation({
     mutationFn: ({ id, isBetaTester }: { id: string; isBetaTester: boolean }) =>
@@ -120,7 +155,11 @@ export function AdminPage() {
         method: "POST",
         body: JSON.stringify({ isBetaTester }),
       }),
-    onSuccess: invalidateUsers,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateUsers();
+    },
+    onError: onActionError,
   });
   const disableMutation = useMutation({
     mutationFn: ({ id, disabled }: { id: string; disabled: boolean }) =>
@@ -128,7 +167,11 @@ export function AdminPage() {
         method: "POST",
         body: JSON.stringify({ disabled }),
       }),
-    onSuccess: invalidateUsers,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateUsers();
+    },
+    onError: onActionError,
   });
 
   const invalidateCalendar = () =>
@@ -173,7 +216,11 @@ export function AdminPage() {
   const deleteCalendarEntryMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/admin/calendar-entries/${id}`, { method: "DELETE" }),
-    onSuccess: invalidateCalendar,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateCalendar();
+    },
+    onError: onActionError,
   });
 
   function onSubmitCalendarEntry(event: FormEvent) {
@@ -234,7 +281,11 @@ export function AdminPage() {
   const deleteReleaseMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/admin/releases/${id}`, { method: "DELETE" }),
-    onSuccess: invalidateReleases,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateReleases();
+    },
+    onError: onActionError,
   });
 
   function onSubmitRelease(event: FormEvent) {
@@ -280,6 +331,15 @@ export function AdminPage() {
           Feature Flags
         </Link>
       </div>
+
+      {actionError ? (
+        <Alert
+          variant="error"
+          layout="inline"
+          title={actionError}
+          className="mb-6"
+        />
+      ) : null}
 
       <section className="mb-10">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--lr-text-secondary)]">
