@@ -184,14 +184,14 @@ export function TimelineFeed({
                     {today ? "HOJE · " : ""}
                     {longDayMonth(day.date)} - {dow}
                   </h2>
-                  <div className="flex items-baseline gap-2 rounded-full bg-[var(--lr-surface)] px-3 py-1 text-[.75rem]">
-                    <span className="uppercase tracking-widest text-[var(--lr-text-secondary)]">
-                      Saldo do dia
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[.75rem] text-[var(--lr-text-secondary)]">
+                      Saldo:
                     </span>
                     <Mono
                       variant="number"
                       tone={day.balanceCents < 0 ? "out" : "default"}
-                      className="text-[.8125rem]"
+                      className="font-bold text-[.8125rem]"
                     >
                       {formatMoney(day.balanceCents)}
                     </Mono>
