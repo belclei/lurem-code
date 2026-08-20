@@ -31,6 +31,11 @@ import {
   extractDocumentMetadata,
   extractTransactionsFromText,
 } from "./extractor.js";
+import { matchKnownSubscription } from "./known-subscriptions.js";
+import {
+  findRecurringPatternMatches,
+  findRecurringSeriesMatches,
+} from "./recurring-detection.js";
 import {
   toExtractedTransactionResponse,
   toImportedDocumentResponse,
@@ -297,6 +302,35 @@ export async function registerImportRoutes(
           aliases.map((a) => [a.rawDescription, a.friendlyName]),
         );
 
+        // Resolvida uma vez aqui (mesma regra que o map de criação usa:
+        // alias vence, senão o texto cru) pra alimentar as duas buscas de
+        // recorrência abaixo sem repetir a lógica de alias em cada uma.
+        const resolvedDescriptionByRaw = new Map(
+          items.map((i) => [
+            i.description,
+            aliasByRawDescription.get(i.description) ?? i.description,
+          ]),
+        );
+
+        const recurringSeriesMatches = await findRecurringSeriesMatches(
+          prisma,
+          userId,
+          [...resolvedDescriptionByRaw.values()],
+        );
+
+        const patternCandidates = parsedItems.map(({ item, date }) => ({
+          description: resolvedDescriptionByRaw.get(item.description) as string,
+          currency: item.currency,
+          kind: item.kind,
+          amountCents: item.amountCents,
+          date,
+        }));
+        const recurringPatternMatches = await findRecurringPatternMatches(
+          prisma,
+          userId,
+          patternCandidates,
+        );
+
         // Learned tag suggestions (§ description-tag-suggestion) — same
         // precedence rule as the alias above: a raw description this user
         // already tagged before wins over whatever the LLM guessed this
@@ -324,6 +358,15 @@ export async function registerImportRoutes(
           prisma.extractedTransaction.createMany({
             data: parsedItems.map(({ item, date }) => {
               const friendlyName = aliasByRawDescription.get(item.description);
+              const resolvedDescription = friendlyName ?? item.description;
+              const suggestedRecurringId =
+                recurringSeriesMatches.get(resolvedDescription) ?? null;
+              const recurringSuggestionLabel = suggestedRecurringId
+                ? null
+                : (matchKnownSubscription(resolvedDescription) ??
+                  (recurringPatternMatches.has(resolvedDescription)
+                    ? resolvedDescription
+                    : null));
               return {
                 importedDocumentId: doc.id,
                 kind: item.kind,
@@ -347,6 +390,8 @@ export async function registerImportRoutes(
                 duplicateOfTxId: duplicateOfTxIdByKey.get(
                   duplicateKey(date, item.amountCents, item.kind),
                 ),
+                suggestedRecurringId,
+                recurringSuggestionLabel,
               };
             }),
           }),

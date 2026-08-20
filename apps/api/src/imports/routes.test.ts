@@ -784,6 +784,136 @@ describe("confirm with duplicate resolution", () => {
   });
 });
 
+describe("recurring subscription detection on extraction", () => {
+  it("suggests a known subscription on the very first occurrence", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    fakeLlmResponse([
+      {
+        date: "2026-07-10",
+        description: "NETFLIX.COM",
+        amountCents: 3990,
+        kind: "expense",
+        confidence: 0.95,
+      },
+    ]);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: "known-sub-hash",
+        text: "...",
+      },
+    });
+
+    const line = response.json().lines[0];
+    expect(line.recurringSuggestionLabel).toBe("Netflix");
+    expect(line.suggestedRecurringId).toBeNull();
+  });
+
+  it("suggests a generic pattern on the 3rd occurrence, not before", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    await server.prisma.transaction.create({
+      data: {
+        userId,
+        creditCardId: c.id,
+        kind: "expense",
+        source: "manual",
+        description: "Academia XPTO",
+        transactionDate: new Date(Date.UTC(2026, 4, 15)),
+        currency: "BRL",
+        amountCents: 9900,
+        amountBRLCents: 9900,
+      },
+    });
+    await server.prisma.transaction.create({
+      data: {
+        userId,
+        creditCardId: c.id,
+        kind: "expense",
+        source: "manual",
+        description: "Academia XPTO",
+        transactionDate: new Date(Date.UTC(2026, 5, 15)),
+        currency: "BRL",
+        amountCents: 9900,
+        amountBRLCents: 9900,
+      },
+    });
+    fakeLlmResponse([
+      {
+        date: "2026-07-15",
+        description: "Academia XPTO",
+        amountCents: 9900,
+        kind: "expense",
+        confidence: 0.9,
+      },
+    ]);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: "pattern-hash",
+        text: "...",
+      },
+    });
+
+    const line = response.json().lines[0];
+    expect(line.recurringSuggestionLabel).toBe("Academia XPTO");
+    expect(line.suggestedRecurringId).toBeNull();
+  });
+
+  it("links to an existing active series instead of suggesting a new one", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    const series = await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Spotify",
+        kind: "expense",
+        creditCardId: c.id,
+        referenceAmountCents: 2190,
+        referenceAmountBRLCents: 2190,
+        dayOfMonth: 5,
+        startDate: new Date(Date.UTC(2026, 5, 5)),
+      },
+    });
+    fakeLlmResponse([
+      {
+        date: "2026-07-05",
+        description: "Spotify",
+        amountCents: 2190,
+        kind: "expense",
+        confidence: 0.9,
+      },
+    ]);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: "existing-series-hash",
+        text: "...",
+      },
+    });
+
+    const line = response.json().lines[0];
+    expect(line.suggestedRecurringId).toBe(series.id);
+    expect(line.recurringSuggestionLabel).toBeNull();
+  });
+});
+
 describe("DELETE /v1/imports/:id", () => {
   it("removes the document and its staging lines", async () => {
     const { userId, accessToken } = await authedUser();

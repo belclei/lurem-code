@@ -24,6 +24,8 @@ export interface ExtractedTransactionResponse {
   originalDescription: string | null;
   suggestedCategoryId: string | null;
   suggestedTagNames: string[];
+  suggestedRecurringId: string | null;
+  recurringSuggestionLabel: string | null;
   confidence: number;
   cardHolderRaw: string | null;
   installmentNumber: number | null;
@@ -62,6 +64,8 @@ export function toExtractedTransactionResponse(
     originalDescription: line.originalDescription,
     suggestedCategoryId: line.suggestedCategoryId,
     suggestedTagNames: line.suggestedTagNames,
+    suggestedRecurringId: line.suggestedRecurringId,
+    recurringSuggestionLabel: line.recurringSuggestionLabel,
     confidence: line.confidence,
     cardHolderRaw: line.cardHolderRaw,
     installmentNumber: line.installmentNumber,
