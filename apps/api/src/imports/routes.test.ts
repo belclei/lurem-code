@@ -21,7 +21,34 @@ vi.mock("./bel-ia-client.js", () => ({
   belIaChat: belIaChatMock,
 }));
 
+// Partial mock of createRecurringTransactionSeries — real implementation by
+// default (every existing test exercises the real DB write path), swapped
+// for a throwing wrapper in exactly one test below to prove the
+// createRecurringFromSuggestion transaction actually rolls back a
+// mid-sequence failure instead of leaving an orphaned RecurringTransaction.
+// `seriesFactoryHolder.actual` keeps a handle on the real function so that
+// test can still perform the real write before injecting the failure.
+const seriesFactoryHolder = vi.hoisted(() => ({
+  actual: null as unknown,
+}));
+vi.mock("../recurring-transactions/create.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../recurring-transactions/create.js")
+    >();
+  seriesFactoryHolder.actual = actual.createRecurringTransactionSeries;
+  return {
+    ...actual,
+    createRecurringTransactionSeries: vi.fn(
+      actual.createRecurringTransactionSeries,
+    ),
+  };
+});
+
 const { buildServer } = await import("../server.js");
+const { createRecurringTransactionSeries } = await import(
+  "../recurring-transactions/create.js"
+);
 
 const TEST_ENV = {
   DATABASE_URL:
@@ -1200,5 +1227,116 @@ describe("confirm — recurring link and subscription creation", () => {
     });
 
     expect(response.statusCode).toBe(400);
+  });
+
+  it("createRecurringFromSuggestion: a failure after the series is created rolls back the whole transaction (no orphaned series, no partial relink)", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    const older = await server.prisma.transaction.create({
+      data: {
+        userId,
+        creditCardId: c.id,
+        kind: "expense",
+        source: "manual",
+        description: "Academia XPTO",
+        transactionDate: new Date(Date.UTC(2026, 4, 15)),
+        currency: "BRL",
+        amountCents: 9900,
+        amountBRLCents: 9900,
+      },
+    });
+    const newer = await server.prisma.transaction.create({
+      data: {
+        userId,
+        creditCardId: c.id,
+        kind: "expense",
+        source: "manual",
+        description: "Academia XPTO",
+        transactionDate: new Date(Date.UTC(2026, 5, 15)),
+        currency: "BRL",
+        amountCents: 9900,
+        amountBRLCents: 9900,
+      },
+    });
+    fakeLlmResponse([
+      {
+        date: "2026-07-15",
+        description: "Academia XPTO",
+        amountCents: 9900,
+        kind: "expense",
+        confidence: 0.9,
+      },
+    ]);
+    const importRes = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: "rollback-hash",
+        text: "...",
+      },
+    });
+    const { document, lines } = importRes.json();
+
+    // Series creation succeeds (real write, inside the request's
+    // $transaction), then we throw — simulating a failure in whatever
+    // happens next in the same transaction (the retroactive relink loop or
+    // confirmLine's own writes). If the transaction wrapping is correct,
+    // Postgres rolls back the series create too; if it isn't (the bug this
+    // test guards against), the series row survives as orphaned garbage.
+    const actualCreateSeries =
+      seriesFactoryHolder.actual as typeof createRecurringTransactionSeries;
+    vi.mocked(createRecurringTransactionSeries).mockImplementationOnce(
+      async (...args) => {
+        await actualCreateSeries(...args);
+        throw new Error("Injected failure to test transaction rollback");
+      },
+    );
+
+    const confirmRes = await server.inject({
+      method: "POST",
+      url: `/v1/imports/${document.id}/lines/${lines[0].id}/confirm`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { createRecurringFromSuggestion: true },
+    });
+
+    expect(confirmRes.statusCode).toBe(500);
+
+    const seriesCount = await server.prisma.recurringTransaction.count({
+      where: { userId, description: "Academia XPTO" },
+    });
+    expect(seriesCount).toBe(0);
+
+    const line = await server.prisma.extractedTransaction.findUniqueOrThrow({
+      where: { id: lines[0].id },
+    });
+    expect(line.status).toBe("pending");
+    expect(line.confirmedTransactionId).toBeNull();
+
+    const relinkedOlder = await server.prisma.transaction.findUniqueOrThrow({
+      where: { id: older.id },
+    });
+    const relinkedNewer = await server.prisma.transaction.findUniqueOrThrow({
+      where: { id: newer.id },
+    });
+    expect(relinkedOlder.recurringTransactionId).toBeNull();
+    expect(relinkedNewer.recurringTransactionId).toBeNull();
+
+    // Retrying should not create a second/duplicate series — with the
+    // injected failure removed, the (now correctly rolled-back) request can
+    // simply be retried like any other failed write.
+    const retryRes = await server.inject({
+      method: "POST",
+      url: `/v1/imports/${document.id}/lines/${lines[0].id}/confirm`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { createRecurringFromSuggestion: true },
+    });
+    expect(retryRes.statusCode).toBe(200);
+    const seriesAfterRetry = await server.prisma.recurringTransaction.findMany({
+      where: { userId, description: "Academia XPTO" },
+    });
+    expect(seriesAfterRetry).toHaveLength(1);
   });
 });

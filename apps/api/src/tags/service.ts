@@ -1,7 +1,7 @@
 // apps/api/src/tags/service.ts
 // Shared helpers for #tag creation/assignment — used by transactions/routes.ts
 // (manual tagging) and imports/routes.ts (learned suggestions on import).
-import type { PrismaClient, Tag } from "@lurem/db";
+import type { Prisma, PrismaClient, Tag } from "@lurem/db";
 
 export interface TagRef {
   id: string;
@@ -18,7 +18,7 @@ export function normalizeTagName(raw: string): string {
 // the rest. Order/dedup of `names` is not preserved on purpose (callers only
 // need the resulting rows, not positional correspondence).
 export async function upsertTags(
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   userId: string,
   names: string[],
 ): Promise<Tag[]> {
@@ -39,23 +39,30 @@ export async function upsertTags(
 
 // Full replace, not incremental add/remove — the caller (a TagInput's chip
 // list) already resolved the final desired set of names.
+//
+// Sequential deleteMany + createMany instead of a batched prisma.$transaction
+// array: this now also gets called from inside imports/routes.ts's
+// createRecurringFromSuggestion flow with an interactive transaction client
+// (Prisma.TransactionClient), which cannot itself open a nested
+// $transaction. The two statements were never more than a convenience batch
+// (no read-then-write race to protect against here) — when the caller is
+// already inside an outer transaction, this keeps the atomicity guarantee at
+// that outer boundary; when called standalone (existing PrismaClient
+// callers), the two awaits are still the same two statements, just no longer
+// wrapped in their own mini-transaction.
 export async function setTransactionTags(
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   userId: string,
   transactionId: string,
   names: string[],
 ): Promise<Tag[]> {
   const tags = await upsertTags(prisma, userId, names);
-  await prisma.$transaction([
-    prisma.transactionTag.deleteMany({ where: { transactionId } }),
-    ...(tags.length > 0
-      ? [
-          prisma.transactionTag.createMany({
-            data: tags.map((t) => ({ transactionId, tagId: t.id })),
-          }),
-        ]
-      : []),
-  ]);
+  await prisma.transactionTag.deleteMany({ where: { transactionId } });
+  if (tags.length > 0) {
+    await prisma.transactionTag.createMany({
+      data: tags.map((t) => ({ transactionId, tagId: t.id })),
+    });
+  }
   return tags;
 }
 

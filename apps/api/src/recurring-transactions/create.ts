@@ -6,7 +6,7 @@
 // `RecurringTransaction` the exact same way. Never duplicate this: the XOR
 // (account vs card) validation and the `recurring.created` DomainEvent must
 // stay in sync between both call sites.
-import type { Prisma, PrismaClient, RecurringTransaction } from "@lurem/db";
+import type { Prisma, RecurringTransaction } from "@lurem/db";
 import { VALIDATION_FAILED } from "../errors.js";
 
 export interface CreateRecurringSeriesInput {
@@ -23,7 +23,7 @@ export interface CreateRecurringSeriesInput {
 }
 
 export async function createRecurringTransactionSeries(
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   userId: string,
   input: CreateRecurringSeriesInput,
 ): Promise<RecurringTransaction> {
@@ -63,7 +63,7 @@ export async function createRecurringTransactionSeries(
 // "recurring.created"; both call sites need to write it or the new series
 // never shows up on the Timeline (see routes.test.ts's regression test).
 async function fireRecurringCreatedEvent(
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   userId: string,
   series: RecurringTransaction,
 ): Promise<void> {
