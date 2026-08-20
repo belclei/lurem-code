@@ -18,7 +18,7 @@ export function normalizeTagName(raw: string): string {
 // the rest. Order/dedup of `names` is not preserved on purpose (callers only
 // need the resulting rows, not positional correspondence).
 export async function upsertTags(
-  prisma: Prisma.TransactionClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   userId: string,
   names: string[],
 ): Promise<Tag[]> {
@@ -40,28 +40,45 @@ export async function upsertTags(
 // Full replace, not incremental add/remove — the caller (a TagInput's chip
 // list) already resolved the final desired set of names.
 //
-// Sequential deleteMany + createMany instead of a batched prisma.$transaction
-// array: this now also gets called from inside imports/routes.ts's
-// createRecurringFromSuggestion flow with an interactive transaction client
-// (Prisma.TransactionClient), which cannot itself open a nested
-// $transaction. The two statements were never more than a convenience batch
-// (no read-then-write race to protect against here) — when the caller is
-// already inside an outer transaction, this keeps the atomicity guarantee at
-// that outer boundary; when called standalone (existing PrismaClient
-// callers), the two awaits are still the same two statements, just no longer
-// wrapped in their own mini-transaction.
+// Accepts either a plain PrismaClient (transactions/routes.ts's two
+// standalone callers — manual create and PATCH/update) or an interactive
+// Prisma.TransactionClient (imports/routes.ts's createRecurringFromSuggestion
+// flow, which calls this from inside its own outer prisma.$transaction).
+// deleteMany+createMany still need to be atomic — a crash between the two
+// must not leave a transaction with its tag chips deleted and nothing
+// recreated. When given a plain PrismaClient, batch them via
+// prisma.$transaction([...]) same as before. When given an interactive
+// tx client, that method doesn't exist at all — confirmed empirically
+// (`typeof tx.$transaction === "undefined"`, not just missing from the
+// type — Prisma's interactive client genuinely omits it because nested
+// transactions aren't supported) — so batching is skipped and the two
+// awaits run sequentially, relying on the caller's outer transaction for
+// atomicity instead.
 export async function setTransactionTags(
-  prisma: Prisma.TransactionClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   userId: string,
   transactionId: string,
   names: string[],
 ): Promise<Tag[]> {
   const tags = await upsertTags(prisma, userId, names);
-  await prisma.transactionTag.deleteMany({ where: { transactionId } });
-  if (tags.length > 0) {
-    await prisma.transactionTag.createMany({
-      data: tags.map((t) => ({ transactionId, tagId: t.id })),
-    });
+  const deleteExisting = prisma.transactionTag.deleteMany({
+    where: { transactionId },
+  });
+  const createNew =
+    tags.length > 0
+      ? prisma.transactionTag.createMany({
+          data: tags.map((t) => ({ transactionId, tagId: t.id })),
+        })
+      : null;
+  if ("$transaction" in prisma) {
+    if (createNew) {
+      await prisma.$transaction([deleteExisting, createNew]);
+    } else {
+      await prisma.$transaction([deleteExisting]);
+    }
+  } else {
+    await deleteExisting;
+    if (createNew) await createNew;
   }
   return tags;
 }
