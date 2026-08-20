@@ -43,11 +43,23 @@ function BreakdownList({
   mode,
   items,
   emptyMessage,
+  isError,
 }: {
   mode: "category" | "tag";
   items: SpendBreakdownItem[];
   emptyMessage: string;
+  isError: boolean;
 }) {
+  // A failed request and a genuinely empty period must never look the
+  // same — "Sem despesas no período" reads as reassuring fact, not error,
+  // so a silently-failed query would misreport real spending as zero.
+  if (isError) {
+    return (
+      <p className="text-[.8125rem] text-[var(--lr-negative)]">
+        Não foi possível carregar esses dados.
+      </p>
+    );
+  }
   if (items.length === 0) {
     return (
       <p className="text-[.8125rem] text-[var(--lr-text-secondary)]">
@@ -149,6 +161,7 @@ export function SpendBreakdownSection() {
             mode="category"
             items={categoryQuery.data ?? []}
             emptyMessage="Sem despesas no período."
+            isError={categoryQuery.isError}
           />
         </div>
         <div className="rounded-[var(--lr-r-lg)] border border-[var(--lr-border)] p-4">
@@ -157,6 +170,7 @@ export function SpendBreakdownSection() {
             mode="tag"
             items={tagQuery.data ?? []}
             emptyMessage="Nenhuma despesa marcada com #tag no período."
+            isError={tagQuery.isError}
           />
         </div>
       </div>
