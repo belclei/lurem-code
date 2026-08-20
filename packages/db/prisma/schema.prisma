@@ -481,6 +481,12 @@ model ExtractedTransaction {
   installmentTotal        Int?
   duplicateOfTxId         String? // possível duplicata (§6.8)
   suggestedRecurringId    String? // possível vínculo com série (§6.7)
+  // Set quando NENHUMA série ativa bate com a descrição (suggestedRecurringId
+  // fica null nesse caso) mas um padrão de assinatura foi detectado — nome
+  // amigável pronto pra exibir no banner ("Netflix") e usar como description
+  // da série se o usuário confirmar a criação (ver imports/routes.ts,
+  // createRecurringFromSuggestion). Null = nenhuma sugestão de nova série.
+  recurringSuggestionLabel String?
   confirmedTransactionId  String? // set ao confirmar
   createdAt               DateTime        @default(now())
 
