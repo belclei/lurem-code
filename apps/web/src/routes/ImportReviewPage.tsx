@@ -20,6 +20,7 @@ import type {
   DuplicateTransactionSummary,
   ExtractedTransactionDto,
   ImportedDocumentDto,
+  RecurringDto,
   TagDto,
 } from "../auth/types";
 import { reaisToCentsPositive } from "../lib/money";
@@ -31,6 +32,7 @@ function LineRow({
   tagSuggestions,
   duplicate,
   connections,
+  recurringSeriesOptions,
   onSaved,
 }: {
   line: ExtractedTransactionDto;
@@ -38,6 +40,7 @@ function LineRow({
   tagSuggestions: string[];
   duplicate: DuplicateTransactionSummary | undefined;
   connections: ConnectionDto[];
+  recurringSeriesOptions: { value: string; label: string }[];
   onSaved: () => void;
 }) {
   const [description, setDescription] = useState(line.description);
@@ -47,6 +50,9 @@ function LineRow({
   const [categoryId, setCategoryId] = useState(line.suggestedCategoryId);
   const [tagNames, setTagNames] = useState(line.suggestedTagNames);
   const [portadorUserId, setPortadorUserId] = useState<string | null>(null);
+  const [recurringTransactionId, setRecurringTransactionId] = useState<
+    string | null
+  >(line.suggestedRecurringId);
   const [error, setError] = useState<string | null>(null);
 
   const categoryOptions = categories
@@ -79,30 +85,47 @@ function LineRow({
   });
 
   const confirmMutation = useMutation({
-    mutationFn: async (resolution?: "keep_both" | "replace") => {
+    mutationFn: async (options?: {
+      resolution?: "keep_both" | "replace";
+      createRecurringFromSuggestion?: boolean;
+    }) => {
       const cents = reaisToCentsPositive(amount);
       if (cents === null) throw new Error("Valor inválido.");
       const tagsChanged =
         tagNames.length !== line.suggestedTagNames.length ||
         tagNames.some((t) => !line.suggestedTagNames.includes(t));
+      const recurringChanged =
+        recurringTransactionId !== line.suggestedRecurringId;
       if (
         description !== line.description ||
         cents !== line.amountCents ||
         categoryId !== line.suggestedCategoryId ||
-        tagsChanged
+        tagsChanged ||
+        recurringChanged
       ) {
         await patchMutation.mutateAsync({
           description,
           amountCents: cents,
           categoryId,
           ...(tagsChanged ? { tagNames } : {}),
+          ...(recurringChanged ? { recurringTransactionId } : {}),
         });
       }
       const confirmed = await apiFetchJson<ExtractedTransactionDto>(
         `/imports/${line.importedDocumentId}/lines/${line.id}/confirm`,
         {
           method: "POST",
-          body: resolution ? JSON.stringify({ resolution }) : undefined,
+          body:
+            options?.resolution || options?.createRecurringFromSuggestion
+              ? JSON.stringify({
+                  ...(options.resolution
+                    ? { resolution: options.resolution }
+                    : {}),
+                  ...(options.createRecurringFromSuggestion
+                    ? { createRecurringFromSuggestion: true }
+                    : {}),
+                })
+              : undefined,
         },
       );
       if (portadorUserId && confirmed.confirmedTransactionId) {
@@ -171,16 +194,33 @@ function LineRow({
       }
       onReplace={
         line.status === "pending" && duplicate
-          ? () => confirmMutation.mutate("replace")
+          ? () => confirmMutation.mutate({ resolution: "replace" })
+          : undefined
+      }
+      onCreateRecurring={
+        line.status === "pending" && line.recurringSuggestionLabel
+          ? () =>
+              confirmMutation.mutate({ createRecurringFromSuggestion: true })
           : undefined
       }
       confirmLoading={
-        confirmMutation.isPending && confirmMutation.variables !== "replace"
+        confirmMutation.isPending &&
+        !confirmMutation.variables?.resolution &&
+        !confirmMutation.variables?.createRecurringFromSuggestion
       }
       rejectLoading={rejectMutation.isPending}
       replaceLoading={
-        confirmMutation.isPending && confirmMutation.variables === "replace"
+        confirmMutation.isPending &&
+        confirmMutation.variables?.resolution === "replace"
       }
+      createRecurringLoading={
+        confirmMutation.isPending &&
+        Boolean(confirmMutation.variables?.createRecurringFromSuggestion)
+      }
+      recurringSuggestionLabel={line.recurringSuggestionLabel}
+      recurringSeriesOptions={recurringSeriesOptions}
+      recurringTransactionId={recurringTransactionId}
+      onRecurringTransactionIdChange={setRecurringTransactionId}
     />
   );
 }
@@ -221,6 +261,14 @@ export function ImportReviewPage() {
     enabled: hasSession,
   });
   const tagSuggestions = (tagsQuery.data ?? []).map((t) => t.name);
+  const recurringQuery = useQuery({
+    queryKey: ["recurring-transactions"],
+    queryFn: () => apiFetchJson<RecurringDto[]>("/recurring-transactions"),
+    enabled: hasSession,
+  });
+  const recurringSeriesOptions = (recurringQuery.data ?? [])
+    .filter((r) => r.isActive)
+    .map((r) => ({ value: r.id, label: r.description }));
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["imports", id] });
@@ -229,6 +277,7 @@ export function ImportReviewPage() {
     queryClient.invalidateQueries({ queryKey: ["accounts"] });
     queryClient.invalidateQueries({ queryKey: ["cards"] });
     queryClient.invalidateQueries({ queryKey: ["tags"] });
+    queryClient.invalidateQueries({ queryKey: ["recurring-transactions"] });
   };
 
   const confirmHighConfidenceMutation = useMutation({
@@ -307,6 +356,7 @@ export function ImportReviewPage() {
                   : undefined
               }
               connections={acceptedConnections}
+              recurringSeriesOptions={recurringSeriesOptions}
               onSaved={invalidate}
             />
           ))}
@@ -322,6 +372,7 @@ export function ImportReviewPage() {
                   : undefined
               }
               connections={acceptedConnections}
+              recurringSeriesOptions={recurringSeriesOptions}
               onSaved={invalidate}
             />
           ))}
