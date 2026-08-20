@@ -5,6 +5,7 @@
 // sobre ocorrências passadas — isso é garantido pelo backend.
 import {
   Alert,
+  Body,
   Button,
   Checkbox,
   Dialog,
@@ -39,7 +40,11 @@ type Status = "active" | "paused" | "ended";
 
 function statusOf(r: RecurringDto): Status {
   if (!r.isActive) return "paused";
-  if (r.endDate && r.endDate < todayYmd()) return "ended";
+  // <= (not <): "Encerrar" sets endDate to today, and that end takes effect
+  // immediately — a series ended today must show "Encerrada" today, not
+  // tomorrow. The old `<` meant a just-ended series still looked "Ativa"
+  // for the rest of the day it was ended on.
+  if (r.endDate && r.endDate <= todayYmd()) return "ended";
   return "active";
 }
 
@@ -269,6 +274,18 @@ export function RecurringPage() {
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["recurring"] });
 
+  // Page-level action error: Pausar/Retomar/Encerrar/Excluir all failed
+  // completely silently before — no onError, no way to tell a failed click
+  // from a slow one. One shared banner is enough for a list of one-off
+  // per-row actions; each new attempt clears the previous message.
+  const [actionError, setActionError] = useState<string | null>(null);
+  const onActionError = (err: unknown) =>
+    setActionError(
+      err instanceof ApiError
+        ? err.message
+        : "Não foi possível concluir a ação.",
+    );
+
   const patchMutation = useMutation({
     mutationFn: ({
       id,
@@ -282,14 +299,28 @@ export function RecurringPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      setActionError(null);
+      invalidate();
+    },
+    onError: onActionError,
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson<void>(`/recurring-transactions/${id}`, { method: "DELETE" }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      setActionError(null);
+      invalidate();
+    },
+    onError: onActionError,
   });
+
+  // Excluir hard-deletes the whole series — arm-then-confirm the same way
+  // TransactionRow's "Apagar" does, instead of firing on a single click.
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(
+    null,
+  );
 
   // Backlog "clicar na ocorrência futura da Timeline abre a edição da série":
   // TimelineFeed navigates here with `?edit=<id>` (TimelinePage.tsx's
@@ -336,6 +367,15 @@ export function RecurringPage() {
         onSaved={invalidate}
       />
 
+      {actionError ? (
+        <Alert
+          variant="error"
+          layout="inline"
+          title={actionError}
+          className="mb-4"
+        />
+      ) : null}
+
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--lr-text-secondary)]">
           Séries
@@ -358,10 +398,16 @@ export function RecurringPage() {
         <div className="flex flex-col gap-3">
           {series.map((s) => {
             const status = statusOf(s);
+            const isPatchPending =
+              patchMutation.isPending && patchMutation.variables?.id === s.id;
+            const isDeletePending =
+              deleteMutation.isPending && deleteMutation.variables === s.id;
+            const isConfirmingDelete = confirmingDeleteId === s.id;
             return (
               <div key={s.id} className="flex flex-col gap-2">
                 <RecurringRow
                   description={s.description}
+                  kind={s.kind}
                   referenceAmountCents={s.referenceAmountCents}
                   isVariableAmount={s.isVariableAmount}
                   status={status}
@@ -371,13 +417,14 @@ export function RecurringPage() {
                       : undefined
                   }
                 />
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button variant="tertiary" onClick={() => setEditingId(s.id)}>
                     Editar
                   </Button>
                   {status === "paused" ? (
                     <Button
                       variant="tertiary"
+                      loading={isPatchPending}
                       onClick={() =>
                         patchMutation.mutate({
                           id: s.id,
@@ -390,6 +437,7 @@ export function RecurringPage() {
                   ) : (
                     <Button
                       variant="tertiary"
+                      loading={isPatchPending}
                       onClick={() =>
                         patchMutation.mutate({
                           id: s.id,
@@ -400,24 +448,60 @@ export function RecurringPage() {
                       Pausar
                     </Button>
                   )}
-                  <Button
-                    variant="tertiary"
-                    onClick={() =>
-                      patchMutation.mutate({
-                        id: s.id,
-                        body: { endDate: todayYmd() },
-                      })
-                    }
-                  >
-                    Encerrar
-                  </Button>
-                  <Button
-                    variant="tertiary"
-                    onClick={() => deleteMutation.mutate(s.id)}
-                  >
-                    Excluir
-                  </Button>
+                  {status !== "ended" ? (
+                    <Button
+                      variant="tertiary"
+                      loading={isPatchPending}
+                      onClick={() =>
+                        patchMutation.mutate({
+                          id: s.id,
+                          body: { endDate: todayYmd() },
+                        })
+                      }
+                    >
+                      Encerrar
+                    </Button>
+                  ) : null}
+                  {isConfirmingDelete ? (
+                    <>
+                      <Body
+                        as="span"
+                        className="text-[.8125rem] text-[var(--lr-negative)]"
+                      >
+                        Excluir esta recorrência?
+                      </Body>
+                      <Button
+                        variant="secondary"
+                        onClick={() => setConfirmingDeleteId(null)}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        variant="danger"
+                        loading={isDeletePending}
+                        onClick={() => {
+                          setConfirmingDeleteId(null);
+                          deleteMutation.mutate(s.id);
+                        }}
+                      >
+                        Sim, excluir
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="danger"
+                      onClick={() => setConfirmingDeleteId(s.id)}
+                    >
+                      Excluir
+                    </Button>
+                  )}
                 </div>
+                {status !== "ended" ? (
+                  <Body muted className="text-[.75rem]">
+                    Pausar ou encerrar não apaga transações já registradas — só
+                    a próxima ocorrência prevista some da Timeline.
+                  </Body>
+                ) : null}
               </div>
             );
           })}
