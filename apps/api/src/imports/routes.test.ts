@@ -930,7 +930,10 @@ describe("PATCH .../lines/:lineId — recurringTransactionId", () => {
         startDate: new Date(Date.UTC(2026, 5, 5)),
       },
     });
-    const { documentId, lineId } = await createImportWithOneLine(accessToken, c.id);
+    const { documentId, lineId } = await createImportWithOneLine(
+      accessToken,
+      c.id,
+    );
 
     const response = await server.inject({
       method: "PATCH",
@@ -946,7 +949,10 @@ describe("PATCH .../lines/:lineId — recurringTransactionId", () => {
   it("unlinks when recurringTransactionId is set to null", async () => {
     const { accessToken, userId } = await authedUser();
     const c = await card(userId);
-    const { documentId, lineId } = await createImportWithOneLine(accessToken, c.id);
+    const { documentId, lineId } = await createImportWithOneLine(
+      accessToken,
+      c.id,
+    );
 
     const response = await server.inject({
       method: "PATCH",
@@ -1021,5 +1027,178 @@ describe("DELETE /v1/imports/:id", () => {
       where: { id: documentId },
     });
     expect(doc).toBeNull();
+  });
+});
+
+describe("confirm — recurring link and subscription creation", () => {
+  it("silently links the confirmed transaction when the line already has suggestedRecurringId", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    const series = await server.prisma.recurringTransaction.create({
+      data: {
+        userId,
+        description: "Spotify",
+        kind: "expense",
+        creditCardId: c.id,
+        referenceAmountCents: 2190,
+        referenceAmountBRLCents: 2190,
+        dayOfMonth: 5,
+        startDate: new Date(Date.UTC(2026, 5, 5)),
+      },
+    });
+    fakeLlmResponse([
+      {
+        date: "2026-07-05",
+        description: "Spotify",
+        amountCents: 2190,
+        kind: "expense",
+        confidence: 0.9,
+      },
+    ]);
+    const importRes = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: "silent-link-hash",
+        text: "...",
+      },
+    });
+    const { document, lines } = importRes.json();
+    expect(lines[0].suggestedRecurringId).toBe(series.id);
+
+    const confirmRes = await server.inject({
+      method: "POST",
+      url: `/v1/imports/${document.id}/lines/${lines[0].id}/confirm`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(confirmRes.statusCode).toBe(200);
+    const txId = confirmRes.json().confirmedTransactionId;
+    const tx = await server.prisma.transaction.findUniqueOrThrow({
+      where: { id: txId },
+    });
+    expect(tx.recurringTransactionId).toBe(series.id);
+    const fulfillment = await server.prisma.recurringFulfillment.findUnique({
+      where: {
+        recurringTransactionId_year_month: {
+          recurringTransactionId: series.id,
+          year: 2026,
+          month: 7,
+        },
+      },
+    });
+    expect(fulfillment?.transactionId).toBe(txId);
+    expect(fulfillment?.method).toBe("import_link");
+  });
+
+  it("createRecurringFromSuggestion: creates the series and relinks the past pattern matches", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    const older = await server.prisma.transaction.create({
+      data: {
+        userId,
+        creditCardId: c.id,
+        kind: "expense",
+        source: "manual",
+        description: "Academia XPTO",
+        transactionDate: new Date(Date.UTC(2026, 4, 15)),
+        currency: "BRL",
+        amountCents: 9900,
+        amountBRLCents: 9900,
+      },
+    });
+    const newer = await server.prisma.transaction.create({
+      data: {
+        userId,
+        creditCardId: c.id,
+        kind: "expense",
+        source: "manual",
+        description: "Academia XPTO",
+        transactionDate: new Date(Date.UTC(2026, 5, 15)),
+        currency: "BRL",
+        amountCents: 9900,
+        amountBRLCents: 9900,
+      },
+    });
+    fakeLlmResponse([
+      {
+        date: "2026-07-15",
+        description: "Academia XPTO",
+        amountCents: 9900,
+        kind: "expense",
+        confidence: 0.9,
+      },
+    ]);
+    const importRes = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: "create-series-hash",
+        text: "...",
+      },
+    });
+    const { document, lines } = importRes.json();
+    expect(lines[0].recurringSuggestionLabel).toBe("Academia XPTO");
+
+    const confirmRes = await server.inject({
+      method: "POST",
+      url: `/v1/imports/${document.id}/lines/${lines[0].id}/confirm`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { createRecurringFromSuggestion: true },
+    });
+
+    expect(confirmRes.statusCode).toBe(200);
+    const txId = confirmRes.json().confirmedTransactionId;
+    const newTx = await server.prisma.transaction.findUniqueOrThrow({
+      where: { id: txId },
+    });
+    expect(newTx.recurringTransactionId).not.toBeNull();
+
+    const series = await server.prisma.recurringTransaction.findUniqueOrThrow({
+      where: { id: newTx.recurringTransactionId as string },
+    });
+    expect(series.description).toBe("Academia XPTO");
+    expect(series.referenceAmountCents).toBe(9900);
+    expect(series.categoryId).toBeNull();
+
+    const relinkedOlder = await server.prisma.transaction.findUniqueOrThrow({
+      where: { id: older.id },
+    });
+    const relinkedNewer = await server.prisma.transaction.findUniqueOrThrow({
+      where: { id: newer.id },
+    });
+    expect(relinkedOlder.recurringTransactionId).toBe(series.id);
+    expect(relinkedNewer.recurringTransactionId).toBe(series.id);
+
+    const fulfillments = await server.prisma.recurringFulfillment.findMany({
+      where: { recurringTransactionId: series.id },
+      orderBy: { month: "asc" },
+    });
+    expect(fulfillments).toHaveLength(3); // maio, junho, julho
+    expect(fulfillments.every((f) => f.method === "import_link")).toBe(true);
+  });
+
+  it("createRecurringFromSuggestion fails when the line has no valid suggestion", async () => {
+    const { accessToken, userId } = await authedUser();
+    const c = await card(userId);
+    const { documentId, lineId } = await createImportWithOneLine(
+      accessToken,
+      c.id,
+    );
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/v1/imports/${documentId}/lines/${lineId}/confirm`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { createRecurringFromSuggestion: true },
+    });
+
+    expect(response.statusCode).toBe(400);
   });
 });

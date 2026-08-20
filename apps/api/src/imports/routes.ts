@@ -25,6 +25,7 @@ import { z } from "zod";
 import { requireUser } from "../auth/authenticate.js";
 import { FEATURE_DISABLED, NOT_FOUND, VALIDATION_FAILED } from "../errors.js";
 import { resolveFlags } from "../flags/resolve.js";
+import { createRecurringTransactionSeries } from "../recurring-transactions/create.js";
 import { setTransactionTags, upsertTags } from "../tags/service.js";
 import { belIaChat } from "./bel-ia-client.js";
 import {
@@ -79,6 +80,7 @@ const UpdateLineBody = z
 const ConfirmBody = z
   .object({
     resolution: z.enum(["keep_both", "replace"]).optional(),
+    createRecurringFromSuggestion: z.boolean().optional(),
   })
   .strict();
 
@@ -618,6 +620,41 @@ export async function registerImportRoutes(
     },
   );
 
+  // Linka a Transaction recém-confirmada a uma série (existente, Caso A, ou
+  // recém-criada, Caso B) e fecha o fulfillment do mês — mesma forma que
+  // recordFulfillment em transactions/routes.ts, method "import_link" (do
+  // enum FulfillmentMethod, existia desde o schema original e nunca fora
+  // usado até esta feature).
+  async function linkTransactionToRecurring(
+    transactionId: string,
+    recurringTransactionId: string,
+    transactionDate: Date,
+  ): Promise<void> {
+    await prisma.transaction.update({
+      where: { id: transactionId },
+      data: { recurringTransactionId },
+    });
+    const year = transactionDate.getUTCFullYear();
+    const month = transactionDate.getUTCMonth() + 1;
+    await prisma.recurringFulfillment.upsert({
+      where: {
+        recurringTransactionId_year_month: {
+          recurringTransactionId,
+          year,
+          month,
+        },
+      },
+      create: {
+        recurringTransactionId,
+        year,
+        month,
+        transactionId,
+        method: "import_link",
+      },
+      update: { transactionId, method: "import_link" },
+    });
+  }
+
   async function confirmLine(
     userId: string,
     doc: { id: string; accountId: string | null; creditCardId: string | null },
@@ -630,9 +667,11 @@ export async function registerImportRoutes(
       description: string;
       suggestedCategoryId: string | null;
       suggestedTagNames: string[];
+      suggestedRecurringId: string | null;
       installmentNumber: number | null;
       installmentTotal: number | null;
     },
+    linkToRecurringId?: string | null,
   ): Promise<void> {
     const tx = await prisma.transaction.create({
       data: {
@@ -654,6 +693,15 @@ export async function registerImportRoutes(
     if (line.suggestedTagNames.length > 0) {
       await setTransactionTags(prisma, userId, tx.id, line.suggestedTagNames);
     }
+    const recurringTransactionId =
+      linkToRecurringId ?? line.suggestedRecurringId;
+    if (recurringTransactionId) {
+      await linkTransactionToRecurring(
+        tx.id,
+        recurringTransactionId,
+        line.transactionDate,
+      );
+    }
     await prisma.extractedTransaction.update({
       where: { id: line.id },
       data: { status: "confirmed", confirmedTransactionId: tx.id },
@@ -674,13 +722,94 @@ export async function registerImportRoutes(
           { field: "resolution", message: "Ação inválida." },
         ]);
       }
-      const { resolution } = parsedBody.data;
+      const { resolution, createRecurringFromSuggestion } = parsedBody.data;
       const { doc, line } = await findOwnedLine(userId, id, lineId);
       if (line.status !== "pending") {
         throw VALIDATION_FAILED([
           { field: "status", message: "Esta linha já foi revisada." },
         ]);
       }
+
+      let linkToRecurringId: string | null = null;
+      if (createRecurringFromSuggestion) {
+        if (line.suggestedRecurringId) {
+          throw VALIDATION_FAILED([
+            {
+              field: "createRecurringFromSuggestion",
+              message: "Esta linha já está vinculada a uma série existente.",
+            },
+          ]);
+        }
+        if (line.kind === "transfer") {
+          throw VALIDATION_FAILED([
+            {
+              field: "createRecurringFromSuggestion",
+              message: "Transferências não podem virar assinatura.",
+            },
+          ]);
+        }
+        const knownLabel = matchKnownSubscription(line.description);
+        let matchIds: string[] = [];
+        if (!knownLabel) {
+          const patternMatches = await findRecurringPatternMatches(
+            prisma,
+            userId,
+            [
+              {
+                description: line.description,
+                currency: line.currency,
+                kind: line.kind,
+                amountCents: line.amountCents,
+                date: line.transactionDate,
+              },
+            ],
+          );
+          matchIds = patternMatches.get(line.description) ?? [];
+          if (matchIds.length === 0) {
+            throw VALIDATION_FAILED([
+              {
+                field: "createRecurringFromSuggestion",
+                message: "Esta sugestão não é mais válida.",
+              },
+            ]);
+          }
+        }
+
+        let startDate = line.transactionDate;
+        if (matchIds.length > 0) {
+          const earliest = await prisma.transaction.findUniqueOrThrow({
+            where: { id: matchIds[0] },
+          });
+          startDate = earliest.transactionDate;
+        }
+
+        const hasAccount = doc.accountId != null;
+        const series = await createRecurringTransactionSeries(prisma, userId, {
+          description: knownLabel ?? line.description,
+          kind: line.kind,
+          accountId: hasAccount ? doc.accountId : null,
+          creditCardId: hasAccount ? null : doc.creditCardId,
+          categoryId: line.suggestedCategoryId,
+          referenceAmountCents: line.amountCents,
+          dayOfMonth: line.transactionDate.getUTCDate(),
+          isVariableAmount: false,
+          startDate,
+        });
+
+        for (const matchId of matchIds) {
+          const matchTx = await prisma.transaction.findUniqueOrThrow({
+            where: { id: matchId },
+          });
+          await linkTransactionToRecurring(
+            matchId,
+            series.id,
+            matchTx.transactionDate,
+          );
+        }
+
+        linkToRecurringId = series.id;
+      }
+
       // "replace" (§6.8, precedente money-flow): a transação já existente
       // que gerou o duplicateOfTxId sai, a extraída entra no lugar dela —
       // ownership revalidado aqui (não confia em duplicateOfTxId sozinho)
@@ -702,7 +831,7 @@ export async function registerImportRoutes(
         if (!existing) throw NOT_FOUND();
         await prisma.transaction.delete({ where: { id: existing.id } });
       }
-      await confirmLine(userId, doc, line);
+      await confirmLine(userId, doc, line, linkToRecurringId);
       await maybeMarkReviewed(doc.id);
       const updated = await prisma.extractedTransaction.findUniqueOrThrow({
         where: { id: line.id },
