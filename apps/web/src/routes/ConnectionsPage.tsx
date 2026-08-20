@@ -447,9 +447,6 @@ export function ConnectionsPage() {
   const hasSession = !isBooting && Boolean(user);
   const queryClient = useQueryClient();
 
-  if (hasSession && user && !user.flags.connections) {
-    return <Navigate to="/timeline" />;
-  }
   const [settlingConnection, setSettlingConnection] =
     useState<ConnectionDto | null>(null);
   const [acceptingItem, setAcceptingItem] = useState<PortadorPendingDto | null>(
@@ -535,6 +532,14 @@ export function ConnectionsPage() {
   }
   if (!user) {
     return <Navigate to="/login" />;
+  }
+  // Moved below every hook above (was previously the function's first
+  // statement, right after computing `hasSession`): an early return before
+  // useState/useQuery/useMutation calls violates the Rules of Hooks — once
+  // `hasSession` flips true on a later render, React would see fewer hooks
+  // than the previous render and throw.
+  if (!user.flags.connections) {
+    return <Navigate to="/timeline" />;
   }
 
   const connections = connectionsQuery.data ?? [];
