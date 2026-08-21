@@ -76,7 +76,8 @@ function sourceValueOf(r: RecurringDto): string | null {
  * apps/api/src/recurring-transactions/routes.ts's UpdateBody doesn't accept
  * it — changing income↔expense on an established series is a bigger call
  * (it would silently re-sign every future projection) than this pass
- * covers, so it's shown read-only. */
+ * covers, so the field is simply absent from this form rather than shown
+ * disabled — there's no value in displaying a field the user can't act on. */
 function EditRecurringDialog({
   series,
   accounts,
@@ -418,13 +419,28 @@ export function RecurringPage() {
                   }
                 />
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button variant="tertiary" onClick={() => setEditingId(s.id)}>
+                  <Button
+                    variant="tertiary"
+                    disabled={isDeletePending}
+                    onClick={() => setEditingId(s.id)}
+                  >
                     Editar
                   </Button>
-                  {status === "paused" ? (
+                  {/* Guarded the same way "Encerrar" already is below: an
+                      ended series has endDate in the past but isActive is
+                      untouched by Encerrar, so statusOf() reads it as
+                      "ended" only while isActive stays true. Clicking
+                      Pausar here would flip isActive to false, which makes
+                      statusOf() report "paused" instead — silently
+                      resurrecting the Encerrar button and letting the user
+                      push endDate forward again on a series that had
+                      already ended. Ended is a terminal state in this UI;
+                      neither Pausar nor Retomar make sense on it. */}
+                  {status === "ended" ? null : status === "paused" ? (
                     <Button
                       variant="tertiary"
                       loading={isPatchPending}
+                      disabled={isDeletePending}
                       onClick={() =>
                         patchMutation.mutate({
                           id: s.id,
@@ -438,6 +454,7 @@ export function RecurringPage() {
                     <Button
                       variant="tertiary"
                       loading={isPatchPending}
+                      disabled={isDeletePending}
                       onClick={() =>
                         patchMutation.mutate({
                           id: s.id,
@@ -452,6 +469,7 @@ export function RecurringPage() {
                     <Button
                       variant="tertiary"
                       loading={isPatchPending}
+                      disabled={isDeletePending}
                       onClick={() =>
                         patchMutation.mutate({
                           id: s.id,
@@ -472,6 +490,7 @@ export function RecurringPage() {
                       </Body>
                       <Button
                         variant="secondary"
+                        disabled={isPatchPending}
                         onClick={() => setConfirmingDeleteId(null)}
                       >
                         Cancelar
@@ -479,6 +498,7 @@ export function RecurringPage() {
                       <Button
                         variant="danger"
                         loading={isDeletePending}
+                        disabled={isPatchPending}
                         onClick={() => {
                           setConfirmingDeleteId(null);
                           deleteMutation.mutate(s.id);
@@ -490,6 +510,7 @@ export function RecurringPage() {
                   ) : (
                     <Button
                       variant="danger"
+                      disabled={isPatchPending}
                       onClick={() => setConfirmingDeleteId(s.id)}
                     >
                       Excluir
