@@ -45,12 +45,40 @@ export function TimelineSummaryAside({
 
   return (
     <>
+      {/* Disponível Hoje is the product's one hero number (§4.1) — it leads
+          the aside at the .lr-money--hero scale, matching DashboardView's
+          HeroCard, instead of trailing below Saldo líquido at a smaller
+          size inside a visually recessed `sunken` card. */}
+      <Card className="mb-4">
+        <div className="flex items-end justify-between gap-2">
+          <div>
+            {/* No text-[...] override here on purpose: .lr-label's own
+                11px default is the app's legibility floor — this used to
+                override it down to 10px. */}
+            <p className="lr-label mb-1">DISPONÍVEL HOJE</p>
+            {insights ? (
+              <Mono variant="number" className="block lr-money--hero">
+                {formatMoney(insights.disponivelHoje.valueCents)}
+              </Mono>
+            ) : (
+              <Skeleton className="h-10 w-32 rounded-[var(--lr-r-sm)]" />
+            )}
+          </div>
+          <Link
+            to="/dashboard"
+            className="inline-flex text-xs text-[var(--lr-graphite-700)] hover:underline"
+          >
+            Ver análise →
+          </Link>
+        </div>
+      </Card>
+
       <Card>
         <p className="lr-label mb-1">Saldo líquido</p>
         <Mono
           variant="number"
           tone={netBalanceCents < 0 ? "out" : "default"}
-          className="text-[2rem] tracking-[-0.02em]"
+          className="text-[1.5rem] tracking-[-0.02em]"
         >
           {formatMoney(netBalanceCents)}
         </Mono>
@@ -132,38 +160,6 @@ export function TimelineSummaryAside({
             ))}
           </ul>
         ) : null}
-      </Card>
-
-      <Card sunken>
-        <div className="flex items-end justify-between gap-2">
-          <div>
-            {/* No text-[...] override here on purpose: .lr-label's own
-                11px default is the app's legibility floor — this used to
-                override it down to 10px. */}
-            <p className="lr-label mb-1">DISPONÍVEL HOJE</p>
-            {insights ? (
-              <Mono
-                variant="number"
-                className="text-[1.5rem] text-[var(--lr-text)]"
-              >
-                {formatMoney(insights.disponivelHoje.valueCents)}
-              </Mono>
-            ) : (
-              <Skeleton className="h-7 w-28 rounded-[var(--lr-r-sm)]" />
-            )}
-          </div>
-          {/* REBRAND (Task 1.3): blue-700 -> graphite-700 for this plain
-              text link. Same open blue->graphite product question as
-              Alert's info variant / Button's link variant / Badge's blue
-              category color — not a settled design decision, flagging
-              for product sign-off (see task-1.3 report). */}
-          <Link
-            to="/dashboard"
-            className="inline-flex text-xs text-[var(--lr-graphite-700)] hover:underline"
-          >
-            Ver análise →
-          </Link>
-        </div>
       </Card>
     </>
   );

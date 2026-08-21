@@ -808,8 +808,16 @@ export function ConnectionsPage() {
                     {item?.name || item?.institutionName || share.itemType}
                   </p>
                   <Badge
-                    kind="status"
-                    status={share.permission === "edit" ? "active" : "inactive"}
+                    kind="category"
+                    // Not kind="status": "active"/"inactive" are lifecycle
+                    // semantics (petrol "confirmed" vs. grayed "disabled"),
+                    // which inverted the risk signal here — the safer
+                    // permission (view) read as disabled, the riskier one
+                    // (edit) as affirmed. "ink" (bordered, more visual
+                    // weight) for the higher-stakes grant, plain "blue"
+                    // (graphite) for the lower-stakes one — permission
+                    // level, not status.
+                    color={share.permission === "edit" ? "ink" : "blue"}
                   >
                     {share.permission === "edit" ? "Ver e editar" : "Só ver"}
                   </Badge>

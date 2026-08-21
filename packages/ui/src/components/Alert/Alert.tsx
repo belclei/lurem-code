@@ -214,13 +214,26 @@ export function Alert({
         // (flex-wrap changes the row's own height, which the containment
         // spec excludes to avoid a resize loop), so a self-query like the
         // previous single-div version silently never fired.
-        "@container rounded-[var(--lr-r-md)]",
+        "@container relative rounded-[var(--lr-r-md)]",
         styles.bg,
         styles.border,
         className,
       ].join(" ")}
     >
-      <div className="flex items-start gap-3 p-4 @max-[560px]:flex-wrap">
+      <div
+        className={[
+          "flex items-start gap-3 p-4 @max-[560px]:flex-wrap",
+          // The close button is pinned absolutely (see below) instead of
+          // sitting in this flex row — at @max-[560px] the actions block
+          // switches to w-full and wraps onto its own line, and a close
+          // button living in the same row would wrap along with it, landing
+          // disconnected below the card instead of staying next to what it
+          // dismisses (confirmed live: the Timeline activation cards showed
+          // an orphaned "×" floating under the button). Reserve its space
+          // with padding instead so content never renders under it.
+          onClose ? "pr-8" : "",
+        ].join(" ")}
+      >
         {emoji ? (
           <span
             aria-hidden="true"
@@ -301,17 +314,17 @@ export function Alert({
             ))}
           </div>
         ) : null}
-        {onClose ? (
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Fechar alerta"
-            className="-m-1 flex-none cursor-pointer rounded-[var(--lr-r-sm)] p-1 text-[var(--lr-text-secondary)] opacity-70 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
-          >
-            <CloseIcon className="h-4 w-4" />
-          </button>
-        ) : null}
       </div>
+      {onClose ? (
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Fechar alerta"
+          className="absolute top-3 right-3 cursor-pointer rounded-[var(--lr-r-sm)] p-1 text-[var(--lr-text-secondary)] opacity-70 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
+        >
+          <CloseIcon className="h-4 w-4" />
+        </button>
+      ) : null}
     </div>
   );
 }
