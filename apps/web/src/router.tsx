@@ -25,7 +25,6 @@ import { RegisterPage } from "./routes/RegisterPage";
 import { ResetPasswordPage } from "./routes/ResetPasswordPage";
 import { SettingsPage } from "./routes/SettingsPage";
 import { TimelinePage } from "./routes/TimelinePage";
-import { TransactionsPage } from "./routes/TransactionsPage";
 import { UpdatesPage } from "./routes/UpdatesPage";
 import { WaitlistPage } from "./routes/WaitlistPage";
 import { FlagsPage } from "./routes/admin/FlagsPage";
@@ -78,14 +77,6 @@ const accountsRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/accounts",
   component: AccountsPage,
-});
-
-// Not part of the sidebar's nav (superseded by Timeline, per US-6.1) — kept
-// reachable by direct URL but outside AppLayout, standalone like login/register.
-const transactionsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/transactions",
-  component: TransactionsPage,
 });
 
 const recurringRoute = createRoute({
@@ -170,7 +161,6 @@ const resetPasswordRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
-  transactionsRoute,
   waitlistRoute,
   registerRoute,
   forgotPasswordRoute,
