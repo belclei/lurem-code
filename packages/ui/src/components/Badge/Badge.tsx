@@ -127,11 +127,11 @@ const CATEGORY_STYLES: Record<
     text: "text-[var(--lr-night-700)] dark:text-[var(--lr-night-200)]",
     border: "border border-[var(--lr-border)]",
   },
-  // REBRAND (Task 1.3): no hue in the new Lurem palette plays "info" the
-  // way blue did — substituted --lr-graphite-* at the matching numeric
-  // stop (DESIGN_SYSTEM.md §1.1's neutral default), same open product
-  // question flagged on Alert's info variant and Button's link variant
-  // (see task-1.3 report — NOT a settled design decision).
+  // REBRAND (Task 1.3): no hue in the Lurem palette plays "info" the way
+  // blue did — --lr-graphite-* at the matching numeric stop is the settled
+  // mapping (DESIGN.md defines no info token, so the neutral-by-default
+  // rule is the answer), same as Alert's info variant and Button's link
+  // variant.
   // `--hm-blue-on-tint` itself has no ported equivalent (blue was dropped
   // from the palette entirely, unlike sage/clay which kept bespoke
   // -on-tint tokens) — re-verified contrast for the text/bg pair below

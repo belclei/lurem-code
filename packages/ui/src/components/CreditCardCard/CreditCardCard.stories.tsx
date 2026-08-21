@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import bradescoLogo from "../../assets/institutions/bradesco.svg";
-import c6Logo from "../../assets/institutions/c6.svg";
+import c6Logo from "../../assets/institutions/c6-bank.svg";
 import itauLogo from "../../assets/institutions/itau.svg";
 import nubankLogo from "../../assets/institutions/nubank.svg";
 import { CreditCardCard } from "./CreditCardCard";
