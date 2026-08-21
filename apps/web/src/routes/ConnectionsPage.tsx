@@ -452,6 +452,14 @@ export function ConnectionsPage() {
   const [acceptingItem, setAcceptingItem] = useState<PortadorPendingDto | null>(
     null,
   );
+  // "Conectar" (an existing Lurem user) and "Convidar" (someone new to this
+  // closed-access product, admin-approval-gated) used to render as two
+  // simultaneous peer forms — the critique flagged this against DESIGN.md's
+  // One Focus Rule, since they're semantically different actions with very
+  // different stakes/frequency. Convidar (the rarer path) starts collapsed
+  // behind a toggle, matching the disclosure pattern AccountsPage already
+  // uses for archived accounts.
+  const [showInviteForm, setShowInviteForm] = useState(false);
 
   const connectionsQuery = useQuery({
     queryKey: ["connections"],
@@ -659,8 +667,14 @@ export function ConnectionsPage() {
             actions={[
               {
                 label: "Convidar alguém",
-                onClick: () =>
-                  document.getElementById("invite-name-input")?.focus(),
+                onClick: () => {
+                  setShowInviteForm(true);
+                  // Form mounts this render; focus needs the DOM node to
+                  // exist first, hence the deferred lookup.
+                  requestAnimationFrame(() =>
+                    document.getElementById("invite-name-input")?.focus(),
+                  );
+                },
               },
             ]}
           />
@@ -730,14 +744,29 @@ export function ConnectionsPage() {
       ) : null}
 
       <section className="mb-8">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--lr-text-secondary)]">
-          Convidar para o Lurem
-        </h2>
-        <NewInviteForm
-          onCreated={() =>
-            queryClient.invalidateQueries({ queryKey: ["invites"] })
-          }
-        />
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--lr-text-secondary)]">
+            Convidar para o Lurem
+          </h2>
+          {!showInviteForm ? (
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              onClick={() => setShowInviteForm(true)}
+            >
+              Não tem conta ainda? Convidar
+            </Button>
+          ) : null}
+        </div>
+        {showInviteForm ? (
+          <NewInviteForm
+            onCreated={() => {
+              queryClient.invalidateQueries({ queryKey: ["invites"] });
+              setShowInviteForm(false);
+            }}
+          />
+        ) : null}
         {invitesQuery.data && invitesQuery.data.length > 0 ? (
           <div className="flex flex-col gap-2">
             {invitesQuery.data.map((invite) => (
