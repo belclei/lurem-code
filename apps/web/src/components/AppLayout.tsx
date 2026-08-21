@@ -123,7 +123,7 @@ export function AppLayout() {
                 <div className="truncate text-[0.75rem] text-[var(--lr-night-300)]">
                   Conta pessoal
                 </div>
-                <div className="truncate text-[0.6875rem] text-[var(--lr-night-400)]">
+                <div className="truncate text-[0.75rem] text-[var(--lr-night-400)]">
                   v{packageJson.version}
                 </div>
               </div>

@@ -304,8 +304,19 @@ export function TimelineFeed({
                         item.aggregateType === "Account"
                           ? accountsById.get(item.aggregateId)
                           : undefined;
+                      // Invoice-upcoming events render their own action
+                      // button inside TimelineEventRow (layout="box",
+                      // "Fechar fatura"/"Pagar fatura") — wrapping those in
+                      // this outer edit-card <button> nests a real <button>
+                      // inside another, and clicking the inner action
+                      // bubbles up to also open the edit-card dialog as an
+                      // unrelated side effect. Never wrap those two types.
+                      const hasOwnActionButton =
+                        item.type === "card.invoice_closing_upcoming" ||
+                        item.type === "card.invoice_due_upcoming";
                       const editableCard =
-                        item.aggregateType === "CreditCard"
+                        item.aggregateType === "CreditCard" &&
+                        !hasOwnActionButton
                           ? cardsById.get(item.aggregateId)
                           : undefined;
                       if (editableAccount) {
