@@ -137,7 +137,10 @@ export function TimelineSummaryAside({
       <Card sunken>
         <div className="flex items-end justify-between gap-2">
           <div>
-            <p className="lr-label mb-1 text-[.625rem]">DISPONÍVEL HOJE</p>
+            {/* No text-[...] override here on purpose: .lr-label's own
+                11px default is the app's legibility floor — this used to
+                override it down to 10px. */}
+            <p className="lr-label mb-1">DISPONÍVEL HOJE</p>
             {insights ? (
               <Mono
                 variant="number"
