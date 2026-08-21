@@ -19,6 +19,7 @@ import { DashboardPage } from "./routes/DashboardPage";
 import { ForgotPasswordPage } from "./routes/ForgotPasswordPage";
 import { ImportPage } from "./routes/ImportPage";
 import { ImportReviewPage } from "./routes/ImportReviewPage";
+import { IndexPage } from "./routes/LandingPage";
 import { LoginPage } from "./routes/LoginPage";
 import { RecurringPage } from "./routes/RecurringPage";
 import { RegisterPage } from "./routes/RegisterPage";
@@ -26,24 +27,20 @@ import { ResetPasswordPage } from "./routes/ResetPasswordPage";
 import { SettingsPage } from "./routes/SettingsPage";
 import { TimelinePage } from "./routes/TimelinePage";
 import { UpdatesPage } from "./routes/UpdatesPage";
-import { WaitlistPage } from "./routes/WaitlistPage";
 import { FlagsPage } from "./routes/admin/FlagsPage";
 
 const rootRoute = createRootRoute({
   component: Outlet,
 });
 
-// The real home is the Timeline (§6.12) — it's both the activation surface
-// when empty (§6.11, arriving Sprint 7) and the history when full; the
-// dashboard is the separate "Análise" screen reached from the Timeline's
-// side panel (§6.9). Built in Sprint 10 — "/" now lands here instead of
-// /dashboard. The target itself redirects to /login when there's no session.
+// "/" is the public landing page for logged-out visitors (the closed-access
+// waitlist pitch); IndexPage redirects a logged-in visitor straight to
+// /timeline, the real app home (§6.12), so nobody signed in ever sees the
+// sales page by accident.
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  beforeLoad: () => {
-    throw redirect({ to: "/timeline" });
-  },
+  component: IndexPage,
 });
 
 // Wraps the sidebar shell (design_handoff_lurem README "Shell do app")
@@ -134,10 +131,15 @@ const importReviewRoute = createRoute({
   component: ImportReviewPage,
 });
 
+// The waitlist form now lives inline on the landing at "/" (surface brief:
+// .impeccable/surfaces/landing.md) — redirect instead of maintaining the
+// form/honeypot/validation logic in two places.
 const waitlistRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/waitlist",
-  component: WaitlistPage,
+  beforeLoad: () => {
+    throw redirect({ to: "/", hash: "fila" });
+  },
 });
 
 const registerRoute = createRoute({
