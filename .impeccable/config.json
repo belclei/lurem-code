@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font-size",
+        "value": ".75rem",
+        "createdAt": "2026-08-21T18:53:57.388Z",
+        "reason": "Pre-existing systemic pattern across apps/web (Tailwind fractional-rem scale), not specific to any one file"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": ".8125rem",
+        "createdAt": "2026-08-21T18:53:57.425Z",
+        "reason": "Pre-existing systemic pattern across apps/web (Tailwind fractional-rem scale), not specific to any one file"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": ".9375rem",
+        "createdAt": "2026-08-21T18:53:57.458Z",
+        "reason": "Pre-existing systemic pattern across apps/web (Tailwind fractional-rem scale), not specific to any one file"
+      }
+    ]
+  }
+}
