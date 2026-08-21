@@ -127,9 +127,18 @@ export function StagingReviewRow({
   const isDuplicate = Boolean(duplicateDescription);
 
   return (
-    <Card className="flex flex-col gap-2">
+    // Dashed border: every row reaching this branch is `status === "pending"`
+    // — AI-extracted, not yet human-confirmed. Same treatment TransactionRow
+    // already applies to its "Agendada" (estimate) state, so the Estimate
+    // Separation Rule holds consistently instead of only signaling below the
+    // 0.5-confidence threshold (the alert Badge below is a distinct "needs a
+    // closer look" signal, not a substitute for "this isn't confirmed yet").
+    <Card dashed className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
-        <div>
+        <div className="flex items-center gap-1.5">
+          <Badge kind="status" status="estimate">
+            Sugestão da IA
+          </Badge>
           {confidence < 0.5 ? (
             <Badge kind="status" status="alert">
               Confira os dados
