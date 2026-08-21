@@ -20,6 +20,24 @@
         "value": ".9375rem",
         "createdAt": "2026-08-21T18:53:57.458Z",
         "reason": "Pre-existing systemic pattern across apps/web (Tailwind fractional-rem scale), not specific to any one file"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "1.25rem",
+        "createdAt": "2026-08-21T22:02:26.445Z",
+        "reason": "Deliberate size variation in ClaritySweep's overlapping-estimate demo cluster, part of the intentional visual chaos effect"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "1.5rem",
+        "createdAt": "2026-08-21T22:02:26.478Z",
+        "reason": "Deliberate size variation in ClaritySweep's overlapping-estimate demo cluster, part of the intentional visual chaos effect"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "1.125rem",
+        "createdAt": "2026-08-21T22:02:26.511Z",
+        "reason": "Deliberate size variation in ClaritySweep's overlapping-estimate demo cluster, part of the intentional visual chaos effect"
       }
     ]
   }
