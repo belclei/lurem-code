@@ -399,7 +399,7 @@ export function TransactionRow(props: TransactionRowProps) {
                     as="span"
                     className="mr-auto text-[.8125rem] text-[var(--lr-negative)]"
                   >
-                    Apagar esta transação?
+                    Apagar esta transação? Não pode ser desfeito.
                   </Body>
                   <Button
                     variant="secondary"

@@ -195,23 +195,17 @@ export function Badge(props: BadgeProps) {
     "border border-dashed border-[var(--lr-border)] bg-transparent text-[var(--lr-text-secondary)]";
   // index.html id="badge", "sugerida pela IA": a dashed border layered on
   // top of the normal colored chip, in --hm-blue-500 — never combined with `none`.
-  // REBRAND (Task 1.3): substituted --lr-graphite-500 (matching numeric
-  // stop) per the same open blue->graphite product question flagged
-  // elsewhere in this file — NOT settled. Flagging an additional, real
-  // contrast concern found while re-verifying (not just assuming the swap
-  // "worked" mechanically): graphite-500 clears ~3.2-3.7:1 against the
-  // page surface (ok for the 3:1 non-text threshold), but measures only
+  // REBRAND (Task 1.3) substituted --lr-graphite-500, but that measured only
   // ~2.6-3.0:1 against the category chips' own -100 tint backgrounds this
-  // border sits directly on (graphite-100 and petrol-100 both ~2.6:1,
-  // gold-100 ~2.9:1) — i.e. it may fail WCAG 1.4.11 non-text contrast
-  // against the exact background it's drawn on for most category colors.
-  // The old blue-500 was never verified against clay/sand/etc.'s own -100
-  // either (per the original comment above, it was only "never combined
-  // with `none`" — a usage note, not a contrast check), so this may be a
-  // pre-existing gap, not one this rebrand introduced — but it's real and
-  // worth a design pass regardless of the blue->graphite decision.
+  // border sits directly on (graphite-100/petrol-100 ~2.6:1, gold-100
+  // ~2.9:1) — short of WCAG 1.4.11's 3:1 non-text minimum on the exact
+  // surface it's drawn on, for a state that specifically exists to signal
+  // "AI suggestion, not yet human-confirmed" (see Badge module comment).
+  // graphite-600 clears every -100 tint at 4.6:1+ (verified against
+  // graphite/petrol/gold/negative-100 and surface-sunken) while dark mode's
+  // graphite-300 clears 5.3:1+ against the /20-opacity tint backgrounds.
   const suggestedClasses =
-    "border border-dashed border-[var(--lr-graphite-500)]";
+    "border border-dashed border-[var(--lr-graphite-600)] dark:border-[var(--lr-graphite-300)]";
 
   return (
     <span
