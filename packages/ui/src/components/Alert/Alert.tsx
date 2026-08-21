@@ -54,13 +54,11 @@ export interface AlertProps {
 // are FieldMessage's original error-only precedent for this exact problem,
 // generalized to the other three variants using each hue's own already-AA
 // text tier (lurem-tokens.css v1.1).
-// REBRAND (Task 1.3): "info" has no home in the new Lurem palette — only
-// Night/Petrol/Ivory/Gold/Graphite/Terracota exist, and none is designated
-// "info" by DESIGN_SYSTEM.md. Substituted --lr-graphite-* at the matching
-// numeric stop (the conservative neutral default per DESIGN_SYSTEM.md §1.1)
-// for every blue-* below. NOT a settled design decision — flag for product
-// sign-off before shipping, same as Badge's "blue" category color and
-// Button's "link" variant (see task-1.3 report).
+// REBRAND (Task 1.3): "info" has no dedicated hue in the Lurem palette —
+// only Night/Petrol/Ivory/Gold/Graphite/Terracota exist. --lr-graphite-*
+// at the matching numeric stop is the settled mapping (DESIGN.md defines
+// no info token, so the neutral-by-default rule is the answer), same as
+// Badge's "blue" category color and Button's "link" variant.
 const INLINE_TONE: Record<AlertVariant, string> = {
   info: "text-[var(--lr-graphite-700)] dark:text-[var(--lr-graphite-300)]",
   success: "text-[var(--lr-petrol-700)] dark:text-[var(--lr-petrol-300)]",
