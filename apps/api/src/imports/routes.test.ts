@@ -395,6 +395,55 @@ describe("line review", () => {
     const txCount = await server.prisma.transaction.count();
     expect(txCount).toBe(1);
   });
+
+  it("confirm-high-confidence excludes lines flagged as probable duplicates, even at/above the threshold", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId);
+    fakeLlmResponse([
+      { description: "Alta confiança", amountCents: 1000, confidence: 0.95 },
+      { description: "Provável duplicata", amountCents: 2000, confidence: 0.9 },
+    ]);
+    const created = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: "batch-hash-dup",
+        text: "...",
+      },
+    });
+    const documentId = created.json().document.id;
+    const lines = await server.prisma.extractedTransaction.findMany({
+      where: { importedDocumentId: documentId },
+    });
+    const duplicateLine = lines.find(
+      (l) => l.description === "Provável duplicata",
+    );
+    if (!duplicateLine) throw new Error("seeded line not found");
+    await server.prisma.extractedTransaction.update({
+      where: { id: duplicateLine.id },
+      data: { duplicateOfTxId: "some-existing-transaction-id" },
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/v1/imports/${documentId}/confirm-high-confidence`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    // Only "Alta confiança" gets bulk-confirmed; the flagged duplicate stays
+    // pending for per-row review despite clearing the confidence threshold.
+    expect(response.json().confirmedCount).toBe(1);
+    const txCount = await server.prisma.transaction.count();
+    expect(txCount).toBe(1);
+    const stillPending = await server.prisma.extractedTransaction.findUnique({
+      where: { id: duplicateLine.id },
+    });
+    expect(stillPending?.status).toBe("pending");
+  });
 });
 
 describe("description alias", () => {
