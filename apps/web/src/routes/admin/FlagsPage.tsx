@@ -20,6 +20,13 @@ export function FlagsPage() {
   const [editState, setEditState] = useState<"off" | "beta" | "on">("off");
   const [editRollout, setEditRollout] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // A 100% rollout instantly changes behavior for every user with no undo —
+  // the critique flagged this getting less friction than editing a calendar
+  // entry, compared to account deletion's typed-word gate elsewhere in
+  // Admin. Arm-then-confirm (same pattern as TransactionRow's delete)
+  // instead of a full modal, since this is still a routine admin action for
+  // lower rollout percentages.
+  const [confirmingSave, setConfirmingSave] = useState(false);
 
   const flagsQuery = useQuery({
     queryKey: ["admin-flags"],
@@ -43,6 +50,7 @@ export function FlagsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-flags"] });
       setEditingKey(null);
+      setConfirmingSave(false);
       setError(null);
     },
     onError: (err: unknown) => {
@@ -97,7 +105,10 @@ export function FlagsPage() {
                     { value: "on", label: "On" },
                   ]}
                   value={editState}
-                  onChange={(v) => setEditState(v as "off" | "beta" | "on")}
+                  onChange={(v) => {
+                    setEditState(v as "off" | "beta" | "on");
+                    setConfirmingSave(false);
+                  }}
                 />
                 {editState === "on" && (
                   <div>
@@ -113,31 +124,52 @@ export function FlagsPage() {
                       min="0"
                       max="100"
                       value={editRollout}
-                      onChange={(e) =>
-                        setEditRollout(Number.parseInt(e.target.value))
-                      }
+                      onChange={(e) => {
+                        setEditRollout(Number.parseInt(e.target.value));
+                        setConfirmingSave(false);
+                      }}
                       className="w-full"
                     />
                   </div>
                 )}
+                {confirmingSave && editState === "on" && editRollout === 100 ? (
+                  <Alert
+                    variant="warning"
+                    layout="inline"
+                    title="Isso ativa a flag para 100% dos usuários agora, sem confirmação adicional."
+                  />
+                ) : null}
                 <div className="flex gap-2">
                   <Button
                     variant="secondary"
-                    onClick={() => setEditingKey(null)}
+                    onClick={() => {
+                      setEditingKey(null);
+                      setConfirmingSave(false);
+                    }}
                   >
                     Cancelar
                   </Button>
                   <Button
                     loading={updateMutation.isPending}
-                    onClick={() =>
+                    onClick={() => {
+                      if (
+                        editState === "on" &&
+                        editRollout === 100 &&
+                        !confirmingSave
+                      ) {
+                        setConfirmingSave(true);
+                        return;
+                      }
                       updateMutation.mutate({
                         key: flag.key,
                         state: editState,
                         rolloutPercent: editState === "on" ? editRollout : 0,
-                      })
-                    }
+                      });
+                    }}
                   >
-                    Salvar
+                    {confirmingSave && editState === "on" && editRollout === 100
+                      ? "Confirmar rollout total"
+                      : "Salvar"}
                   </Button>
                 </div>
               </div>
