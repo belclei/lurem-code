@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Badge } from "../Badge/Badge";
 import { Button } from "../Button/Button";
 import { Card } from "../Card/Card";
@@ -47,10 +48,21 @@ export function TransferPairCard({
   const fromAccountType = from.isCash ? "Em espécie" : "Conta corrente";
   const toAccountType = to.isCash ? "Em espécie" : "Conta corrente";
 
+  // Same two-step arm/confirm as TransactionRow's "Apagar" — a transfer
+  // delete is the same financial-data-loss action, it shouldn't be one
+  // click just because this is a sibling component.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  useEffect(() => {
+    if (!expanded) setConfirmingDelete(false);
+  }, [expanded]);
+
   return (
     <Card interactive={false} dashed={false}>
-      {/* Collapsed header */}
-      <div className="flex items-center gap-3">
+      {/* Collapsed header — flex-wrap + min-w on the center block (not
+          min-w-0) so the trailing amount/chevron block wraps to its own
+          line instead of truncating the description down to nothing at
+          narrow widths, same fix as TransactionRow's RowHeader. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         {/* Institution marks: from → to */}
         <div className="flex flex-none items-center gap-1">
           <InstitutionMark
@@ -69,7 +81,7 @@ export function TransferPairCard({
         </div>
 
         {/* Center: description + category line */}
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[8rem] flex-1">
           <div className="flex items-center gap-2">
             <Body weight="medium" className="truncate">
               {description || "Transferência"}
@@ -87,7 +99,7 @@ export function TransferPairCard({
         </div>
 
         {/* Trailing: amount + expand button */}
-        <div className="flex flex-none items-center gap-1.5">
+        <div className="ml-auto flex flex-none items-center gap-1.5">
           <Mono variant="number" tone="default">
             {formatMoney(amountCents)}
           </Mono>
@@ -164,14 +176,42 @@ export function TransferPairCard({
           {/* Action trailer */}
           <div className="mt-3 flex justify-end gap-2 border-t border-[var(--lr-border)] pt-3">
             {onDelete ? (
-              <Button
-                variant="danger"
-                size="sm"
-                className="mr-auto"
-                onClick={onDelete}
-              >
-                Apagar
-              </Button>
+              confirmingDelete ? (
+                <>
+                  <Body
+                    as="span"
+                    className="mr-auto text-[.8125rem] text-[var(--lr-negative)]"
+                  >
+                    Apagar esta transferência?
+                  </Body>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setConfirmingDelete(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => {
+                      setConfirmingDelete(false);
+                      onDelete();
+                    }}
+                  >
+                    Sim, apagar
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  className="mr-auto"
+                  onClick={() => setConfirmingDelete(true)}
+                >
+                  Apagar
+                </Button>
+              )
             ) : null}
             {onEdit ? (
               <Button variant="secondary" size="sm" onClick={onEdit}>
