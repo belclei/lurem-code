@@ -945,6 +945,11 @@ export async function registerImportRoutes(
           importedDocumentId: doc.id,
           status: "pending",
           confidence: { gte: HIGH_CONFIDENCE_THRESHOLD },
+          // Lines flagged as probable duplicates need the per-row "replace"
+          // review (confirmLine has no duplicate check of its own) — bulk
+          // confirming them here would silently double-create the
+          // transaction the pipeline itself already flagged as suspect.
+          duplicateOfTxId: null,
         },
       });
       for (const line of lines) {

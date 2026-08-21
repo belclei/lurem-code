@@ -14,19 +14,17 @@ interface FeatureFlag {
 
 export function FlagsPage() {
   const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const queryClient = useQueryClient();
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editState, setEditState] = useState<"off" | "beta" | "on">("off");
   const [editRollout, setEditRollout] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  if (user?.role !== "admin") {
-    return <div className="p-6">Acesso negado</div>;
-  }
-
   const flagsQuery = useQuery({
     queryKey: ["admin-flags"],
     queryFn: () => apiFetchJson<FeatureFlag[]>("/admin/flags"),
+    enabled: isAdmin,
   });
 
   const updateMutation = useMutation({
@@ -53,6 +51,10 @@ export function FlagsPage() {
       );
     },
   });
+
+  if (!isAdmin) {
+    return <div className="p-6">Acesso negado</div>;
+  }
 
   const flags = flagsQuery.data ?? [];
 
