@@ -1,4 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import itauLogo from "../../assets/institutions/itau.svg";
+import nubankLogo from "../../assets/institutions/nubank.svg";
 import { TransferPairCard } from "./TransferPairCard";
 
 const meta: Meta<typeof TransferPairCard> = {
@@ -27,13 +29,13 @@ export const ComLogo: Story = {
         from={{
           name: "Conta corrente",
           institution: "Itaú",
-          logoUrl: "/ui-tokens/institutions/itau.svg",
+          logoUrl: itauLogo,
           balanceAfterCents: 340000,
         }}
         to={{
           name: "Poupança",
           institution: "Nubank",
-          logoUrl: "/ui-tokens/institutions/nubank.svg",
+          logoUrl: nubankLogo,
           balanceAfterCents: 120000,
         }}
       />
