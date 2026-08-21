@@ -56,7 +56,14 @@ export function Skeleton({
           // settling into place" motion in this system uses (not a
           // hardcoded ease-in-out) — timing already matched, this was the
           // one real drift from the reference's shimmer.
-          "animate-[lr-skeleton-shimmer_1.6s_var(--lr-ease-settle)_infinite]",
+          // Bounded to 5 cycles (~8s) with fill-mode forwards instead of
+          // `infinite`: an unbounded loop is a WCAG 2.2.2 (Pause, Stop,
+          // Hide) violation for a load stuck past 5s and users without the
+          // OS-level prefers-reduced-motion flag set. The keyframe's only
+          // step ends at translateX(100%) (fully swept off), so freezing
+          // there just leaves the static base skeleton block — still
+          // legible as "loading", no perpetual motion.
+          "animate-[lr-skeleton-shimmer_1.6s_var(--lr-ease-settle)_5_forwards]",
         ].join(" ")}
       />
     </span>

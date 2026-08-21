@@ -117,9 +117,10 @@ export const Extrato: Story = {
                 onChange={() => {}}
               />
             </TableCell>
+            <TableCell>10/07</TableCell>
             <TableCell>
               Aluguel{" "}
-              <Badge kind="status" status="pending">
+              <Badge kind="status" status="estimate">
                 Agendada
               </Badge>
             </TableCell>

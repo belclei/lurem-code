@@ -194,7 +194,7 @@ export function TransferPairCard({
                     as="span"
                     className="mr-auto text-[.8125rem] text-[var(--lr-negative)]"
                   >
-                    Apagar esta transferência?
+                    Apagar esta transferência? Não pode ser desfeito.
                   </Body>
                   <Button
                     variant="secondary"
