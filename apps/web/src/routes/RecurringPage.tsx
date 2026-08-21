@@ -323,6 +323,11 @@ export function RecurringPage() {
     null,
   );
 
+  // Encerrar has no "reabrir" affordance anywhere in this UI (endDate is
+  // never editable once set), so it's effectively a one-way door — same
+  // arm-then-confirm treatment as Excluir, not just a single click.
+  const [confirmingEndId, setConfirmingEndId] = useState<string | null>(null);
+
   // Backlog "clicar na ocorrência futura da Timeline abre a edição da série":
   // TimelineFeed navigates here with `?edit=<id>` (TimelinePage.tsx's
   // onManageRecurring). Read once on mount via the plain URL — this page
@@ -404,6 +409,7 @@ export function RecurringPage() {
             const isDeletePending =
               deleteMutation.isPending && deleteMutation.variables === s.id;
             const isConfirmingDelete = confirmingDeleteId === s.id;
+            const isConfirmingEnd = confirmingEndId === s.id;
             return (
               <div key={s.id} className="flex flex-col gap-2">
                 <RecurringRow
@@ -466,19 +472,48 @@ export function RecurringPage() {
                     </Button>
                   )}
                   {status !== "ended" ? (
-                    <Button
-                      variant="tertiary"
-                      loading={isPatchPending}
-                      disabled={isDeletePending}
-                      onClick={() =>
-                        patchMutation.mutate({
-                          id: s.id,
-                          body: { endDate: todayYmd() },
-                        })
-                      }
-                    >
-                      Encerrar
-                    </Button>
+                    isConfirmingEnd ? (
+                      <>
+                        <Body
+                          as="span"
+                          className="text-[.8125rem] text-[var(--lr-negative)]"
+                        >
+                          Encerrar esta recorrência?
+                        </Body>
+                        <Button
+                          variant="secondary"
+                          disabled={isDeletePending}
+                          onClick={() => setConfirmingEndId(null)}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button
+                          variant="danger"
+                          loading={isPatchPending}
+                          disabled={isDeletePending}
+                          onClick={() => {
+                            setConfirmingEndId(null);
+                            patchMutation.mutate({
+                              id: s.id,
+                              body: { endDate: todayYmd() },
+                            });
+                          }}
+                        >
+                          Sim, encerrar
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        variant="tertiary"
+                        disabled={isDeletePending}
+                        onClick={() => {
+                          setConfirmingDeleteId(null);
+                          setConfirmingEndId(s.id);
+                        }}
+                      >
+                        Encerrar
+                      </Button>
+                    )
                   ) : null}
                   {isConfirmingDelete ? (
                     <>
@@ -511,7 +546,10 @@ export function RecurringPage() {
                     <Button
                       variant="danger"
                       disabled={isPatchPending}
-                      onClick={() => setConfirmingDeleteId(s.id)}
+                      onClick={() => {
+                        setConfirmingEndId(null);
+                        setConfirmingDeleteId(s.id);
+                      }}
                     >
                       Excluir
                     </Button>
