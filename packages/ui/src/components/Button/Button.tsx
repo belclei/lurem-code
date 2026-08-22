@@ -93,21 +93,13 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
     "bg-[var(--lr-negative)] text-white border border-transparent " +
     "hover:bg-[var(--lr-negative-700)] active:bg-[var(--lr-negative-800)]",
   // index.html lines ~63-67 of lurem-components.css (`.hmc-btn--link`):
-  // background none, padding 0, min-height 0, underlined, --hm-blue-700,
-  // hover → --lr-night-900. --hm-blue-700/--lr-night-900 are only AA-checked
-  // against a light page (lurem-tokens.css's own v1.1 comment, same caveat
-  // already noted for Alert/Badge above) — dark mode steps to the same
-  // --hm-blue-300/--lr-ivory-100 pairing used elsewhere in this file.
-  // REBRAND (Task 1.3): the new Lurem palette has no hue for "info/link"
-  // semantics at all — only Night/Petrol/Ivory/Gold/Graphite/Terracota
-  // exist, and DESIGN_SYSTEM.md doesn't assign any of them to this role.
-  // Substituted --lr-graphite-{700,300} (same numeric stops as the old
-  // blue) as the conservative neutral default per DESIGN_SYSTEM.md §1.1
-  // ("a maior parte da interface deve utilizar tons neutros"). NOT a
-  // design-system-mandated mapping — flagging for product sign-off, same
-  // as every other blue->graphite site in this rebrand (see task-1.3
-  // report). Contrast re-verified for the new pair: graphite-700 on the
-  // page surface clears ~11-13:1 (comfortably AA), so no regression there.
+  // background none, padding 0, min-height 0, underlined, hover → --lr-night-900.
+  // REBRAND (Task 1.3): the Lurem palette has no dedicated "info/link" hue —
+  // Night/Petrol/Ivory/Gold/Graphite/Terracota only. --lr-graphite-{700,300}
+  // is the settled mapping (DESIGN.md's neutral-by-default rule; no info/link
+  // token is defined there, so graphite is the answer, not a placeholder).
+  // Contrast verified: graphite-700 on the page surface clears ~11-13:1
+  // (comfortably AA), dark mode steps to graphite-300/ivory-100.
   link:
     "bg-transparent text-[var(--lr-graphite-700)] dark:text-[var(--lr-graphite-300)] border border-transparent " +
     "underline underline-offset-[3px] decoration-1 " +

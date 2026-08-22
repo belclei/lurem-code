@@ -54,13 +54,11 @@ export interface AlertProps {
 // are FieldMessage's original error-only precedent for this exact problem,
 // generalized to the other three variants using each hue's own already-AA
 // text tier (lurem-tokens.css v1.1).
-// REBRAND (Task 1.3): "info" has no home in the new Lurem palette — only
-// Night/Petrol/Ivory/Gold/Graphite/Terracota exist, and none is designated
-// "info" by DESIGN_SYSTEM.md. Substituted --lr-graphite-* at the matching
-// numeric stop (the conservative neutral default per DESIGN_SYSTEM.md §1.1)
-// for every blue-* below. NOT a settled design decision — flag for product
-// sign-off before shipping, same as Badge's "blue" category color and
-// Button's "link" variant (see task-1.3 report).
+// REBRAND (Task 1.3): "info" has no dedicated hue in the Lurem palette —
+// only Night/Petrol/Ivory/Gold/Graphite/Terracota exist. --lr-graphite-*
+// at the matching numeric stop is the settled mapping (DESIGN.md defines
+// no info token, so the neutral-by-default rule is the answer), same as
+// Badge's "blue" category color and Button's "link" variant.
 const INLINE_TONE: Record<AlertVariant, string> = {
   info: "text-[var(--lr-graphite-700)] dark:text-[var(--lr-graphite-300)]",
   success: "text-[var(--lr-petrol-700)] dark:text-[var(--lr-petrol-300)]",
@@ -216,13 +214,26 @@ export function Alert({
         // (flex-wrap changes the row's own height, which the containment
         // spec excludes to avoid a resize loop), so a self-query like the
         // previous single-div version silently never fired.
-        "@container rounded-[var(--lr-r-md)]",
+        "@container relative rounded-[var(--lr-r-md)]",
         styles.bg,
         styles.border,
         className,
       ].join(" ")}
     >
-      <div className="flex items-start gap-3 p-4 @max-[560px]:flex-wrap">
+      <div
+        className={[
+          "flex items-start gap-3 p-4 @max-[560px]:flex-wrap",
+          // The close button is pinned absolutely (see below) instead of
+          // sitting in this flex row — at @max-[560px] the actions block
+          // switches to w-full and wraps onto its own line, and a close
+          // button living in the same row would wrap along with it, landing
+          // disconnected below the card instead of staying next to what it
+          // dismisses (confirmed live: the Timeline activation cards showed
+          // an orphaned "×" floating under the button). Reserve its space
+          // with padding instead so content never renders under it.
+          onClose ? "pr-8" : "",
+        ].join(" ")}
+      >
         {emoji ? (
           <span
             aria-hidden="true"
@@ -303,17 +314,17 @@ export function Alert({
             ))}
           </div>
         ) : null}
-        {onClose ? (
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Fechar alerta"
-            className="-m-1 flex-none cursor-pointer rounded-[var(--lr-r-sm)] p-1 text-[var(--lr-text-secondary)] opacity-70 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
-          >
-            <CloseIcon className="h-4 w-4" />
-          </button>
-        ) : null}
       </div>
+      {onClose ? (
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Fechar alerta"
+          className="absolute top-3 right-3 cursor-pointer rounded-[var(--lr-r-sm)] p-1 text-[var(--lr-text-secondary)] opacity-70 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
+        >
+          <CloseIcon className="h-4 w-4" />
+        </button>
+      ) : null}
     </div>
   );
 }

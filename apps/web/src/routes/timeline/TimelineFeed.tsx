@@ -5,6 +5,7 @@ import {
   EmptyState,
   Mono,
   Skeleton,
+  TimelineEventGroupRow,
   TimelineEventRow,
   TransactionRow,
   TransferPairCard,
@@ -30,6 +31,7 @@ import {
 import type { ScheduledHandlers } from "./transactionRowHelpers";
 import {
   findTransferPair,
+  groupConsecutiveAuditEvents,
   hasOutTransferPair,
   resolveTransferParty,
   transactionRowProps,
@@ -230,7 +232,17 @@ export function TimelineFeed({
                       ]}
                     />
                   ))}
-                  {day.items.map((item) => {
+                  {groupConsecutiveAuditEvents(day.items).map((item) => {
+                    if (item.itemType === "eventGroup") {
+                      return (
+                        <TimelineEventGroupRow
+                          key={item.id}
+                          type={item.type as DomainEventType}
+                          payload={item.payload}
+                          count={item.count}
+                        />
+                      );
+                    }
                     // Backlog "Recorrência integrada ao dialog": a próxima
                     // ocorrência ainda não vencida de uma série recorrente
                     // (não é uma Transaction real ainda — só um evento
@@ -292,8 +304,19 @@ export function TimelineFeed({
                         item.aggregateType === "Account"
                           ? accountsById.get(item.aggregateId)
                           : undefined;
+                      // Invoice-upcoming events render their own action
+                      // button inside TimelineEventRow (layout="box",
+                      // "Fechar fatura"/"Pagar fatura") — wrapping those in
+                      // this outer edit-card <button> nests a real <button>
+                      // inside another, and clicking the inner action
+                      // bubbles up to also open the edit-card dialog as an
+                      // unrelated side effect. Never wrap those two types.
+                      const hasOwnActionButton =
+                        item.type === "card.invoice_closing_upcoming" ||
+                        item.type === "card.invoice_due_upcoming";
                       const editableCard =
-                        item.aggregateType === "CreditCard"
+                        item.aggregateType === "CreditCard" &&
+                        !hasOwnActionButton
                           ? cardsById.get(item.aggregateId)
                           : undefined;
                       if (editableAccount) {

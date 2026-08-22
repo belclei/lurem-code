@@ -123,7 +123,7 @@ export function AppLayout() {
                 <div className="truncate text-[0.75rem] text-[var(--lr-night-300)]">
                   Conta pessoal
                 </div>
-                <div className="truncate text-[0.65rem] text-[var(--lr-night-400)]">
+                <div className="truncate text-[0.75rem] text-[var(--lr-night-400)]">
                   v{packageJson.version}
                 </div>
               </div>
@@ -170,7 +170,7 @@ export function AppLayout() {
               to={item.to}
               aria-label={item.label}
               className={[
-                "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[.625rem] no-underline",
+                "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[.75rem] no-underline",
                 isActive
                   ? "text-[var(--lr-ivory-100)]"
                   : "text-[var(--lr-night-300)]",
@@ -186,7 +186,7 @@ export function AppLayout() {
             to="/admin"
             aria-label="Admin"
             className={[
-              "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[.625rem] no-underline",
+              "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[.75rem] no-underline",
               location.pathname.startsWith("/admin")
                 ? "text-[var(--lr-ivory-100)]"
                 : "text-[var(--lr-night-300)]",
@@ -203,7 +203,7 @@ export function AppLayout() {
               aria-label="Perfil e configurações"
               onClick={() => navigate({ to: "/settings" })}
               className={[
-                "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[.625rem]",
+                "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[.75rem]",
                 location.pathname.startsWith("/settings")
                   ? "text-[var(--lr-ivory-100)]"
                   : "text-[var(--lr-night-300)]",
@@ -218,7 +218,7 @@ export function AppLayout() {
               type="button"
               aria-label="Sair"
               onClick={() => void handleLogout()}
-              className="flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[.625rem] text-[var(--lr-night-300)]"
+              className="flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[.75rem] text-[var(--lr-night-300)]"
             >
               <LogoutIcon />
               <span className="truncate">Sair</span>

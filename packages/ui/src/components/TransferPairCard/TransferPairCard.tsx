@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Badge } from "../Badge/Badge";
 import { Button } from "../Button/Button";
 import { Card } from "../Card/Card";
@@ -47,10 +48,29 @@ export function TransferPairCard({
   const fromAccountType = from.isCash ? "Em espécie" : "Conta corrente";
   const toAccountType = to.isCash ? "Em espécie" : "Conta corrente";
 
+  // Same two-step arm/confirm as TransactionRow's "Apagar" — a transfer
+  // delete is the same financial-data-loss action, it shouldn't be one
+  // click just because this is a sibling component.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  useEffect(() => {
+    if (!expanded) setConfirmingDelete(false);
+  }, [expanded]);
+
   return (
-    <Card interactive={false} dashed={false}>
-      {/* Collapsed header */}
-      <div className="flex items-center gap-3">
+    // Whole-card click expands, same gesture TransactionRow already uses —
+    // was interactive={false} with only the ~24px chevron as a click
+    // target, an inconsistency users would reasonably not expect between
+    // two sibling card types doing the same job.
+    <Card
+      interactive={Boolean(onToggleExpand)}
+      onClick={onToggleExpand}
+      dashed={false}
+    >
+      {/* Collapsed header — flex-wrap + min-w on the center block (not
+          min-w-0) so the trailing amount/chevron block wraps to its own
+          line instead of truncating the description down to nothing at
+          narrow widths, same fix as TransactionRow's RowHeader. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         {/* Institution marks: from → to */}
         <div className="flex flex-none items-center gap-1">
           <InstitutionMark
@@ -69,7 +89,7 @@ export function TransferPairCard({
         </div>
 
         {/* Center: description + category line */}
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[8rem] flex-1">
           <div className="flex items-center gap-2">
             <Body weight="medium" className="truncate">
               {description || "Transferência"}
@@ -87,14 +107,17 @@ export function TransferPairCard({
         </div>
 
         {/* Trailing: amount + expand button */}
-        <div className="flex flex-none items-center gap-1.5">
+        <div className="ml-auto flex flex-none items-center gap-1.5">
           <Mono variant="number" tone="default">
             {formatMoney(amountCents)}
           </Mono>
           <button
             type="button"
             aria-label={expanded ? "Recolher detalhes" : "Expandir detalhes"}
-            onClick={onToggleExpand}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleExpand?.();
+            }}
             className="flex-none rounded-[var(--lr-r-full)] p-1 text-[var(--lr-text-secondary)] hover:bg-[var(--lr-surface-sunken)]"
           >
             <ChevronDownIcon
@@ -119,10 +142,13 @@ export function TransferPairCard({
                 tone={from.isCash ? "gold" : "petrol"}
                 size="sm"
               />
-              <div className="min-w-0 flex-1">
-                <Body weight="medium" className="truncate">
-                  {from.name}
-                </Body>
+              {/* No truncate/min-w-0 here — same fix as the collapsed
+                  header (round-2 critique): a long account name competing
+                  against a flex-none amount would truncate to nothing
+                  instead of wrapping. Plenty of vertical room in the
+                  expanded view for a name to wrap to a second line. */}
+              <div className="min-w-[6rem] flex-1">
+                <Body weight="medium">{from.name}</Body>
                 <Body muted className="text-[.75rem]">
                   {fromAccountType} · origem
                 </Body>
@@ -140,10 +166,8 @@ export function TransferPairCard({
                 tone={to.isCash ? "gold" : "petrol"}
                 size="sm"
               />
-              <div className="min-w-0 flex-1">
-                <Body weight="medium" className="truncate">
-                  {to.name}
-                </Body>
+              <div className="min-w-[6rem] flex-1">
+                <Body weight="medium">{to.name}</Body>
                 <Body muted className="text-[.75rem]">
                   {toAccountType} · destino
                 </Body>
@@ -164,17 +188,59 @@ export function TransferPairCard({
           {/* Action trailer */}
           <div className="mt-3 flex justify-end gap-2 border-t border-[var(--lr-border)] pt-3">
             {onDelete ? (
-              <Button
-                variant="danger"
-                size="sm"
-                className="mr-auto"
-                onClick={onDelete}
-              >
-                Apagar
-              </Button>
+              confirmingDelete ? (
+                <>
+                  <Body
+                    as="span"
+                    className="mr-auto text-[.8125rem] text-[var(--lr-negative)]"
+                  >
+                    Apagar esta transferência? Não pode ser desfeito.
+                  </Body>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setConfirmingDelete(false);
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setConfirmingDelete(false);
+                      onDelete();
+                    }}
+                  >
+                    Sim, apagar
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  className="mr-auto"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setConfirmingDelete(true);
+                  }}
+                >
+                  Apagar
+                </Button>
+              )
             ) : null}
             {onEdit ? (
-              <Button variant="secondary" size="sm" onClick={onEdit}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onEdit();
+                }}
+              >
                 Editar
               </Button>
             ) : null}

@@ -18,6 +18,11 @@ const STATUS_BADGE: Record<
 
 export interface RecurringRowProps {
   description: string;
+  /** Optional: when present, colors the amount and adds a +/− sign the same
+   * way TransactionRow does — this page mixes income (salário) and expense
+   * (aluguel, assinaturas) series, and without this they were visually
+   * identical apart from reading the description text. */
+  kind?: "income" | "expense";
   referenceAmountCents: number;
   /** §6.7 item 3: no valor fixo — o valor de referência é sinalizado como estimativa. */
   isVariableAmount: boolean;
@@ -36,6 +41,7 @@ export interface RecurringRowProps {
  */
 export function RecurringRow({
   description,
+  kind,
   referenceAmountCents,
   isVariableAmount,
   nextOccurrenceDate,
@@ -80,9 +86,18 @@ export function RecurringRow({
         </div>
         <Mono
           variant="number"
-          tone={isVariableAmount ? "estimate" : "default"}
+          tone={
+            isVariableAmount
+              ? "estimate"
+              : kind === "income"
+                ? "in"
+                : kind === "expense"
+                  ? "out"
+                  : "default"
+          }
           className="flex-none"
         >
+          {kind === "income" ? "+" : kind === "expense" ? "−" : ""}
           {formatMoney(referenceAmountCents)}
         </Mono>
       </div>

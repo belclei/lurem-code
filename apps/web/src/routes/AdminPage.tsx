@@ -10,6 +10,7 @@ import {
   Input,
   Segmented,
   Switch,
+  Tabs,
 } from "@lurem/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate } from "@tanstack/react-router";
@@ -80,30 +81,68 @@ export function AdminPage() {
   const invalidateUsers = () =>
     queryClient.invalidateQueries({ queryKey: ["admin-users"] });
 
+  // Most action mutations on this page had no onError at all — approve/
+  // reject/disable a user, delete an invite, all failed completely
+  // silently. One shared banner covers every one-off admin action below.
+  const [actionError, setActionError] = useState<string | null>(null);
+  // Acessos, Usuários, Calendário, Novidades, Uso, Saúde used to stack on
+  // one continuous scroll — 6 unrelated concerns on the single screen a
+  // human runs the business from daily, directly against DESIGN.md's own
+  // One Focus Rule. Tabs split them into one concern per view; data-fetching
+  // (the useQuery calls above/below) stays eager and unconditional so
+  // switching tabs never re-triggers a network request.
+  const [activeTab, setActiveTab] = useState("acessos");
+  const onActionError = (err: unknown) =>
+    setActionError(
+      err instanceof ApiError
+        ? err.message
+        : "Não foi possível concluir a ação.",
+    );
+
   const approveWaitlistMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/admin/access/waitlist/${id}/approve`, { method: "POST" }),
-    onSuccess: invalidateAccess,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateAccess();
+    },
+    onError: onActionError,
   });
   const rejectWaitlistMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/admin/access/waitlist/${id}/reject`, { method: "POST" }),
-    onSuccess: invalidateAccess,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateAccess();
+    },
+    onError: onActionError,
   });
   const approveInviteMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/admin/access/invites/${id}/approve`, { method: "POST" }),
-    onSuccess: invalidateAccess,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateAccess();
+    },
+    onError: onActionError,
   });
   const rejectInviteMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/admin/access/invites/${id}/reject`, { method: "POST" }),
-    onSuccess: invalidateAccess,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateAccess();
+    },
+    onError: onActionError,
   });
   const deleteInviteMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/invites/${id}`, { method: "DELETE" }),
-    onSuccess: invalidateAccess,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateAccess();
+    },
+    onError: onActionError,
   });
 
   const roleMutation = useMutation({
@@ -112,7 +151,11 @@ export function AdminPage() {
         method: "POST",
         body: JSON.stringify({ role }),
       }),
-    onSuccess: invalidateUsers,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateUsers();
+    },
+    onError: onActionError,
   });
   const betaMutation = useMutation({
     mutationFn: ({ id, isBetaTester }: { id: string; isBetaTester: boolean }) =>
@@ -120,7 +163,11 @@ export function AdminPage() {
         method: "POST",
         body: JSON.stringify({ isBetaTester }),
       }),
-    onSuccess: invalidateUsers,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateUsers();
+    },
+    onError: onActionError,
   });
   const disableMutation = useMutation({
     mutationFn: ({ id, disabled }: { id: string; disabled: boolean }) =>
@@ -128,7 +175,11 @@ export function AdminPage() {
         method: "POST",
         body: JSON.stringify({ disabled }),
       }),
-    onSuccess: invalidateUsers,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateUsers();
+    },
+    onError: onActionError,
   });
 
   const invalidateCalendar = () =>
@@ -173,7 +224,11 @@ export function AdminPage() {
   const deleteCalendarEntryMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/admin/calendar-entries/${id}`, { method: "DELETE" }),
-    onSuccess: invalidateCalendar,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateCalendar();
+    },
+    onError: onActionError,
   });
 
   function onSubmitCalendarEntry(event: FormEvent) {
@@ -234,7 +289,11 @@ export function AdminPage() {
   const deleteReleaseMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetchJson(`/admin/releases/${id}`, { method: "DELETE" }),
-    onSuccess: invalidateReleases,
+    onSuccess: () => {
+      setActionError(null);
+      invalidateReleases();
+    },
+    onError: onActionError,
   });
 
   function onSubmitRelease(event: FormEvent) {
@@ -281,7 +340,31 @@ export function AdminPage() {
         </Link>
       </div>
 
-      <section className="mb-10">
+      {actionError ? (
+        <Alert
+          variant="error"
+          layout="inline"
+          title={actionError}
+          className="mb-6"
+        />
+      ) : null}
+
+      <Tabs
+        label="Seções do painel administrativo"
+        className="mb-6"
+        items={[
+          { value: "acessos", label: "Acessos" },
+          { value: "usuarios", label: "Usuários" },
+          { value: "calendario", label: "Calendário" },
+          { value: "novidades", label: "Novidades" },
+          { value: "uso", label: "Uso" },
+          { value: "saude", label: "Saúde" },
+        ]}
+        value={activeTab}
+        onChange={setActiveTab}
+      />
+
+      <section className={activeTab === "acessos" ? "mb-10" : "hidden"}>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--lr-text-secondary)]">
           Acessos
         </h2>
@@ -369,7 +452,7 @@ export function AdminPage() {
         )}
       </section>
 
-      <section>
+      <section className={activeTab === "usuarios" ? undefined : "hidden"}>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--lr-text-secondary)]">
           Usuários
         </h2>
@@ -435,7 +518,7 @@ export function AdminPage() {
         </div>
       </section>
 
-      <section className="mt-10">
+      <section className={activeTab === "calendario" ? "mt-10" : "hidden"}>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--lr-text-secondary)]">
           Calendário global
         </h2>
@@ -535,7 +618,7 @@ export function AdminPage() {
         )}
       </section>
 
-      <section className="mt-10">
+      <section className={activeTab === "novidades" ? "mt-10" : "hidden"}>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--lr-text-secondary)]">
           Novidades
         </h2>
@@ -637,7 +720,7 @@ export function AdminPage() {
         )}
       </section>
 
-      <section className="mt-10">
+      <section className={activeTab === "uso" ? "mt-10" : "hidden"}>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--lr-text-secondary)]">
           Frequência de uso
         </h2>
@@ -695,7 +778,7 @@ export function AdminPage() {
         ) : null}
       </section>
 
-      <section className="mt-10">
+      <section className={activeTab === "saude" ? "mt-10" : "hidden"}>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--lr-text-secondary)]">
           Saúde do sistema
         </h2>

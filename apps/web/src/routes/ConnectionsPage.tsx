@@ -447,14 +447,19 @@ export function ConnectionsPage() {
   const hasSession = !isBooting && Boolean(user);
   const queryClient = useQueryClient();
 
-  if (hasSession && user && !user.flags.connections) {
-    return <Navigate to="/timeline" />;
-  }
   const [settlingConnection, setSettlingConnection] =
     useState<ConnectionDto | null>(null);
   const [acceptingItem, setAcceptingItem] = useState<PortadorPendingDto | null>(
     null,
   );
+  // "Conectar" (an existing Lurem user) and "Convidar" (someone new to this
+  // closed-access product, admin-approval-gated) used to render as two
+  // simultaneous peer forms — the critique flagged this against DESIGN.md's
+  // One Focus Rule, since they're semantically different actions with very
+  // different stakes/frequency. Convidar (the rarer path) starts collapsed
+  // behind a toggle, matching the disclosure pattern AccountsPage already
+  // uses for archived accounts.
+  const [showInviteForm, setShowInviteForm] = useState(false);
 
   const connectionsQuery = useQuery({
     queryKey: ["connections"],
@@ -535,6 +540,14 @@ export function ConnectionsPage() {
   }
   if (!user) {
     return <Navigate to="/login" />;
+  }
+  // Moved below every hook above (was previously the function's first
+  // statement, right after computing `hasSession`): an early return before
+  // useState/useQuery/useMutation calls violates the Rules of Hooks — once
+  // `hasSession` flips true on a later render, React would see fewer hooks
+  // than the previous render and throw.
+  if (!user.flags.connections) {
+    return <Navigate to="/timeline" />;
   }
 
   const connections = connectionsQuery.data ?? [];
@@ -654,8 +667,14 @@ export function ConnectionsPage() {
             actions={[
               {
                 label: "Convidar alguém",
-                onClick: () =>
-                  document.getElementById("invite-name-input")?.focus(),
+                onClick: () => {
+                  setShowInviteForm(true);
+                  // Form mounts this render; focus needs the DOM node to
+                  // exist first, hence the deferred lookup.
+                  requestAnimationFrame(() =>
+                    document.getElementById("invite-name-input")?.focus(),
+                  );
+                },
               },
             ]}
           />
@@ -725,14 +744,29 @@ export function ConnectionsPage() {
       ) : null}
 
       <section className="mb-8">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--lr-text-secondary)]">
-          Convidar para o Lurem
-        </h2>
-        <NewInviteForm
-          onCreated={() =>
-            queryClient.invalidateQueries({ queryKey: ["invites"] })
-          }
-        />
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--lr-text-secondary)]">
+            Convidar para o Lurem
+          </h2>
+          {!showInviteForm ? (
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              onClick={() => setShowInviteForm(true)}
+            >
+              Não tem conta ainda? Convidar
+            </Button>
+          ) : null}
+        </div>
+        {showInviteForm ? (
+          <NewInviteForm
+            onCreated={() => {
+              queryClient.invalidateQueries({ queryKey: ["invites"] });
+              setShowInviteForm(false);
+            }}
+          />
+        ) : null}
         {invitesQuery.data && invitesQuery.data.length > 0 ? (
           <div className="flex flex-col gap-2">
             {invitesQuery.data.map((invite) => (
@@ -803,8 +837,16 @@ export function ConnectionsPage() {
                     {item?.name || item?.institutionName || share.itemType}
                   </p>
                   <Badge
-                    kind="status"
-                    status={share.permission === "edit" ? "active" : "inactive"}
+                    kind="category"
+                    // Not kind="status": "active"/"inactive" are lifecycle
+                    // semantics (petrol "confirmed" vs. grayed "disabled"),
+                    // which inverted the risk signal here — the safer
+                    // permission (view) read as disabled, the riskier one
+                    // (edit) as affirmed. "ink" (bordered, more visual
+                    // weight) for the higher-stakes grant, plain "blue"
+                    // (graphite) for the lower-stakes one — permission
+                    // level, not status.
+                    color={share.permission === "edit" ? "ink" : "blue"}
                   >
                     {share.permission === "edit" ? "Ver e editar" : "Só ver"}
                   </Badge>

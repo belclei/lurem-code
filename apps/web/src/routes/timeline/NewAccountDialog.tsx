@@ -78,7 +78,7 @@ export function NewAccountDialog({
     createMutation.mutate({
       type,
       institutionId: type === "cash" ? undefined : institutionId,
-      name: name.trim() || undefined,
+      name: name.trim() || (type === "cash" ? "Carteira" : undefined),
       openingBalanceCents: opening,
       overdraftLimitCents: overdraft,
     });
@@ -91,13 +91,7 @@ export function NewAccountDialog({
           label="Tipo"
           options={ACCOUNT_TYPE_OPTIONS}
           value={type}
-          onChange={(value) => {
-            const next = value as AccountType;
-            setType(next);
-            // "Espécie" (cash) tem "Carteira" como apelido default —
-            // pré-preenche só se o usuário ainda não digitou nada.
-            if (next === "cash" && !name.trim()) setName("Carteira");
-          }}
+          onChange={(value) => setType(value as AccountType)}
         />
         {type !== "cash" ? (
           <Select
@@ -125,6 +119,7 @@ export function NewAccountDialog({
         ) : null}
         <Input
           label="Apelido (opcional)"
+          placeholder={type === "cash" ? "Carteira" : undefined}
           value={name}
           onChange={(event) => setName(event.target.value)}
           error={fieldErrors.name}
