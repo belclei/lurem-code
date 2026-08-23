@@ -17,7 +17,9 @@ async function main(): Promise<void> {
       return;
     }
 
-    console.log(`Encontrada instituição: ${banrisul.name} (ID: ${banrisul.id})`);
+    console.log(
+      `Encontrada instituição: ${banrisul.name} (ID: ${banrisul.id})`,
+    );
 
     // 2. Encontrar todas as contas do usuário (belclei@gmail.com) nesta instituição
     const user = await prisma.user.findUnique({
@@ -48,7 +50,9 @@ async function main(): Promise<void> {
       },
     });
 
-    console.log(`Encontrados ${creditCards.length} cartão(ões) Banrisul do usuário`);
+    console.log(
+      `Encontrados ${creditCards.length} cartão(ões) Banrisul do usuário`,
+    );
 
     const creditCardIds = creditCards.map((c) => c.id);
 
@@ -169,9 +173,7 @@ async function main(): Promise<void> {
     console.log(`Recorrências de cartão: ${deletedCardRecurring}`);
     console.log(`Cartões: ${deletedCards}`);
     console.log(`Contas: ${deletedAccounts}`);
-    console.log(
-      "\n✓ Dados Banrisul deletados com sucesso do banco local.",
-    );
+    console.log("\n✓ Dados Banrisul deletados com sucesso do banco local.");
   } finally {
     await prisma.$disconnect();
   }

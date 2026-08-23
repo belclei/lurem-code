@@ -9,6 +9,7 @@ import { useMutation } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { ApiError, apiFetchJson } from "../../auth/api-client";
 import type { AccountDto, CardDto, InstitutionDto } from "../../auth/types";
+import { wrapDayOfMonth } from "../../lib/day-of-month";
 import { fieldErrorsFrom } from "../../lib/field-errors";
 import { reaisToCentsPositive } from "../../lib/money";
 
@@ -186,16 +187,22 @@ export function EditCardDialog({
         <div className="grid grid-cols-2 gap-3">
           <Input
             type="number"
+            min={1}
+            max={31}
             label="Dia de fechamento"
             value={closingDay}
-            onChange={(e) => setClosingDay(e.target.value)}
+            onChange={(e) =>
+              setClosingDay(wrapDayOfMonth(e.target.value, closingDay))
+            }
             error={fieldErrors.closingDay}
           />
           <Input
             type="number"
+            min={1}
+            max={31}
             label="Dia de vencimento"
             value={dueDay}
-            onChange={(e) => setDueDay(e.target.value)}
+            onChange={(e) => setDueDay(wrapDayOfMonth(e.target.value, dueDay))}
             error={fieldErrors.dueDay}
           />
         </div>

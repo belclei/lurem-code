@@ -48,6 +48,7 @@ function LineRow({
     (line.amountCents / 100).toFixed(2).replace(".", ","),
   );
   const [categoryId, setCategoryId] = useState(line.suggestedCategoryId);
+  const [kind, setKind] = useState(line.kind);
   const [tagNames, setTagNames] = useState(line.suggestedTagNames);
   const [portadorUserId, setPortadorUserId] = useState<string | null>(null);
   const [recurringTransactionId, setRecurringTransactionId] = useState<
@@ -56,7 +57,7 @@ function LineRow({
   const [error, setError] = useState<string | null>(null);
 
   const categoryOptions = categories
-    .filter((c) => c.kind === line.kind)
+    .filter((c) => c.kind === kind)
     .map((c) => ({ value: c.id, label: c.name }));
   const connectionOptions = connections.map((c) => ({
     value: c.counterpartUserId,
@@ -96,17 +97,20 @@ function LineRow({
         tagNames.some((t) => !line.suggestedTagNames.includes(t));
       const recurringChanged =
         recurringTransactionId !== line.suggestedRecurringId;
+      const kindChanged = kind !== line.kind;
       if (
         description !== line.description ||
         cents !== line.amountCents ||
         categoryId !== line.suggestedCategoryId ||
         tagsChanged ||
-        recurringChanged
+        recurringChanged ||
+        kindChanged
       ) {
         await patchMutation.mutateAsync({
           description,
           amountCents: cents,
           categoryId,
+          ...(kindChanged ? { kind } : {}),
           ...(tagsChanged ? { tagNames } : {}),
           ...(recurringChanged ? { recurringTransactionId } : {}),
         });
@@ -168,6 +172,8 @@ function LineRow({
       }
       amount={amount}
       onAmountChange={setAmount}
+      kind={kind}
+      onKindChange={setKind}
       categoryOptions={categoryOptions}
       categoryId={categoryId}
       onCategoryIdChange={setCategoryId}

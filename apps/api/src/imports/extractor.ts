@@ -10,7 +10,7 @@ export interface ExtractedItem {
   description: string;
   amountCents: number;
   transactionDate: string | null;
-  kind: "income" | "expense";
+  kind: "income" | "expense" | "transfer";
   cardHolderRaw: string | null;
   installmentNumber: number | null;
   installmentTotal: number | null;
@@ -23,6 +23,8 @@ export interface ExtractedItem {
 function buildSystemPrompt(
   categories: { name: string; kind: string }[],
   existingTagNames: string[],
+  documentType: "card_invoice" | "account_statement",
+  userFullName: string | null,
 ): string {
   const catList = categories.map((c) => `- ${c.name} (${c.kind})`).join("\n");
   // Tags are user-created vocabulary (§ description-tag-suggestion) — the
@@ -47,7 +49,7 @@ Return a JSON array of objects with these exact fields:
 - date: ISO 8601 date string (YYYY-MM-DD); null if not determinable
 - description: full merchant/transaction description as shown (string)
 - amountCents: integer, in cents, always positive
-- kind: "expense" for purchases/debits, "income" for payments/refunds/credits
+- kind: "expense" for purchases/debits, "income" for payments/refunds/credits, "transfer" for a movement between the user's own accounts (see PIX rule below)
 - currency: "BRL" by default; use "USD", "EUR" etc. only when clearly foreign currency
 - category: EXACT name from the categories list above that best fits; null if none fits
 - tags: array of EXACT names from the existing tags list above that clearly apply (e.g. an existing "uber" tag on a ride-share charge); empty array if none clearly apply or the list is empty — never invent a tag not in that list
@@ -60,6 +62,15 @@ Rules:
 - Ignore total lines, balance due, previous balance lines
 - CARDHOLDER: if the document groups by holder name, set cardHolder for each transaction in that block
 - INSTALLMENTS: detect "03/12", "3/12", "PARCELA 3 DE 12" — extract the numbers and clean the description
+${
+  documentType === "card_invoice"
+    ? '- CARD INVOICE SIGN: most lines on a credit card invoice are purchases ("expense"), but not all — a payment, refund, chargeback, or credit line (e.g. "PAGAMENTO RECEBIDO", "ESTORNO") is "income", never force it to "expense" just because it\'s on an invoice'
+    : "- ACCOUNT STATEMENT: judge each line's kind from its own description/sign, not from an assumed default"
+}${
+  userFullName
+    ? `\n- PIX TRANSFER: if a PIX line's description names the account holder themself ("${userFullName}", case-insensitive, partial name match ok — e.g. a PIX sent/received to/from their own name, or between their own accounts) set kind to "transfer" instead of "income"/"expense"`
+    : ""
+}
 - Do not include any text outside the JSON array
 - Do not wrap the array in markdown code fences`;
 }
@@ -205,11 +216,18 @@ export async function extractTransactionsFromText(
   categories: { name: string; kind: string }[],
   chat: ChatFn,
   existingTagNames: string[] = [],
+  documentType: "card_invoice" | "account_statement" = "account_statement",
+  userFullName: string | null = null,
 ): Promise<ExtractedItem[]> {
   const raw = await chat("pdf-extract", [
     {
       role: "system",
-      content: buildSystemPrompt(categories, existingTagNames),
+      content: buildSystemPrompt(
+        categories,
+        existingTagNames,
+        documentType,
+        userFullName,
+      ),
     },
     {
       role: "user",
@@ -224,7 +242,7 @@ export async function extractTransactionsFromText(
     description: t.description,
     amountCents: Math.round(Math.abs(t.amountCents)),
     transactionDate: t.date ?? null,
-    kind: t.kind === "income" ? "income" : "expense",
+    kind: t.kind === "income" || t.kind === "transfer" ? t.kind : "expense",
     cardHolderRaw: t.cardHolder ?? null,
     installmentNumber: t.installmentNumber ?? null,
     installmentTotal: t.installmentTotal ?? null,

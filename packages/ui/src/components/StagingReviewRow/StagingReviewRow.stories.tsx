@@ -33,6 +33,8 @@ export const Pending: Story = {
         onDescriptionChange={() => {}}
         amount="28,90"
         onAmountChange={() => {}}
+        kind="expense"
+        onKindChange={() => {}}
         categoryOptions={CATEGORY_OPTIONS}
         categoryId="transporte"
         onCategoryIdChange={() => {}}
@@ -56,6 +58,8 @@ export const BaixaConfianca: Story = {
         onDescriptionChange={() => {}}
         amount="187,90"
         onAmountChange={() => {}}
+        kind="expense"
+        onKindChange={() => {}}
         categoryOptions={CATEGORY_OPTIONS}
         categoryId="alimentacao"
         onCategoryIdChange={() => {}}
@@ -80,6 +84,8 @@ export const Duplicata: Story = {
         onDescriptionChange={() => {}}
         amount="39,90"
         onAmountChange={() => {}}
+        kind="expense"
+        onKindChange={() => {}}
         categoryOptions={CATEGORY_OPTIONS}
         categoryId="assinaturas"
         onCategoryIdChange={() => {}}
@@ -105,6 +111,8 @@ export const AssinaturaDetectada: Story = {
         onDescriptionChange={() => {}}
         amount="39,90"
         onAmountChange={() => {}}
+        kind="expense"
+        onKindChange={() => {}}
         categoryOptions={CATEGORY_OPTIONS}
         categoryId="assinaturas"
         onCategoryIdChange={() => {}}
@@ -130,6 +138,8 @@ export const Confirmed: Story = {
         onDescriptionChange={() => {}}
         amount="5200,00"
         onAmountChange={() => {}}
+        kind="income"
+        onKindChange={() => {}}
         categoryOptions={CATEGORY_OPTIONS}
         categoryId={null}
         onCategoryIdChange={() => {}}
@@ -151,6 +161,8 @@ export const Rejected: Story = {
         onDescriptionChange={() => {}}
         amount="50,00"
         onAmountChange={() => {}}
+        kind="expense"
+        onKindChange={() => {}}
         categoryOptions={CATEGORY_OPTIONS}
         categoryId={null}
         onCategoryIdChange={() => {}}

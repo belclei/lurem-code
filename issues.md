@@ -1,32 +1,34 @@
-# Issues & Backlog
+# Issues to fix or features to develop
 
-## Closed / Completed (Session 2026-08-22/23)
+Nada pendente no momento — issues abaixo resolvidas nesta sessão (23/08):
 
-✓ Banrisul account cleanup — all local data deleted (11 imports, 29 transactions, 1 card, 1 account)
-✓ LandingPage implementation (Persuade mode, before/after reveal)
-✓ @lurem/ui v0.0.2 — 15 critical components fixed, all tests green
-✓ P0 bug: FlagsPage hook-order (fixed)
-✓ Data integrity: routes.ts duplicate detection (fixed)
-✓ One Focus Rule refactor (AdminPage tabs)
-✓ Waitlist feature complete
-✓ Timeline UI spec (325+ tests)
-✓ Transaction selection & summary features
-✓ Card redesign (institution badges, account/card labels)
-✓ Import review pipeline (e2e working)
-✓ Recurring transactions (integrated)
+## Timeline / Right Column (resolvido)
+- "Ver Análise" quebra para nova linha (TimelineSummaryAside.tsx: wrapper trocado
+  para flex-col).
 
-## Active / Open
+## New Card (resolvido)
+- Dia de fechamento/vencimento trava em 1-31 (min/max no input) e a flechinha de
+  incremento agora dá wrap-around (31→1, 1→31) em vez de estourar o limite —
+  helper `wrapDayOfMonth` em lib/day-of-month.ts, aplicado em NewCardDialog e
+  EditCardDialog.
 
-### High Priority
-- (none currently blocking)
+## Revisão da importação (resolvido)
+- Placeholder de Tags trocado de "#tag" (parecia um chip real) para
+  "Adicionar tag…" com opacidade reduzida — TagInput.tsx.
+- Tags nunca exigiram "#" (não havia validação obrigando), mas normalize()
+  agora tira qualquer "#" digitado, tanto no client (TagInput) quanto no
+  server (tags/service.ts normalizeTagName) — "#uber" e "uber" convergem pro
+  mesmo Tag. Script `strip-hash-prefix-from-tags.ts` criado para limpar tags
+  já salvas com "#" (rodado local: nenhuma encontrada).
+- PIX com o nome do próprio usuário no texto agora é sugerido como
+  kind=transfer pelo extractor (prompt recebe o nome do usuário e a regra
+  de PIX) — extractor.ts + routes.ts buscam User.name antes de extrair.
+- Prompt do extractor agora diferencia fatura de cartão (nem tudo é
+  "expense" — pagamento/estorno/crédito é "income") de extrato de conta.
+- Linha extraída agora tem um seletor de Tipo (Débito/Crédito/Transferência)
+  editável na revisão — StagingReviewRow.tsx + ImportReviewPage.tsx; backend
+  já aceitava `kind` no PATCH da linha, só faltava a UI.
 
-### Backlog
-- Calendar feature: global admin-managed dates (holidays, deadlines) shown on timeline
-- Invite notifications: "You sent invite to X" / "You deleted invite to X" (partial: events exist, UI text needed)
-- Card/Account editing from list view (partial: dialogs exist, need onClick in AccountsPage/CardsPage)
-- Archive accounts/cards (soft-delete) with undo, real deletion only if no transactions
-- Recurring transaction creation from NewTransactionDialog (currently isolated to RecurringPage)
-- "Confirm monthly" label & pending approval state for recurring confirmations
-- Invoice closing/due dates synthesized in timeline (today only shows dates that occurred, not future projected dates)
-- Clear initial alerts once setup complete for their category
-- "What's New" alert on each production deploy + linked changelog page
+Próximo item de desenvolvimento: importação de faturas/extratos (PDF →
+markitdown → LLM), ver `apps/api` — pipeline em produção, iterando em cima
+dos pontos acima.

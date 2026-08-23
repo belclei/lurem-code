@@ -14,8 +14,13 @@ export interface TagInputProps {
   id?: string;
 }
 
+// Tags are free-form and never require a leading "#" — the character is
+// purely decorative on the rendered chip (see Badge below), not part of
+// the input syntax. Strip it here so a user who types "#comida" and one
+// who types "comida" land on the same stored name (issues.md: "não
+// precisam iniciar com #").
 function normalize(raw: string): string {
-  return raw.trim().toLowerCase();
+  return raw.trim().toLowerCase().replace(/^#+/, "");
 }
 
 /**
@@ -112,7 +117,7 @@ export function TagInput({
             aria-describedby={hint ? hintId : undefined}
             autoComplete="off"
             disabled={disabled}
-            placeholder={value.length === 0 ? "#tag" : ""}
+            placeholder={value.length === 0 ? "Adicionar tag…" : ""}
             value={query}
             onFocus={() => setOpen(true)}
             onBlur={() => {
@@ -126,7 +131,7 @@ export function TagInput({
               setOpen(true);
             }}
             onKeyDown={handleKeyDown}
-            className="min-w-[6rem] flex-1 bg-transparent text-[.9375rem] text-[var(--lr-text)] outline-none placeholder:text-[var(--lr-text-secondary)]"
+            className="min-w-[6rem] flex-1 bg-transparent text-[.9375rem] text-[var(--lr-text)] outline-none placeholder:text-[var(--lr-text-secondary)] placeholder:opacity-60"
           />
         </div>
 

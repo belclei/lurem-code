@@ -70,7 +70,7 @@ const UpdateLineBody = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, "Data no formato AAAA-MM-DD.")
       .optional(),
-    kind: z.enum(["income", "expense"]).optional(),
+    kind: z.enum(["income", "expense", "transfer"]).optional(),
     categoryId: z.string().min(1).nullable().optional(),
     tagNames: z.array(z.string().min(1)).optional(),
     recurringTransactionId: z.string().min(1).nullable().optional(),
@@ -257,6 +257,10 @@ export async function registerImportRoutes(
       });
 
       const userTags = await prisma.tag.findMany({ where: { userId } });
+      const user = await prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { name: true },
+      });
 
       try {
         const items = await extractTransactionsFromText(
@@ -270,6 +274,8 @@ export async function registerImportRoutes(
               messages,
             ),
           userTags.map((t) => t.name),
+          body.type,
+          user.name,
         );
 
         const categoryByName = new Map(
