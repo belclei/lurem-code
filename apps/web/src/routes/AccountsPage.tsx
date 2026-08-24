@@ -382,7 +382,13 @@ export function AccountsPage() {
                   accountsById,
                 )}
                 onClick={() => setEditingCard(card)}
-                onPayNow={() => setPayingCard(card)}
+                onPayNow={
+                  // Fatura pode estar fechada e mesmo assim não ter nada a pagar
+                  // (saldo a favor, ou zerada) — CreditCardCard já trata
+                  // onPayNow ausente como "sem botão". Sem esse guard, o dialog
+                  // abriria com valor negativo, que reaisToCentsPositive rejeita.
+                  card.usedCents > 0 ? () => setPayingCard(card) : undefined
+                }
               />
             ))}
           </div>
