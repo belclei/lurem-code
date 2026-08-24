@@ -99,10 +99,15 @@ export function disponivelHoje(input: DisponivelHojeInput, asOf: Date): Money {
   for (const { card, transactions } of input.cards) {
     if (!card.isActive || card.autoDebitAccountId) continue;
     const invoice = faturaFechadaNaoVencida({ card, transactions, asOf });
-    if (invoice.valueCents !== 0) {
+    // Math.max: saldo a favor num cartão não é caixa disponível hoje — ele só
+    // se realiza como compras futuras naquele cartão, não como dinheiro
+    // sacável. Sem o clamp, um crédito de R$100 inflaria o Disponível hoje em
+    // R$100 que não existem (ver a "regra da fatura negativa" na spec).
+    const dueCents = Math.max(invoice.valueCents, 0);
+    if (dueCents !== 0) {
       breakdown.push({
         label: "closed_invoice",
-        valueCents: -invoice.valueCents,
+        valueCents: -dueCents,
         kind: "closed_invoice",
         sourceRef: { type: "CreditCard", id: card.id },
         isEstimate: false,

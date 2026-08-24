@@ -481,4 +481,44 @@ describe("disponivelHoje", () => {
       result.valueCents,
     );
   });
+
+  it("does not inflate disponivelHoje with a card credit balance", () => {
+    // Cartão SEM auto-débito, fatura fechada em -1000 (crédito).
+    // Crédito no cartão não é caixa disponível: nenhuma linha closed_invoice
+    // positiva pode aparecer no breakdown.
+    const card: CreditCardLike = {
+      id: "card-1",
+      closingDay: 5,
+      dueDay: 20,
+      isActive: true,
+    };
+    const result = disponivelHoje(
+      {
+        accounts: [],
+        cards: [
+          {
+            card,
+            transactions: [
+              {
+                id: "t1",
+                kind: "income",
+                amountBRLCents: 1_000,
+                isScheduled: false,
+                transactionDate: new Date("2026-07-01T00:00:00.000Z"),
+              },
+            ],
+          },
+        ],
+        scheduledTransactions: [],
+        recurringTransactions: [],
+        fulfillments: [],
+      },
+      ASOF,
+    );
+
+    expect(
+      result.breakdown.filter((line) => line.label === "closed_invoice"),
+    ).toEqual([]);
+    expect(result.valueCents).toBe(0);
+  });
 });
