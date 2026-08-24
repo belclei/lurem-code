@@ -29,6 +29,7 @@ export {
   endOfMonth,
   faturaPeriodo,
   makeDate,
+  periodIndexForDate,
   saoPauloYMD,
   todayAsDate,
 } from "./dates.js";

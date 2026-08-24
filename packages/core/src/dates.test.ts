@@ -4,6 +4,7 @@ import {
   closingDate,
   dueDate,
   faturaPeriodo,
+  periodIndexForDate,
   saoPauloYMD,
 } from "./dates.js";
 
@@ -100,5 +101,53 @@ describe("saoPauloYMD", () => {
   it("extracts the calendar date when the instant is already well into the Sao Paulo day", () => {
     const parts = saoPauloYMD(new Date("2026-07-10T15:00:00.000Z"));
     expect(parts).toEqual({ year: 2026, month: 7, day: 10 });
+  });
+});
+
+describe("periodIndexForDate", () => {
+  const card = { closingDay: 10, dueDay: 20 };
+
+  it("puts a date at or before the closing day in that month's own invoice", () => {
+    // Fecha dia 10. Dia 5 de julho cai em (10/jun, 10/jul] -> fatura de julho.
+    expect(periodIndexForDate(card, new Date("2026-07-05T00:00:00.000Z"))).toEqual({
+      year: 2026,
+      month: 7,
+    });
+  });
+
+  it("includes the closing date itself (interval is end-inclusive)", () => {
+    expect(periodIndexForDate(card, new Date("2026-07-10T00:00:00.000Z"))).toEqual({
+      year: 2026,
+      month: 7,
+    });
+  });
+
+  it("pushes a date after the closing day into the next month's invoice", () => {
+    // Dia 12 de julho já passou do fechamento de julho -> fatura de agosto.
+    expect(periodIndexForDate(card, new Date("2026-07-12T00:00:00.000Z"))).toEqual({
+      year: 2026,
+      month: 8,
+    });
+  });
+
+  it("rolls December into January of the next year", () => {
+    expect(periodIndexForDate(card, new Date("2026-12-20T00:00:00.000Z"))).toEqual({
+      year: 2027,
+      month: 1,
+    });
+  });
+
+  it("clamps closingDay=31 to the last day of February", () => {
+    const card31 = { closingDay: 31, dueDay: 10 };
+    // Fevereiro de 2026 fecha dia 28. Dia 28 ainda é a fatura de fevereiro.
+    expect(periodIndexForDate(card31, new Date("2026-02-28T00:00:00.000Z"))).toEqual({
+      year: 2026,
+      month: 2,
+    });
+    // Dia 1 de março já passou -> fatura de março.
+    expect(periodIndexForDate(card31, new Date("2026-03-01T00:00:00.000Z"))).toEqual({
+      year: 2026,
+      month: 3,
+    });
   });
 });
