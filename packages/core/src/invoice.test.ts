@@ -285,10 +285,98 @@ describe("sumCardTransactionsForInvoiceMonth — carry de crédito", () => {
         transactionDate: new Date("2026-07-20T00:00:00.000Z"),
       }),
     ];
+    const result = sumCardTransactionsForInvoiceMonth(
+      card(),
+      transactions,
+      2026,
+      8,
+    );
+    expect(result.valueCents).toBe(50);
+    // Guarda de regressão: uma linha `carried_credit` de valor 0 sempre
+    // presente ainda satisfaria o invariante de ouro e passaria em todo
+    // assert de valueCents acima — por isso a ausência da linha precisa ser
+    // testada explicitamente, não só o valor total.
+    expect(
+      result.breakdown.find((l) => l.label === "carried_credit"),
+    ).toBeUndefined();
+  });
+
+  it("does not let a routine invoice payment leak into the carry (settling a debt is not new credit)", () => {
+    // Julho fecha em +1000 (cobrado, não pago ainda). Agosto: a fatura de
+    // julho é paga via transferência -> fecha em -1000, mas isso é a
+    // QUITAÇÃO da dívida de julho (já contabilizada lá), não crédito novo —
+    // não deve carregar. Setembro: 300 de despesa genuína -> deve fechar em
+    // +300, não em -700 (o que aconteceria se o pagamento vazasse pro carry).
+    const transactions = [
+      tx({
+        id: "t1",
+        kind: "expense",
+        amountBRLCents: 1_000,
+        transactionDate: new Date("2026-07-01T00:00:00.000Z"),
+      }),
+      tx({
+        id: "t2",
+        kind: "transfer",
+        transferDirection: "in",
+        amountBRLCents: 1_000,
+        transactionDate: new Date("2026-08-05T00:00:00.000Z"),
+      }),
+      tx({
+        id: "t3",
+        kind: "expense",
+        amountBRLCents: 300,
+        transactionDate: new Date("2026-09-05T00:00:00.000Z"),
+      }),
+    ];
+    expect(
+      sumCardTransactionsForInvoiceMonth(card(), transactions, 2026, 7)
+        .valueCents,
+    ).toBe(1_000);
     expect(
       sumCardTransactionsForInvoiceMonth(card(), transactions, 2026, 8)
         .valueCents,
-    ).toBe(50);
+    ).toBe(-1_000);
+    expect(
+      sumCardTransactionsForInvoiceMonth(card(), transactions, 2026, 9)
+        .valueCents,
+    ).toBe(300);
+  });
+
+  it("still carries a genuine refund even when it lands in the same period as that period's payment", () => {
+    // Julho fecha em +1000. Agosto: paga os 1000 de julho E recebe 500 de
+    // estorno -> fecha em -1500, mas só os 500 do estorno são crédito novo
+    // (os outros 1000 são a quitação de julho). Setembro: nada acontece ->
+    // continua -500 (não -1500, o pagamento não deveria ter carregado; e
+    // não 0, o estorno não deveria ter sido descartado).
+    const transactions = [
+      tx({
+        id: "t1",
+        kind: "expense",
+        amountBRLCents: 1_000,
+        transactionDate: new Date("2026-07-01T00:00:00.000Z"),
+      }),
+      tx({
+        id: "t2",
+        kind: "transfer",
+        transferDirection: "in",
+        amountBRLCents: 1_000,
+        transactionDate: new Date("2026-08-05T00:00:00.000Z"),
+      }),
+      tx({
+        id: "t3",
+        kind: "income",
+        amountBRLCents: 500,
+        transactionDate: new Date("2026-08-06T00:00:00.000Z"),
+      }),
+    ];
+    expect(
+      sumCardTransactionsForInvoiceMonth(card(), transactions, 2026, 8)
+        .valueCents,
+    ).toBe(-1_500);
+    expect(
+      sumCardTransactionsForInvoiceMonth(card(), transactions, 2026, 9)
+        .valueCents,
+    ).toBe(-500);
   });
 
   it("keeps an unconsumed credit alive across three empty invoices", () => {
