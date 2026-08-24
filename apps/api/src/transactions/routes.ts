@@ -16,6 +16,7 @@ import {
 import { createRecurringTransactionSeries } from "../recurring-transactions/create.js";
 import { getTagsByTransactionId, setTransactionTags } from "../tags/service.js";
 import { toTransactionResponse } from "./serialize.js";
+import { createTransferPair } from "./transfer-pair.js";
 
 const IsoDate = z
   .string()
@@ -192,36 +193,19 @@ export async function registerTransactionRoutes(
           await findOwnedAccount(userId, body.toAccountId as string);
         else await findOwnedCard(userId, body.toCreditCardId as string);
 
-        const transferPairId = randomUUID();
-        const common = {
+        const { out, inLeg } = await createTransferPair(prisma, {
           userId,
-          kind: "transfer" as const,
-          source: "manual" as const,
+          sourceAccountId: source.id,
+          destAccountId: hasAccountDest ? body.toAccountId : null,
+          destCreditCardId: hasCardDest ? body.toCreditCardId : null,
           description: body.description ?? "",
           transactionDate,
           currency: "BRL",
           amountCents: body.amountCents,
           amountBRLCents,
           isScheduled: body.isScheduled,
-          transferPairId,
-        };
-        const [out, inLeg] = await prisma.$transaction([
-          prisma.transaction.create({
-            data: {
-              ...common,
-              accountId: source.id,
-              transferDirection: "out",
-            },
-          }),
-          prisma.transaction.create({
-            data: {
-              ...common,
-              accountId: hasAccountDest ? body.toAccountId : null,
-              creditCardId: hasCardDest ? body.toCreditCardId : null,
-              transferDirection: "in",
-            },
-          }),
-        ]);
+          source: "manual",
+        });
         return reply
           .code(201)
           .send([out, inLeg].map((tx) => toTransactionResponse(tx)));
