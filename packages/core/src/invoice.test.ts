@@ -1,6 +1,9 @@
 import type { CreditCardLike, TransactionLike } from "@lurem/domain";
 import { describe, expect, it } from "vitest";
-import { faturaFechadaNaoVencida } from "./invoice.js";
+import {
+  faturaFechadaNaoVencida,
+  sumCardTransactionsForInvoiceMonth,
+} from "./invoice.js";
 
 function card(overrides: Partial<CreditCardLike> = {}): CreditCardLike {
   return {
@@ -196,5 +199,160 @@ describe("faturaFechadaNaoVencida", () => {
       asOf,
     });
     expect(result.valueCents).toBe(800);
+  });
+});
+
+describe("sumCardTransactionsForInvoiceMonth — carry de crédito", () => {
+  // Cartão fecha dia 10. Fatura de julho = (10/jun, 10/jul].
+  it("carries an unconsumed credit forward into the next invoice", () => {
+    // Julho: estorno de 500 sem nenhuma despesa -> fecha em -500.
+    // Agosto: nada acontece -> deve continuar -500, não voltar a zero.
+    const transactions = [
+      tx({
+        id: "t1",
+        kind: "income",
+        amountBRLCents: 500,
+        transactionDate: new Date("2026-07-01T00:00:00.000Z"),
+      }),
+    ];
+    expect(
+      sumCardTransactionsForInvoiceMonth(card(), transactions, 2026, 7)
+        .valueCents,
+    ).toBe(-500);
+    expect(
+      sumCardTransactionsForInvoiceMonth(card(), transactions, 2026, 8)
+        .valueCents,
+    ).toBe(-500);
+  });
+
+  it("consumes the credit partially against the next invoice's spending", () => {
+    // Julho fecha em -1000. Agosto tem 400 de despesa -> -600.
+    const transactions = [
+      tx({
+        id: "t1",
+        kind: "income",
+        amountBRLCents: 1_000,
+        transactionDate: new Date("2026-07-01T00:00:00.000Z"),
+      }),
+      tx({
+        id: "t2",
+        kind: "expense",
+        amountBRLCents: 400,
+        transactionDate: new Date("2026-07-20T00:00:00.000Z"), // > 10/jul -> fatura de agosto
+      }),
+    ];
+    expect(
+      sumCardTransactionsForInvoiceMonth(card(), transactions, 2026, 8)
+        .valueCents,
+    ).toBe(-600);
+  });
+
+  it("fully consumes the credit and goes back to a positive invoice", () => {
+    // Julho fecha em -300. Agosto tem 500 de despesa -> +200.
+    const transactions = [
+      tx({
+        id: "t1",
+        kind: "income",
+        amountBRLCents: 300,
+        transactionDate: new Date("2026-07-01T00:00:00.000Z"),
+      }),
+      tx({
+        id: "t2",
+        kind: "expense",
+        amountBRLCents: 500,
+        transactionDate: new Date("2026-07-20T00:00:00.000Z"),
+      }),
+    ];
+    expect(
+      sumCardTransactionsForInvoiceMonth(card(), transactions, 2026, 8)
+        .valueCents,
+    ).toBe(200);
+  });
+
+  it("does NOT carry a positive balance (unpaid debt stays on its own invoice)", () => {
+    // Julho fecha em +300 (não pago). Agosto tem 50 de despesa -> 50, não 350.
+    const transactions = [
+      tx({
+        id: "t1",
+        kind: "expense",
+        amountBRLCents: 300,
+        transactionDate: new Date("2026-07-01T00:00:00.000Z"),
+      }),
+      tx({
+        id: "t2",
+        kind: "expense",
+        amountBRLCents: 50,
+        transactionDate: new Date("2026-07-20T00:00:00.000Z"),
+      }),
+    ];
+    expect(
+      sumCardTransactionsForInvoiceMonth(card(), transactions, 2026, 8)
+        .valueCents,
+    ).toBe(50);
+  });
+
+  it("keeps an unconsumed credit alive across three empty invoices", () => {
+    const transactions = [
+      tx({
+        id: "t1",
+        kind: "income",
+        amountBRLCents: 700,
+        transactionDate: new Date("2026-07-01T00:00:00.000Z"),
+      }),
+    ];
+    expect(
+      sumCardTransactionsForInvoiceMonth(card(), transactions, 2026, 10)
+        .valueCents,
+    ).toBe(-700);
+  });
+
+  it("returns zero for an invoice month older than the card's first transaction", () => {
+    const transactions = [
+      tx({
+        id: "t1",
+        kind: "expense",
+        amountBRLCents: 900,
+        transactionDate: new Date("2026-07-01T00:00:00.000Z"),
+      }),
+    ];
+    expect(
+      sumCardTransactionsForInvoiceMonth(card(), transactions, 2026, 3)
+        .valueCents,
+    ).toBe(0);
+  });
+
+  it("returns zero with no transactions at all", () => {
+    const result = sumCardTransactionsForInvoiceMonth(card(), [], 2026, 7);
+    expect(result.valueCents).toBe(0);
+    expect(result.breakdown).toEqual([]);
+  });
+
+  it("includes the carried credit as its own breakdown line, keeping the golden invariant", () => {
+    const transactions = [
+      tx({
+        id: "t1",
+        kind: "income",
+        amountBRLCents: 500,
+        transactionDate: new Date("2026-07-01T00:00:00.000Z"),
+      }),
+      tx({
+        id: "t2",
+        kind: "expense",
+        amountBRLCents: 200,
+        transactionDate: new Date("2026-07-20T00:00:00.000Z"),
+      }),
+    ];
+    const result = sumCardTransactionsForInvoiceMonth(
+      card(),
+      transactions,
+      2026,
+      8,
+    );
+    expect(result.valueCents).toBe(-300);
+    expect(result.breakdown.reduce((s, l) => s + l.valueCents, 0)).toBe(
+      result.valueCents,
+    );
+    const carried = result.breakdown.find((l) => l.label === "carried_credit");
+    expect(carried?.valueCents).toBe(-500);
   });
 });

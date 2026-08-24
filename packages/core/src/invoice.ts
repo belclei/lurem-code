@@ -21,10 +21,12 @@ import type {
   TransactionLike,
 } from "@lurem/domain";
 import {
+  addMonths,
   closingDate,
   compareDates,
   dueDate,
   faturaPeriodo,
+  periodIndexForDate,
   todayAsDate,
 } from "./dates.js";
 
@@ -82,31 +84,111 @@ function delta(
   return -tx.amountBRLCents;
 }
 
-/** Soma as transações do cartão dentro do período de fatura (year, month), sem nenhum outro filtro de data. */
+/** Ordinal comparável de um (ano, mês) — só para ordenar/contar períodos. */
+function periodOrdinal({
+  year,
+  month,
+}: { year: number; month: number }): number {
+  return year * 12 + (month - 1);
+}
+
+/** Soma só as transações que caem dentro do período (year, month), sem herdar nada. */
+function periodOwnTotal(
+  card: CreditCardLike,
+  transactions: TransactionLike[],
+  year: number,
+  month: number,
+): BreakdownLine[] {
+  const period = faturaPeriodo(card, year, month);
+  return transactions
+    .filter((tx) => isWithinPeriod(tx.transactionDate, period))
+    .filter(countsTowardInvoice)
+    .map((tx) => ({
+      label:
+        tx.kind === "transfer"
+          ? "closed_invoice_payment"
+          : "closed_invoice_transaction",
+      valueCents: delta(tx),
+      kind: "closed_invoice" as const,
+      sourceRef: { type: "Transaction", id: tx.id },
+      isEstimate: false,
+    }));
+}
+
+/**
+ * Total da fatura (year, month) do cartão, **cumulativo**: herda o saldo a
+ * favor (resto negativo) das faturas anteriores, iterando do período do
+ * lançamento mais antigo do cartão até o período pedido.
+ *
+ * Só crédito carrega. Um resto positivo (fatura fechada não paga) NÃO é
+ * somado à fatura seguinte — ele continua sendo cobrado como a sua própria
+ * fatura fechada, que é o comportamento que o app sempre teve (o schema não
+ * rastreia pagamento; ver a nota no topo deste arquivo). Carregar dívida
+ * adiante inflaria a próxima fatura com algo que já está sendo cobrado.
+ *
+ * O crédito herdado entra no breakdown como uma linha `carried_credit`
+ * própria, para o invariante de ouro (§3.0: valueCents === Σ breakdown)
+ * continuar valendo e para a decomposição na UI mostrar de onde veio o
+ * abatimento.
+ */
 export function sumCardTransactionsForInvoiceMonth(
   card: CreditCardLike,
   transactions: TransactionLike[],
   year: number,
   month: number,
 ): Money {
-  const period = faturaPeriodo(card, year, month);
-  const inPeriod = transactions
-    .filter((tx) => isWithinPeriod(tx.transactionDate, period))
-    .filter(countsTowardInvoice);
+  if (transactions.length === 0) {
+    return { valueCents: 0, breakdown: [] };
+  }
 
-  const breakdown: BreakdownLine[] = inPeriod.map((tx) => ({
-    label:
-      tx.kind === "transfer"
-        ? "closed_invoice_payment"
-        : "closed_invoice_transaction",
-    valueCents: delta(tx),
-    kind: "closed_invoice",
-    sourceRef: { type: "Transaction", id: tx.id },
-    isEstimate: false,
-  }));
+  const target = { year, month };
+  const targetOrdinal = periodOrdinal(target);
 
-  const valueCents = breakdown.reduce((sum, line) => sum + line.valueCents, 0);
-  return { valueCents, breakdown };
+  // .reduce() sem seed devolve T (não T | undefined) mesmo com
+  // noUncheckedIndexedAccess — ao contrário de indexar transactions[0], que
+  // o TS não consegue provar não-vazio só a partir do `if` de length acima.
+  const earliest = transactions
+    .map((tx) => periodIndexForDate(card, tx.transactionDate))
+    .reduce((min, candidate) =>
+      periodOrdinal(candidate) < periodOrdinal(min) ? candidate : min,
+    );
+
+  // Fatura anterior ao primeiro lançamento do cartão: nada aconteceu ainda.
+  if (targetOrdinal < periodOrdinal(earliest)) {
+    return { valueCents: 0, breakdown: [] };
+  }
+
+  let carry = 0;
+  let current = earliest;
+  for (;;) {
+    const lines = periodOwnTotal(
+      card,
+      transactions,
+      current.year,
+      current.month,
+    );
+    const own = lines.reduce((sum, line) => sum + line.valueCents, 0);
+    const total = own + carry;
+
+    if (periodOrdinal(current) === targetOrdinal) {
+      const breakdown =
+        carry === 0
+          ? lines
+          : [
+              {
+                label: "carried_credit",
+                valueCents: carry,
+                kind: "closed_invoice" as const,
+                isEstimate: false,
+              },
+              ...lines,
+            ];
+      return { valueCents: total, breakdown };
+    }
+
+    carry = Math.min(0, total);
+    current = addMonths(current, 1);
+  }
 }
 
 /** Encontra o mês de fatura M tal que closingDate(card,M) ≤ hoje < dueDate(card,M), se existir. */
