@@ -33,7 +33,7 @@ import type {
 } from "@lurem/domain";
 import { balance } from "./balance.js";
 import { clampDay, compareDates, endOfMonth, saoPauloYMD } from "./dates.js";
-import { faturaFechadaNaoVencida } from "./invoice.js";
+import { faturaFechadaNaoVencida, invoiceAmountDueCents } from "./invoice.js";
 
 export interface DisponivelHojeInput {
   /** Todas as contas do usuário (qualquer tipo) — a função filtra checking+cash internamente. */
@@ -99,11 +99,10 @@ export function disponivelHoje(input: DisponivelHojeInput, asOf: Date): Money {
   for (const { card, transactions } of input.cards) {
     if (!card.isActive || card.autoDebitAccountId) continue;
     const invoice = faturaFechadaNaoVencida({ card, transactions, asOf });
-    // Math.max: saldo a favor num cartão não é caixa disponível hoje — ele só
-    // se realiza como compras futuras naquele cartão, não como dinheiro
-    // sacável. Sem o clamp, um crédito de R$100 inflaria o Disponível hoje em
-    // R$100 que não existem (ver a "regra da fatura negativa" na spec).
-    const dueCents = Math.max(invoice.valueCents, 0);
+    // Extrai o valor de uma fatura, clamped ao mínimo de 0 — um saldo a favor
+    // (crédito no cartão) não é caixa disponível. Ver regra da fatura negativa
+    // na spec (§3.2).
+    const dueCents = invoiceAmountDueCents(invoice);
     if (dueCents !== 0) {
       breakdown.push({
         label: "closed_invoice",

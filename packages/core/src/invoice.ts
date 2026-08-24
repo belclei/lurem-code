@@ -266,3 +266,15 @@ export function faturaFechadaNaoVencida({
     invoiceMonth.month,
   );
 }
+
+/**
+ * Extrai o valor de uma fatura, clamped ao mínimo de 0. Um saldo a favor
+ * (fatura negativa) não é caixa disponível — ele só se realiza como compras
+ * futuras naquele cartão, não como dinheiro sacável.
+ *
+ * Usado por disponivelHoje e fluxoDeCaixaFuturo para evitar que créditos
+ * acumulados inflassem o saldo de caixa livres de obrigações (§3.2/§3.3).
+ */
+export function invoiceAmountDueCents(invoice: Money): number {
+  return Math.max(invoice.valueCents, 0);
+}
