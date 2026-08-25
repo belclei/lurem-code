@@ -11,6 +11,8 @@ export interface ExtractedItem {
   amountCents: number;
   transactionDate: string | null;
   kind: "income" | "expense" | "transfer";
+  /** Só relevante quando kind === "transfer"; null caso contrário. */
+  transferDirection: "in" | "out" | null;
   cardHolderRaw: string | null;
   installmentNumber: number | null;
   installmentTotal: number | null;
@@ -50,6 +52,7 @@ Return a JSON array of objects with these exact fields:
 - description: full merchant/transaction description as shown (string)
 - amountCents: integer, in cents, always positive
 - kind: "expense" for purchases/debits, "income" for payments/refunds/credits, "transfer" for a movement between the user's own accounts (see PIX rule below)
+- transferDirection: only when kind is "transfer" — "out" if the money left this account, "in" if it arrived; null for every other kind
 - currency: "BRL" by default; use "USD", "EUR" etc. only when clearly foreign currency
 - category: EXACT name from the categories list above that best fits; null if none fits
 - tags: array of EXACT names from the existing tags list above that clearly apply (e.g. an existing "uber" tag on a ride-share charge); empty array if none clearly apply or the list is empty — never invent a tag not in that list
@@ -64,7 +67,8 @@ Rules:
 - INSTALLMENTS: detect "03/12", "3/12", "PARCELA 3 DE 12" — extract the numbers and clean the description
 ${
   documentType === "card_invoice"
-    ? '- CARD INVOICE SIGN: most lines on a credit card invoice are purchases ("expense"), but not all — a payment, refund, chargeback, or credit line (e.g. "PAGAMENTO RECEBIDO", "ESTORNO") is "income", never force it to "expense" just because it\'s on an invoice'
+    ? `- CARD INVOICE PAYMENT: the line that settles this card's previous invoice ("PAGAMENTO RECEBIDO", "PAGAMENTO EFETUADO", "PGTO FATURA", "PAGTO FATURA ANTERIOR") is "transfer" — it is money moving from a bank account to settle this card, not merchant income
+- CARD INVOICE REFUND: most lines are purchases ("expense"), but a refund/chargeback/credit tied to a specific merchant charge ("ESTORNO", "CREDITO", "CHARGEBACK") is "income" — never force it to "expense" just because it's on an invoice`
     : "- ACCOUNT STATEMENT: judge each line's kind from its own description/sign, not from an assumed default"
 }${
   userFullName
@@ -88,6 +92,7 @@ interface RawItem {
   description: string;
   amountCents: number;
   kind?: string;
+  transferDirection?: string | null;
   currency?: string;
   category?: string | null;
   cardHolder?: string | null;
@@ -238,22 +243,38 @@ export async function extractTransactionsFromText(
   const parsed = parseJsonArray(cleanJson(raw));
   const existingTagSet = new Set(existingTagNames.map((t) => t.toLowerCase()));
 
-  return parsed.map((t) => ({
-    description: t.description,
-    amountCents: Math.round(Math.abs(t.amountCents)),
-    transactionDate: t.date ?? null,
-    kind: t.kind === "income" || t.kind === "transfer" ? t.kind : "expense",
-    cardHolderRaw: t.cardHolder ?? null,
-    installmentNumber: t.installmentNumber ?? null,
-    installmentTotal: t.installmentTotal ?? null,
-    currency: t.currency ?? "BRL",
-    confidence: t.confidence ?? 1,
-    suggestedCategoryName: t.category ?? null,
-    // Defensive re-filter against the model's own vocabulary — a hallucinated
-    // tag name here would otherwise create a new Tag row nobody asked for
-    // (routes.ts resolves these names into Tag rows, see § description-tag-suggestion).
-    suggestedTagNames: (t.tags ?? []).filter((name) =>
-      existingTagSet.has(name.toLowerCase()),
-    ),
-  }));
+  return parsed.map((t) => {
+    const kind: "income" | "expense" | "transfer" =
+      t.kind === "income" || t.kind === "transfer" ? t.kind : "expense";
+    return {
+      description: t.description,
+      amountCents: Math.round(Math.abs(t.amountCents)),
+      transactionDate: t.date ?? null,
+      kind,
+      // Numa fatura, dinheiro nunca sai do cartão: a perna que o documento
+      // registra é sempre a de entrada. Regra fixa do servidor, não uma
+      // inferência — o que o modelo devolveu é ignorado. Num extrato de conta
+      // a direção vem do modelo.
+      transferDirection:
+        kind !== "transfer"
+          ? null
+          : documentType === "card_invoice"
+            ? ("in" as const)
+            : t.transferDirection === "out"
+              ? ("out" as const)
+              : ("in" as const),
+      cardHolderRaw: t.cardHolder ?? null,
+      installmentNumber: t.installmentNumber ?? null,
+      installmentTotal: t.installmentTotal ?? null,
+      currency: t.currency ?? "BRL",
+      confidence: t.confidence ?? 1,
+      suggestedCategoryName: t.category ?? null,
+      // Defensive re-filter against the model's own vocabulary — a hallucinated
+      // tag name here would otherwise create a new Tag row nobody asked for
+      // (routes.ts resolves these names into Tag rows, see § description-tag-suggestion).
+      suggestedTagNames: (t.tags ?? []).filter((name) =>
+        existingTagSet.has(name.toLowerCase()),
+      ),
+    };
+  });
 }
