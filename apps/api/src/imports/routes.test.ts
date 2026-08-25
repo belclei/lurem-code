@@ -318,6 +318,42 @@ describe("POST /v1/imports", () => {
     expect(lines[0].transferDirection).toBe("in");
     expect(lines[0].suggestedCounterpartAccountId).toBeNull();
   });
+
+  it("leaves the counterpart account null for an account_statement transfer", async () => {
+    // Só uma fatura de cartão tem o sinal natural (autoDebitAccountId) pra
+    // sugerir a contraparte. Num extrato de conta, mesmo kind=transfer, não
+    // há cartão nenhum envolvido — fica null e o usuário escolhe na revisão.
+    const { userId, accessToken } = await authedUser();
+    const account = await createAccount(userId);
+    fakeLlmResponse([
+      {
+        date: "2026-07-10",
+        description: "PIX para própria conta",
+        amountCents: 10_000,
+        kind: "transfer",
+        confidence: 1,
+      },
+    ]);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "account_statement",
+        accountId: account.id,
+        contentHash: `hash-${Math.random()}`,
+        text: "...",
+      },
+    });
+
+    const lines = response.json().lines;
+    // transferDirection segue truthy (não é o campo em teste aqui — já
+    // coberto em extractor.test.ts) só pra provar que o null abaixo vem da
+    // checagem body.type === "card_invoice", não de kind !== "transfer".
+    expect(lines[0].transferDirection).toBe("in");
+    expect(lines[0].suggestedCounterpartAccountId).toBeNull();
+  });
 });
 
 async function createImportWithOneLine(
