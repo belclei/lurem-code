@@ -16,6 +16,7 @@ import { useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError, apiFetchJson } from "../auth/api-client";
 import type {
+  AccountDto,
   ConnectionDto,
   DuplicateTransactionSummary,
   ExtractedTransactionDto,
@@ -33,6 +34,7 @@ function LineRow({
   duplicate,
   connections,
   recurringSeriesOptions,
+  counterpartAccountOptions,
   onSaved,
 }: {
   line: ExtractedTransactionDto;
@@ -41,6 +43,7 @@ function LineRow({
   duplicate: DuplicateTransactionSummary | undefined;
   connections: ConnectionDto[];
   recurringSeriesOptions: { value: string; label: string }[];
+  counterpartAccountOptions: { value: string; label: string }[];
   onSaved: () => void;
 }) {
   const [description, setDescription] = useState(line.description);
@@ -54,6 +57,9 @@ function LineRow({
   const [recurringTransactionId, setRecurringTransactionId] = useState<
     string | null
   >(line.suggestedRecurringId);
+  const [counterpartAccountId, setCounterpartAccountId] = useState<
+    string | null
+  >(line.suggestedCounterpartAccountId);
   const [error, setError] = useState<string | null>(null);
 
   const categoryOptions = categories
@@ -115,20 +121,23 @@ function LineRow({
           ...(recurringChanged ? { recurringTransactionId } : {}),
         });
       }
+      const confirmBody: Record<string, unknown> = {};
+      if (options?.resolution) confirmBody.resolution = options.resolution;
+      if (options?.createRecurringFromSuggestion) {
+        confirmBody.createRecurringFromSuggestion = true;
+      }
+      // Só transferência precisa da contraparte; mandar em outros kinds faria
+      // o .strict() do ConfirmBody recusar.
+      if (kind === "transfer" && counterpartAccountId) {
+        confirmBody.counterpartAccountId = counterpartAccountId;
+      }
       const confirmed = await apiFetchJson<ExtractedTransactionDto>(
         `/imports/${line.importedDocumentId}/lines/${line.id}/confirm`,
         {
           method: "POST",
           body:
-            options?.resolution || options?.createRecurringFromSuggestion
-              ? JSON.stringify({
-                  ...(options.resolution
-                    ? { resolution: options.resolution }
-                    : {}),
-                  ...(options.createRecurringFromSuggestion
-                    ? { createRecurringFromSuggestion: true }
-                    : {}),
-                })
+            Object.keys(confirmBody).length > 0
+              ? JSON.stringify(confirmBody)
               : undefined,
         },
       );
@@ -189,6 +198,9 @@ function LineRow({
       portadorOptions={connectionOptions}
       portadorUserId={portadorUserId}
       onPortadorUserIdChange={setPortadorUserId}
+      counterpartAccountOptions={counterpartAccountOptions}
+      counterpartAccountId={counterpartAccountId}
+      onCounterpartAccountIdChange={setCounterpartAccountId}
       duplicateDescription={
         duplicate
           ? `Já existe: ${duplicate.description} · ${duplicate.transactionDate.split("-").reverse().join("/")} · ${formatMoney(duplicate.amountCents)}`
@@ -280,6 +292,17 @@ export function ImportReviewPage() {
   const recurringSeriesOptions = (recurringQuery.data ?? [])
     .filter((r) => r.isActive)
     .map((r) => ({ value: r.id, label: r.description }));
+  const accountsQuery = useQuery({
+    queryKey: ["accounts"],
+    queryFn: () => apiFetchJson<AccountDto[]>("/accounts"),
+    enabled: hasSession,
+  });
+  const counterpartAccountOptions = (accountsQuery.data ?? [])
+    .filter((a) => a.isActive)
+    .map((a) => ({
+      value: a.id,
+      label: `${a.institutionName}${a.name ? ` · ${a.name}` : ""}`,
+    }));
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["imports", id] });
@@ -382,6 +405,7 @@ export function ImportReviewPage() {
               }
               connections={acceptedConnections}
               recurringSeriesOptions={recurringSeriesOptions}
+              counterpartAccountOptions={counterpartAccountOptions}
               onSaved={invalidate}
             />
           ))}
@@ -398,6 +422,7 @@ export function ImportReviewPage() {
               }
               connections={acceptedConnections}
               recurringSeriesOptions={recurringSeriesOptions}
+              counterpartAccountOptions={counterpartAccountOptions}
               onSaved={invalidate}
             />
           ))}

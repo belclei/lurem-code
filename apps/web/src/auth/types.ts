@@ -342,6 +342,14 @@ export interface ExtractedTransactionDto {
   importedDocumentId: string;
   status: "pending" | "confirmed" | "rejected";
   kind: "income" | "expense" | "transfer";
+  /** Only set when kind === "transfer": "in" for a card-invoice payment
+   * (money always flows into the card), the LLM's read for an account
+   * statement. Mirrors apps/api/src/imports/serialize.ts. */
+  transferDirection: TxDirection | null;
+  /** Pre-filled suggestion for the other leg of the transfer — the card's
+   * autoDebitAccountId on an invoice, null on a statement (no natural
+   * signal for which account a PIX came from). */
+  suggestedCounterpartAccountId: string | null;
   transactionDate: string;
   amountCents: number;
   currency: string;

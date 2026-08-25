@@ -130,6 +130,37 @@ export const AssinaturaDetectada: Story = {
   ),
 };
 
+export const PagamentoDeFatura: Story = {
+  render: () => (
+    <div style={{ width: "30rem" }}>
+      <StagingReviewRow
+        description="PAGAMENTO RECEBIDO"
+        onDescriptionChange={() => {}}
+        amount="500,00"
+        onAmountChange={() => {}}
+        kind="transfer"
+        onKindChange={() => {}}
+        categoryOptions={CATEGORY_OPTIONS}
+        categoryId={null}
+        onCategoryIdChange={() => {}}
+        tagNames={[]}
+        onTagNamesChange={() => {}}
+        date="2026-07-20"
+        confidence={0.9}
+        status="pending"
+        counterpartAccountOptions={[
+          { value: "acc-1", label: "Itaú · Conta corrente" },
+          { value: "acc-2", label: "Nubank · Conta" },
+        ]}
+        counterpartAccountId="acc-1"
+        onCounterpartAccountIdChange={() => {}}
+        onConfirm={() => {}}
+        onReject={() => {}}
+      />
+    </div>
+  ),
+};
+
 export const Confirmed: Story = {
   render: () => (
     <div style={{ width: "30rem" }}>

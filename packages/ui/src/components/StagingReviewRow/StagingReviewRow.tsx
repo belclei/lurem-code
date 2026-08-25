@@ -49,6 +49,12 @@ export interface StagingReviewRowProps {
   portadorOptions?: SelectOption[];
   portadorUserId?: string | null;
   onPortadorUserIdChange?: (value: string | null) => void;
+  /** Contas ativas do usuário — a outra perna de uma transferência. Só
+   * renderizado quando kind === "transfer" (pagamento de fatura, ou PIX entre
+   * contas próprias); vazio/ausente esconde o campo. */
+  counterpartAccountOptions?: SelectOption[];
+  counterpartAccountId?: string | null;
+  onCounterpartAccountIdChange?: (value: string | null) => void;
   duplicateDescription?: string;
   /** Nome amigável de uma assinatura detectada (lista conhecida ou padrão
    * de 3 ocorrências) quando NENHUMA série ainda existe — dispara o banner
@@ -103,6 +109,9 @@ export function StagingReviewRow({
   portadorOptions,
   portadorUserId = null,
   onPortadorUserIdChange,
+  counterpartAccountOptions,
+  counterpartAccountId = null,
+  onCounterpartAccountIdChange,
   duplicateDescription,
   recurringSuggestionLabel,
   onCreateRecurring,
@@ -201,6 +210,17 @@ export function StagingReviewRow({
         onChange={onTagNamesChange}
         suggestions={tagSuggestions}
       />
+      {kind === "transfer" &&
+      counterpartAccountOptions &&
+      counterpartAccountOptions.length > 0 ? (
+        <Select
+          label="Conta de origem"
+          options={counterpartAccountOptions}
+          value={counterpartAccountId}
+          onChange={onCounterpartAccountIdChange}
+          placeholder="Selecione a conta"
+        />
+      ) : null}
       {cardHolderRaw && portadorOptions && portadorOptions.length > 0 ? (
         <Select
           label={`Atribuir "${cardHolderRaw}" a um conectado`}
