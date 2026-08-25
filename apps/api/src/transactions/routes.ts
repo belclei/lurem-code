@@ -193,18 +193,23 @@ export async function registerTransactionRoutes(
           await findOwnedAccount(userId, body.toAccountId as string);
         else await findOwnedCard(userId, body.toCreditCardId as string);
 
-        const { out, inLeg } = await createTransferPair(prisma, {
-          userId,
-          sourceAccountId: source.id,
-          destAccountId: hasAccountDest ? body.toAccountId : null,
-          destCreditCardId: hasCardDest ? body.toCreditCardId : null,
-          description: body.description ?? "",
-          transactionDate,
-          currency: "BRL",
-          amountCents: body.amountCents,
-          amountBRLCents,
-          isScheduled: body.isScheduled,
-          source: "manual",
+        // Atômico (§6.6): as duas pernas têm que ser criadas juntas ou
+        // nenhuma — sem o $transaction aqui, uma falha na 2ª create() deixa
+        // a 1ª já commitada (perna "out" órfã, sem par "in").
+        const { out, inLeg } = await prisma.$transaction(async (tx) => {
+          return createTransferPair(tx, {
+            userId,
+            sourceAccountId: source.id,
+            destAccountId: hasAccountDest ? body.toAccountId : null,
+            destCreditCardId: hasCardDest ? body.toCreditCardId : null,
+            description: body.description ?? "",
+            transactionDate,
+            currency: "BRL",
+            amountCents: body.amountCents,
+            amountBRLCents,
+            isScheduled: body.isScheduled,
+            source: "manual",
+          });
         });
         return reply
           .code(201)
