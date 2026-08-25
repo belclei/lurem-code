@@ -981,13 +981,22 @@ export async function registerImportRoutes(
           );
         });
       } else {
-        await confirmLine(
-          prisma,
-          userId,
-          doc,
-          line,
-          undefined,
-          parsedBody.data.counterpartAccountId,
+        // Atômico (§6.6, mesmo motivo do fluxo manual em
+        // transactions/routes.ts): confirmLine, para kind=transfer, faz duas
+        // create() (createTransferPair) mais um update() no
+        // ExtractedTransaction. Sem o $transaction aqui, uma falha a meio
+        // caminho deixa uma perna órfã — e como a linha continua "pending",
+        // um retry chama confirmLine de novo e cria um SEGUNDO par por cima
+        // do primeiro, em vez de retomar.
+        await prisma.$transaction((tx) =>
+          confirmLine(
+            tx,
+            userId,
+            doc,
+            line,
+            undefined,
+            parsedBody.data.counterpartAccountId,
+          ),
         );
       }
       await maybeMarkReviewed(doc.id);
