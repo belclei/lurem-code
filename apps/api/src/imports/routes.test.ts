@@ -103,7 +103,10 @@ async function institution() {
   });
 }
 
-async function card(userId: string) {
+async function card(
+  userId: string,
+  opts?: { autoDebitAccountId?: string | null },
+) {
   const inst = await institution();
   return server.prisma.creditCard.create({
     data: {
@@ -112,7 +115,14 @@ async function card(userId: string) {
       limitCents: 500_000,
       closingDay: 20,
       dueDay: 28,
+      autoDebitAccountId: opts?.autoDebitAccountId ?? null,
     },
+  });
+}
+
+async function createAccount(userId: string) {
+  return server.prisma.account.create({
+    data: { userId, type: "cash" },
   });
 }
 
@@ -121,7 +131,7 @@ function fakeLlmResponse(
     date?: string;
     description: string;
     amountCents: number;
-    kind?: "income" | "expense";
+    kind?: "income" | "expense" | "transfer";
     confidence?: number;
   }[],
 ) {
@@ -243,6 +253,70 @@ describe("POST /v1/imports", () => {
     });
 
     expect(response.statusCode).toBe(400);
+  });
+
+  it("pre-fills the counterpart account from the card's autoDebitAccountId", async () => {
+    // Fatura de cartão cujo cartão tem débito automático configurado: a linha
+    // de pagamento já chega com a conta de origem sugerida, sem o usuário
+    // precisar escolher.
+    const { userId, accessToken } = await authedUser();
+    const account = await createAccount(userId);
+    const c = await card(userId, { autoDebitAccountId: account.id });
+    fakeLlmResponse([
+      {
+        date: "2026-07-10",
+        description: "PAGAMENTO RECEBIDO",
+        amountCents: 50_000,
+        kind: "transfer",
+        confidence: 1,
+      },
+    ]);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: `hash-${Math.random()}`,
+        text: "...",
+      },
+    });
+
+    const lines = response.json().lines;
+    expect(lines[0].transferDirection).toBe("in");
+    expect(lines[0].suggestedCounterpartAccountId).toBe(account.id);
+  });
+
+  it("leaves the counterpart account null when the card has no auto-debit", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId, { autoDebitAccountId: null });
+    fakeLlmResponse([
+      {
+        date: "2026-07-10",
+        description: "PAGAMENTO RECEBIDO",
+        amountCents: 50_000,
+        kind: "transfer",
+        confidence: 1,
+      },
+    ]);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: `hash-${Math.random()}`,
+        text: "...",
+      },
+    });
+
+    const lines = response.json().lines;
+    expect(lines[0].transferDirection).toBe("in");
+    expect(lines[0].suggestedCounterpartAccountId).toBeNull();
   });
 });
 

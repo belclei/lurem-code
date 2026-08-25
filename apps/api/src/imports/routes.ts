@@ -201,8 +201,12 @@ export async function registerImportRoutes(
           { field: "accountId", message: "Escolha uma conta." },
         ]);
       }
+      // Hoisted: o autoDebitAccountId deste cartão vira a conta de contraparte
+      // sugerida das linhas kind=transfer, lá embaixo no createMany.
+      let card: Awaited<ReturnType<typeof prisma.creditCard.findFirst>> | null =
+        null;
       if (body.creditCardId) {
-        const card = await prisma.creditCard.findFirst({
+        card = await prisma.creditCard.findFirst({
           where: { id: body.creditCardId, userId },
         });
         if (!card) {
@@ -379,6 +383,15 @@ export async function registerImportRoutes(
               return {
                 importedDocumentId: doc.id,
                 kind: item.kind,
+                transferDirection: item.transferDirection,
+                // Só faz sentido sugerir contraparte para transferência, e só
+                // numa fatura de cartão temos um sinal natural de qual conta é
+                // (o débito automático configurado no cartão). Num extrato de
+                // conta fica null e o usuário escolhe na revisão.
+                suggestedCounterpartAccountId:
+                  item.transferDirection && body.type === "card_invoice"
+                    ? (card?.autoDebitAccountId ?? null)
+                    : null,
                 transactionDate: date,
                 amountCents: item.amountCents,
                 currency: item.currency,
