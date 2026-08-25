@@ -240,6 +240,9 @@ model Account {
   //  - type=cash  => institutionId IS NULL AND overdraftLimitCents = 0
   //  - saldo nunca abaixo de -overdraftLimitCents (rejeição na escrita, §2.3)
 
+  // Relations
+  extractedTransactionsCounterpart ExtractedTransaction[] @relation("ExtractedTransactionCounterpart")
+
   @@index([userId])
 }
 
@@ -462,6 +465,7 @@ model ExtractedTransaction {
   // card.autoDebitAccountId numa fatura de cartão, null num extrato (não
   // existe sinal natural de qual conta é a contraparte de um PIX).
   suggestedCounterpartAccountId String?
+  suggestedCounterpartAccount   Account?        @relation("ExtractedTransactionCounterpart", fields: [suggestedCounterpartAccountId], references: [id], onDelete: Cascade)
   transactionDate               DateTime        @db.Date
   amountCents                   Int
   currency                      String          @default("BRL")
