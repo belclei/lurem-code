@@ -236,15 +236,15 @@ model Account {
   archivedAt             DateTime?
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt
-
-  @@index([userId])
   // Invariantes (validadas no domínio, não só no banco):
   //  - type=cash  => institutionId IS NULL AND overdraftLimitCents = 0
   //  - saldo nunca abaixo de -overdraftLimitCents (rejeição na escrita, §2.3)
+
+  @@index([userId])
 }
 
 model CreditCard {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   userId             String
   institutionId      String
   name               String?
@@ -252,15 +252,15 @@ model CreditCard {
   closingDay         Int // 1..31 (clamp ao último dia do mês, §3.4)
   dueDay             Int // 1..31
   autoDebitAccountId String? // débito automático (§6.4)
-  currency           String   @default("BRL")
-  isActive           Boolean  @default(true)
+  currency           String    @default("BRL")
+  isActive           Boolean   @default(true)
   // Manual invoice closure override — nullable (year, month) pair identifying a closed period.
   manualClosureYear  Int?
   manualClosureMonth Int?
   // Ver nota em Account.archivedAt — mesmo conceito, mesmo comportamento.
   archivedAt         DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([userId])
 }
@@ -302,22 +302,22 @@ enum TxDirection {
 }
 
 model Transaction {
-  id                             String   @id @default(cuid())
+  id                             String       @id @default(cuid())
   userId                         String
   accountId                      String? // XOR com creditCardId (CHECK)
   creditCardId                   String?
   categoryId                     String? // opcional (§6.5)
   kind                           TxKind
-  source                         TxSource @default(manual)
+  source                         TxSource     @default(manual)
   description                    String
-  transactionDate                DateTime @db.Date
+  transactionDate                DateTime     @db.Date
   // dinheiro
-  currency                       String   @default("BRL")
+  currency                       String       @default("BRL")
   amountCents                    Int // valor na moeda de origem, sempre positivo
   amountBRLCents                 Int // convertido; base de TODO agregado do core
-  fxRate                         Decimal? @db.Decimal(18, 8) // registrada se currency != BRL
+  fxRate                         Decimal?     @db.Decimal(18, 8) // registrada se currency != BRL
   // natureza
-  isScheduled                    Boolean  @default(false) // futura conhecida; fora do saldo (§6.6)
+  isScheduled                    Boolean      @default(false) // futura conhecida; fora do saldo (§6.6)
   isFixedOverride                Boolean? // aluguel atrasado continua fixo (§6.6)
   // agrupamentos
   transferPairId                 String? // par saída/entrada (§6.6)
@@ -330,15 +330,17 @@ model Transaction {
   // origem/roteamento
   importedDocumentId             String?
   portadorUserId                 String? // atribuída a um conectado (§6.10)
-  portadorSettled                Boolean  @default(false)
+  portadorSettled                Boolean      @default(false)
   // Emenda 27/07/2026 (Sprint 11, US-6.3, IMPLEMENTACAO.md §1.4) — nulo na
   // transação original; aponta para a original quando ESTA linha é o
   // "espelho" criado ao aceitar uma atribuição de portador. Sem isso,
   // GET /v1/portador/pending não tinha como saber que uma atribuição já
   // fora aceita.
   portadorMirrorOfTransactionId  String?
-  createdAt                      DateTime @default(now())
-  updatedAt                      DateTime @updatedAt
+  createdAt                      DateTime     @default(now())
+  updatedAt                      DateTime     @updatedAt
+  // CHECK: (accountId IS NULL) <> (creditCardId IS NULL)  -- exatamente um
+  // CHECK: amountCents > 0  -- sinal vem de kind, nunca do valor
 
   @@index([userId, transactionDate])
   @@index([accountId])
@@ -346,8 +348,6 @@ model Transaction {
   @@index([transferPairId])
   @@index([installmentGroupId])
   @@index([recurringTransactionId])
-  // CHECK: (accountId IS NULL) <> (creditCardId IS NULL)  -- exatamente um
-  // CHECK: amountCents > 0  -- sinal vem de kind, nunca do valor
 }
 
 // ⚠ O sinal do dinheiro vem de kind, nunca do valor. amountCents/amountBRLCents
@@ -360,7 +360,7 @@ model Transaction {
 // ---------------------------------------------------------------------------
 
 model RecurringTransaction {
-  id                      String   @id @default(cuid())
+  id                      String    @id @default(cuid())
   userId                  String
   description             String
   kind                    TxKind // income | expense (transfer não recorre)
@@ -369,14 +369,14 @@ model RecurringTransaction {
   categoryId              String?
   referenceAmountCents    Int
   referenceAmountBRLCents Int
-  currency                String   @default("BRL")
+  currency                String    @default("BRL")
   dayOfMonth              Int // 1..31 (clamp, §3.4)
-  isVariableAmount        Boolean  @default(false) // conta de luz (§6.7)
-  isActive                Boolean  @default(true)
-  startDate               DateTime @db.Date
+  isVariableAmount        Boolean   @default(false) // conta de luz (§6.7)
+  isActive                Boolean   @default(true)
+  startDate               DateTime  @db.Date
   endDate                 DateTime? @db.Date // nulo = infinita
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   @@index([userId])
 }
@@ -389,13 +389,13 @@ enum FulfillmentMethod {
 
 // Único por (série, ano, mês) — impede dupla contagem (§6.7).
 model RecurringFulfillment {
-  id                      String            @id @default(cuid())
-  recurringTransactionId  String
-  year                    Int
-  month                   Int // 1..12
-  transactionId           String? // a transação real que cumpriu
-  method                  FulfillmentMethod
-  fulfilledAt             DateTime          @default(now())
+  id                     String            @id @default(cuid())
+  recurringTransactionId String
+  year                   Int
+  month                  Int // 1..12
+  transactionId          String? // a transação real que cumpriu
+  method                 FulfillmentMethod
+  fulfilledAt            DateTime          @default(now())
 
   @@unique([recurringTransactionId, year, month])
   @@index([recurringTransactionId])
@@ -445,27 +445,35 @@ enum ExtractedStatus {
 }
 
 model ExtractedTransaction {
-  id                      String          @id @default(cuid())
-  importedDocumentId      String
-  status                  ExtractedStatus @default(pending)
+  id                            String          @id @default(cuid())
+  importedDocumentId            String
+  status                        ExtractedStatus @default(pending)
   // Ausente no scaffold original do model — adicionado ao implementar §6.8:
   // amountCents é sempre positivo em todo o resto do app (Transaction.kind
   // é quem carrega o sinal, nunca o valor); uma fatura tem tanto compras
   // (expense) quanto estornos/pagamentos (income), então precisa do mesmo
   // par kind+amountCents positivo pra não quebrar essa convenção ao confirmar.
-  kind                    TxKind          @default(expense)
-  transactionDate         DateTime        @db.Date
-  amountCents             Int
-  currency                String          @default("BRL")
-  description             String
+  kind                          TxKind          @default(expense)
+  // Só preenchido quando kind = transfer. Numa fatura de cartão é sempre "in"
+  // (dinheiro não sai de um cartão — regra fixa do servidor, ver extractor.ts);
+  // num extrato de conta vem do julgamento do LLM.
+  transferDirection             TxDirection?
+  // A outra perna sugerida da transferência: pré-preenchida com
+  // card.autoDebitAccountId numa fatura de cartão, null num extrato (não
+  // existe sinal natural de qual conta é a contraparte de um PIX).
+  suggestedCounterpartAccountId String?
+  transactionDate               DateTime        @db.Date
+  amountCents                   Int
+  currency                      String          @default("BRL")
+  description                   String
   // Set only when a DescriptionAlias matched at extraction time and
   // `description` above was swapped to the friendly name — the raw text a
   // future extraction will key off of stays here so the substitution is
   // reversible/visible, never silent (see DescriptionAlias's own comment).
   // Null means `description` already IS the raw text (the common case, no
   // alias on file yet).
-  originalDescription     String?
-  suggestedCategoryId     String?
+  originalDescription           String?
+  suggestedCategoryId           String?
   // §3 (part 3 spec) — resolved once at extraction time: DescriptionTagSuggestion
   // (learned from this user's own past tagging of the same raw description)
   // takes precedence, falls back to the LLM's suggestion (itself constrained
@@ -473,22 +481,22 @@ model ExtractedTransaction {
   // ids: the review screen's TagInput works in free-form names either way,
   // and names stay valid even if resolved before the Tag row technically
   // exists yet (brand-new suggestion, first time seen).
-  suggestedTagNames       String[]        @default([])
-  confidence               Float // 0..1 interno; exibido em PIPS (§3.6)
-  cardHolderRaw            String? // "ADICIONAL - MARIA"
-  suggestedPortadorUserId String?
-  installmentNumber       Int?
-  installmentTotal        Int?
-  duplicateOfTxId         String? // possível duplicata (§6.8)
-  suggestedRecurringId    String? // possível vínculo com série (§6.7)
+  suggestedTagNames             String[]        @default([])
+  confidence                    Float // 0..1 interno; exibido em PIPS (§3.6)
+  cardHolderRaw                 String? // "ADICIONAL - MARIA"
+  suggestedPortadorUserId       String?
+  installmentNumber             Int?
+  installmentTotal              Int?
+  duplicateOfTxId               String? // possível duplicata (§6.8)
+  suggestedRecurringId          String? // possível vínculo com série (§6.7)
   // Set quando NENHUMA série ativa bate com a descrição (suggestedRecurringId
   // fica null nesse caso) mas um padrão de assinatura foi detectado — nome
   // amigável pronto pra exibir no banner ("Netflix") e usar como description
   // da série se o usuário confirmar a criação (ver imports/routes.ts,
   // createRecurringFromSuggestion). Null = nenhuma sugestão de nova série.
-  recurringSuggestionLabel String?
-  confirmedTransactionId  String? // set ao confirmar
-  createdAt               DateTime        @default(now())
+  recurringSuggestionLabel      String?
+  confirmedTransactionId        String? // set ao confirmar
+  createdAt                     DateTime        @default(now())
 
   @@index([importedDocumentId])
 }
