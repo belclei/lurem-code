@@ -27,6 +27,7 @@ import { FEATURE_DISABLED, NOT_FOUND, VALIDATION_FAILED } from "../errors.js";
 import { resolveFlags } from "../flags/resolve.js";
 import { createRecurringTransactionSeries } from "../recurring-transactions/create.js";
 import { setTransactionTags, upsertTags } from "../tags/service.js";
+import { createTransferPair } from "../transactions/transfer-pair.js";
 import { belIaChat } from "./bel-ia-client.js";
 import {
   extractDocumentMetadata,
@@ -74,6 +75,7 @@ const UpdateLineBody = z
     categoryId: z.string().min(1).nullable().optional(),
     tagNames: z.array(z.string().min(1)).optional(),
     recurringTransactionId: z.string().min(1).nullable().optional(),
+    counterpartAccountId: z.string().min(1).nullable().optional(),
   })
   .strict();
 
@@ -81,6 +83,8 @@ const ConfirmBody = z
   .object({
     resolution: z.enum(["keep_both", "replace"]).optional(),
     createRecurringFromSuggestion: z.boolean().optional(),
+    /** Obrigatório quando a linha é kind=transfer — a outra perna do par. */
+    counterpartAccountId: z.string().min(1).optional(),
   })
   .strict();
 
@@ -689,6 +693,7 @@ export async function registerImportRoutes(
     line: {
       id: string;
       kind: "income" | "expense" | "transfer";
+      transferDirection: "in" | "out" | null;
       transactionDate: Date;
       amountCents: number;
       currency: string;
@@ -700,7 +705,59 @@ export async function registerImportRoutes(
       installmentTotal: number | null;
     },
     linkToRecurringId?: string | null,
+    counterpartAccountId?: string | null,
   ): Promise<void> {
+    // Uma linha kind=transfer precisa das DUAS pernas (§6.6) — antes desta
+    // mudança ela virava uma Transaction solta, sem contrapartida em conta
+    // nenhuma. A perna do próprio documento é a que fica ligada à
+    // ExtractedTransaction via confirmedTransactionId.
+    if (line.kind === "transfer") {
+      if (!counterpartAccountId) {
+        throw VALIDATION_FAILED([
+          {
+            field: "counterpartAccountId",
+            message: "Selecione a conta de origem.",
+          },
+        ]);
+      }
+      const counterpart = await client.account.findFirst({
+        where: { id: counterpartAccountId, userId },
+      });
+      if (!counterpart) {
+        throw VALIDATION_FAILED([
+          { field: "counterpartAccountId", message: "Conta não encontrada." },
+        ]);
+      }
+
+      // Direção "out" só acontece em extrato de conta (o dinheiro sai da conta
+      // do documento). Em fatura de cartão é sempre "in": dinheiro não sai de
+      // um cartão, então a conta escolhida é sempre a origem.
+      const isOutgoingFromDocument =
+        line.transferDirection === "out" && doc.accountId != null;
+      const { out, inLeg } = await createTransferPair(client, {
+        userId,
+        sourceAccountId: isOutgoingFromDocument
+          ? (doc.accountId as string)
+          : counterpart.id,
+        destAccountId: isOutgoingFromDocument ? counterpart.id : doc.accountId,
+        destCreditCardId: isOutgoingFromDocument ? null : doc.creditCardId,
+        description: line.description,
+        transactionDate: line.transactionDate,
+        currency: line.currency,
+        amountCents: line.amountCents,
+        amountBRLCents: line.amountCents,
+        isScheduled: false,
+        source: "import",
+      });
+
+      const documentLeg = isOutgoingFromDocument ? out : inLeg;
+      await client.extractedTransaction.update({
+        where: { id: line.id },
+        data: { status: "confirmed", confirmedTransactionId: documentLeg.id },
+      });
+      return;
+    }
+
     const tx = await client.transaction.create({
       data: {
         userId,
@@ -914,10 +971,24 @@ export async function registerImportRoutes(
             }
           }
 
-          await confirmLine(tx, userId, doc, line, series.id);
+          await confirmLine(
+            tx,
+            userId,
+            doc,
+            line,
+            series.id,
+            parsedBody.data.counterpartAccountId,
+          );
         });
       } else {
-        await confirmLine(prisma, userId, doc, line);
+        await confirmLine(
+          prisma,
+          userId,
+          doc,
+          line,
+          undefined,
+          parsedBody.data.counterpartAccountId,
+        );
       }
       await maybeMarkReviewed(doc.id);
       const updated = await prisma.extractedTransaction.findUniqueOrThrow({
@@ -969,6 +1040,12 @@ export async function registerImportRoutes(
           // confirming them here would silently double-create the
           // transaction the pipeline itself already flagged as suspect.
           duplicateOfTxId: null,
+          // Transferência precisa da conta de contraparte escolhida na revisão
+          // (confirmLine rejeita sem ela) — confirmar em lote quebraria o lote
+          // inteiro (o loop abaixo não tem try/catch). Mesma lógica do filtro
+          // de duplicatas acima, expressa como condição de query em vez de
+          // .filter() já que esta função não tinha um chain de array aqui.
+          kind: { not: "transfer" },
         },
       });
       for (const line of lines) {
