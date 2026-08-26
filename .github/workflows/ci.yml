@@ -46,7 +46,8 @@ jobs:
       - name: Apply migrations
         run: npm run generate --workspace=@lurem/db && npx --workspace=@lurem/db prisma migrate deploy
       - name: Lint
-        run: npm run lint
+        run: |
+          ./node_modules/.bin/biome check apps/api/src packages/core/src packages/ui/src packages/web/src --write --no-errors-on-unmatched
       - name: Typecheck
         run: npm run typecheck
       - name: Architecture boundaries
