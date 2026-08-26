@@ -1,3 +1,9 @@
+## Git Workflow (MANDATORY)
+
+**NEVER push directly to master.** Always use: develop → PR → review → merge to master.
+
+This is not a preference, it's a requirement. Violations will fail the session.
+
 ## Pre-PR Checklist
 
 Antes de abrir PR — não delegue para o CI pegar:
