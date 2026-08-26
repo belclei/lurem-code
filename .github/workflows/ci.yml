@@ -65,6 +65,7 @@ jobs:
           set -e
           cd ${{ secrets.DEPLOY_PATH }}
           git fetch origin master
+          git clean -fdx
           git reset --hard origin/master
           docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
           docker image prune -f
