@@ -66,7 +66,8 @@ jobs:
           DEPLOY_DIR="${{ secrets.DEPLOY_PATH }}"
           cd "$(dirname "$DEPLOY_DIR")"
           chattr -R -i "$(basename "$DEPLOY_DIR")" 2>/dev/null || true
-          rm -rf "$(basename "$DEPLOY_DIR")"
+          find "$(basename "$DEPLOY_DIR")" -type f -exec rm -f {} + 2>/dev/null || true
+          rm -rf "$(basename "$DEPLOY_DIR")" || true
           git clone --branch master https://github.com/belclei/lurem-code.git "$(basename "$DEPLOY_DIR")"
           cd "$DEPLOY_DIR"
           docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
