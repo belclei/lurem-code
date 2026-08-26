@@ -388,4 +388,52 @@ describe("fluxoDeCaixaFuturo", () => {
       );
     }
   });
+
+  it("never turns an unconsumed card credit into projected incoming cash", () => {
+    // Card with auto-debit and a single income (refund) transaction that no
+    // later transaction ever consumes: sumCardTransactionsForInvoiceMonth
+    // (Task 2, cumulative) carries that 1_000 credit forward as a negative
+    // invoice total in every subsequent period. Without clamping at zero,
+    // each month whose invoice falls due would add +1_000 to the projection
+    // as though it were incoming cash — the same credit counted over and
+    // over across the 12-month horizon. None of the 12 months may have a
+    // "closed_invoice" line at all here (dueCents clamps to 0, so the line
+    // is suppressed entirely).
+    const asOf = new Date("2026-07-15T12:00:00.000Z");
+    const card: CreditCardLike = {
+      id: "card-credit",
+      closingDay: 5,
+      dueDay: 25,
+      autoDebitAccountId: "acc-1",
+      isActive: true,
+    };
+    const result = fluxoDeCaixaFuturo(
+      {
+        accounts: [],
+        cards: [
+          {
+            card,
+            transactions: [
+              {
+                id: "t1",
+                kind: "income",
+                amountBRLCents: 1_000,
+                isScheduled: false,
+                transactionDate: new Date("2026-07-01T00:00:00.000Z"),
+              },
+            ],
+          },
+        ],
+        recurringTransactions: [],
+        fulfillments: [],
+        scheduledTransactions: [],
+      },
+      asOf,
+    );
+
+    const invoiceLines = result.flatMap((money) =>
+      money.breakdown.filter((line) => line.label === "closed_invoice"),
+    );
+    expect(invoiceLines).toEqual([]);
+  });
 });

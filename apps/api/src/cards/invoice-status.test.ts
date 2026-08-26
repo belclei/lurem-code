@@ -86,4 +86,58 @@ describe("cardInvoiceStatus", () => {
     );
     expect(result.usedCents).toBe(0);
   });
+
+  it("does not double-count a credit balance across closed and open invoices", () => {
+    // Cartão fecha dia 10, vence dia 20. asOf = 15/jul -> fatura de julho está
+    // fechada-não-vencida; a de agosto está aberta.
+    // Julho: estorno de 1000, sem despesas -> fecha em -1000 (crédito).
+    // Agosto (aberta): 300 de despesa -> cumulativo = -700.
+    // usedCents deve ser -700, NÃO -1700 (que seria closed + open somados crus).
+    const asOf = new Date("2026-07-15T12:00:00.000Z");
+    const result = cardInvoiceStatus(
+      card(),
+      [
+        tx({
+          id: "t1",
+          kind: "income",
+          amountBRLCents: 1_000,
+          transactionDate: new Date("2026-07-01T00:00:00.000Z"),
+        }),
+        tx({
+          id: "t2",
+          kind: "expense",
+          amountBRLCents: 300,
+          transactionDate: new Date("2026-07-14T00:00:00.000Z"),
+        }),
+      ],
+      asOf,
+    );
+    expect(result.usedCents).toBe(-700);
+  });
+
+  it("keeps usedCents unchanged when the closed invoice is a normal debt", () => {
+    // Regressão: closed positivo -> Math.max não altera nada.
+    // Julho fecha em +1000. Agosto (aberta) tem 300 -> cumulativo 300
+    // (dívida não carrega). usedCents = 1000 + 300 = 1300.
+    const asOf = new Date("2026-07-15T12:00:00.000Z");
+    const result = cardInvoiceStatus(
+      card(),
+      [
+        tx({
+          id: "t1",
+          kind: "expense",
+          amountBRLCents: 1_000,
+          transactionDate: new Date("2026-07-01T00:00:00.000Z"),
+        }),
+        tx({
+          id: "t2",
+          kind: "expense",
+          amountBRLCents: 300,
+          transactionDate: new Date("2026-07-14T00:00:00.000Z"),
+        }),
+      ],
+      asOf,
+    );
+    expect(result.usedCents).toBe(1_300);
+  });
 });

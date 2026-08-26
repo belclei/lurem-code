@@ -19,6 +19,12 @@ export interface StagingReviewRowProps {
   /** Money-input string ("25,00"), same convention as Input's `money` mode. */
   amount: string;
   onAmountChange: (value: string) => void;
+  /** The extractor sometimes misreads débito/crédito on the source document
+   * (or auto-suggests "transfer" for a PIX to the user's own name), so this
+   * is always editable, not just a display value (issues.md: "Permitir
+   * trocar de débito para crédito"). */
+  kind: "income" | "expense" | "transfer";
+  onKindChange: (kind: "income" | "expense" | "transfer") => void;
   categoryOptions: SelectOption[];
   categoryId: string | null;
   onCategoryIdChange: (value: string | null) => void;
@@ -43,6 +49,12 @@ export interface StagingReviewRowProps {
   portadorOptions?: SelectOption[];
   portadorUserId?: string | null;
   onPortadorUserIdChange?: (value: string | null) => void;
+  /** Contas ativas do usuário — a outra perna de uma transferência. Só
+   * renderizado quando kind === "transfer" (pagamento de fatura, ou PIX entre
+   * contas próprias); vazio/ausente esconde o campo. */
+  counterpartAccountOptions?: SelectOption[];
+  counterpartAccountId?: string | null;
+  onCounterpartAccountIdChange?: (value: string | null) => void;
   duplicateDescription?: string;
   /** Nome amigável de uma assinatura detectada (lista conhecida ou padrão
    * de 3 ocorrências) quando NENHUMA série ainda existe — dispara o banner
@@ -80,6 +92,8 @@ export function StagingReviewRow({
   descriptionHint,
   amount,
   onAmountChange,
+  kind,
+  onKindChange,
   categoryOptions,
   categoryId,
   onCategoryIdChange,
@@ -95,6 +109,9 @@ export function StagingReviewRow({
   portadorOptions,
   portadorUserId = null,
   onPortadorUserIdChange,
+  counterpartAccountOptions,
+  counterpartAccountId = null,
+  onCounterpartAccountIdChange,
   duplicateDescription,
   recurringSuggestionLabel,
   onCreateRecurring,
@@ -153,12 +170,24 @@ export function StagingReviewRow({
           {cardHolderRaw ? ` · ${cardHolderRaw}` : ""}
         </Body>
       </div>
-      <div className="grid gap-2 sm:grid-cols-[2fr_10rem_1fr]">
+      <div className="grid gap-2 sm:grid-cols-[2fr_8rem_10rem_1fr]">
         <Input
           label="Descrição"
           value={description}
           onChange={(e) => onDescriptionChange(e.target.value)}
           hint={descriptionHint}
+        />
+        <Select
+          label="Tipo"
+          options={[
+            { value: "expense", label: "Débito" },
+            { value: "income", label: "Crédito" },
+            { value: "transfer", label: "Transferência" },
+          ]}
+          value={kind}
+          onChange={(value) =>
+            onKindChange(value as "income" | "expense" | "transfer")
+          }
         />
         <Input
           label="Valor"
@@ -181,6 +210,17 @@ export function StagingReviewRow({
         onChange={onTagNamesChange}
         suggestions={tagSuggestions}
       />
+      {kind === "transfer" &&
+      counterpartAccountOptions &&
+      counterpartAccountOptions.length > 0 ? (
+        <Select
+          label="Conta de origem"
+          options={counterpartAccountOptions}
+          value={counterpartAccountId}
+          onChange={onCounterpartAccountIdChange}
+          placeholder="Selecione a conta"
+        />
+      ) : null}
       {cardHolderRaw && portadorOptions && portadorOptions.length > 0 ? (
         <Select
           label={`Atribuir "${cardHolderRaw}" a um conectado`}

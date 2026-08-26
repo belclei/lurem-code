@@ -16,6 +16,7 @@ import { useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError, apiFetchJson } from "../auth/api-client";
 import type {
+  AccountDto,
   ConnectionDto,
   DuplicateTransactionSummary,
   ExtractedTransactionDto,
@@ -33,6 +34,7 @@ function LineRow({
   duplicate,
   connections,
   recurringSeriesOptions,
+  counterpartAccountOptions,
   onSaved,
 }: {
   line: ExtractedTransactionDto;
@@ -41,6 +43,7 @@ function LineRow({
   duplicate: DuplicateTransactionSummary | undefined;
   connections: ConnectionDto[];
   recurringSeriesOptions: { value: string; label: string }[];
+  counterpartAccountOptions: { value: string; label: string }[];
   onSaved: () => void;
 }) {
   const [description, setDescription] = useState(line.description);
@@ -48,15 +51,19 @@ function LineRow({
     (line.amountCents / 100).toFixed(2).replace(".", ","),
   );
   const [categoryId, setCategoryId] = useState(line.suggestedCategoryId);
+  const [kind, setKind] = useState(line.kind);
   const [tagNames, setTagNames] = useState(line.suggestedTagNames);
   const [portadorUserId, setPortadorUserId] = useState<string | null>(null);
   const [recurringTransactionId, setRecurringTransactionId] = useState<
     string | null
   >(line.suggestedRecurringId);
+  const [counterpartAccountId, setCounterpartAccountId] = useState<
+    string | null
+  >(line.suggestedCounterpartAccountId);
   const [error, setError] = useState<string | null>(null);
 
   const categoryOptions = categories
-    .filter((c) => c.kind === line.kind)
+    .filter((c) => c.kind === kind)
     .map((c) => ({ value: c.id, label: c.name }));
   const connectionOptions = connections.map((c) => ({
     value: c.counterpartUserId,
@@ -96,35 +103,41 @@ function LineRow({
         tagNames.some((t) => !line.suggestedTagNames.includes(t));
       const recurringChanged =
         recurringTransactionId !== line.suggestedRecurringId;
+      const kindChanged = kind !== line.kind;
       if (
         description !== line.description ||
         cents !== line.amountCents ||
         categoryId !== line.suggestedCategoryId ||
         tagsChanged ||
-        recurringChanged
+        recurringChanged ||
+        kindChanged
       ) {
         await patchMutation.mutateAsync({
           description,
           amountCents: cents,
           categoryId,
+          ...(kindChanged ? { kind } : {}),
           ...(tagsChanged ? { tagNames } : {}),
           ...(recurringChanged ? { recurringTransactionId } : {}),
         });
+      }
+      const confirmBody: Record<string, unknown> = {};
+      if (options?.resolution) confirmBody.resolution = options.resolution;
+      if (options?.createRecurringFromSuggestion) {
+        confirmBody.createRecurringFromSuggestion = true;
+      }
+      // Só transferência precisa da contraparte; mandar em outros kinds faria
+      // o .strict() do ConfirmBody recusar.
+      if (kind === "transfer" && counterpartAccountId) {
+        confirmBody.counterpartAccountId = counterpartAccountId;
       }
       const confirmed = await apiFetchJson<ExtractedTransactionDto>(
         `/imports/${line.importedDocumentId}/lines/${line.id}/confirm`,
         {
           method: "POST",
           body:
-            options?.resolution || options?.createRecurringFromSuggestion
-              ? JSON.stringify({
-                  ...(options.resolution
-                    ? { resolution: options.resolution }
-                    : {}),
-                  ...(options.createRecurringFromSuggestion
-                    ? { createRecurringFromSuggestion: true }
-                    : {}),
-                })
+            Object.keys(confirmBody).length > 0
+              ? JSON.stringify(confirmBody)
               : undefined,
         },
       );
@@ -168,6 +181,8 @@ function LineRow({
       }
       amount={amount}
       onAmountChange={setAmount}
+      kind={kind}
+      onKindChange={setKind}
       categoryOptions={categoryOptions}
       categoryId={categoryId}
       onCategoryIdChange={setCategoryId}
@@ -183,6 +198,9 @@ function LineRow({
       portadorOptions={connectionOptions}
       portadorUserId={portadorUserId}
       onPortadorUserIdChange={setPortadorUserId}
+      counterpartAccountOptions={counterpartAccountOptions}
+      counterpartAccountId={counterpartAccountId}
+      onCounterpartAccountIdChange={setCounterpartAccountId}
       duplicateDescription={
         duplicate
           ? `Já existe: ${duplicate.description} · ${duplicate.transactionDate.split("-").reverse().join("/")} · ${formatMoney(duplicate.amountCents)}`
@@ -274,6 +292,17 @@ export function ImportReviewPage() {
   const recurringSeriesOptions = (recurringQuery.data ?? [])
     .filter((r) => r.isActive)
     .map((r) => ({ value: r.id, label: r.description }));
+  const accountsQuery = useQuery({
+    queryKey: ["accounts"],
+    queryFn: () => apiFetchJson<AccountDto[]>("/accounts"),
+    enabled: hasSession,
+  });
+  const counterpartAccountOptions = (accountsQuery.data ?? [])
+    .filter((a) => a.isActive)
+    .map((a) => ({
+      value: a.id,
+      label: `${a.institutionName}${a.name ? ` · ${a.name}` : ""}`,
+    }));
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["imports", id] });
@@ -376,6 +405,7 @@ export function ImportReviewPage() {
               }
               connections={acceptedConnections}
               recurringSeriesOptions={recurringSeriesOptions}
+              counterpartAccountOptions={counterpartAccountOptions}
               onSaved={invalidate}
             />
           ))}
@@ -392,6 +422,7 @@ export function ImportReviewPage() {
               }
               connections={acceptedConnections}
               recurringSeriesOptions={recurringSeriesOptions}
+              counterpartAccountOptions={counterpartAccountOptions}
               onSaved={invalidate}
             />
           ))}

@@ -17,6 +17,8 @@ export interface ExtractedTransactionResponse {
   importedDocumentId: string;
   status: ExtractedTransaction["status"];
   kind: ExtractedTransaction["kind"];
+  transferDirection: ExtractedTransaction["transferDirection"];
+  suggestedCounterpartAccountId: ExtractedTransaction["suggestedCounterpartAccountId"];
   transactionDate: string;
   amountCents: number;
   currency: string;
@@ -57,6 +59,8 @@ export function toExtractedTransactionResponse(
     importedDocumentId: line.importedDocumentId,
     status: line.status,
     kind: line.kind,
+    transferDirection: line.transferDirection,
+    suggestedCounterpartAccountId: line.suggestedCounterpartAccountId,
     transactionDate: line.transactionDate.toISOString().slice(0, 10),
     amountCents: line.amountCents,
     currency: line.currency,

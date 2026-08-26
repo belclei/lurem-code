@@ -33,6 +33,8 @@ export const Pending: Story = {
         onDescriptionChange={() => {}}
         amount="28,90"
         onAmountChange={() => {}}
+        kind="expense"
+        onKindChange={() => {}}
         categoryOptions={CATEGORY_OPTIONS}
         categoryId="transporte"
         onCategoryIdChange={() => {}}
@@ -56,6 +58,8 @@ export const BaixaConfianca: Story = {
         onDescriptionChange={() => {}}
         amount="187,90"
         onAmountChange={() => {}}
+        kind="expense"
+        onKindChange={() => {}}
         categoryOptions={CATEGORY_OPTIONS}
         categoryId="alimentacao"
         onCategoryIdChange={() => {}}
@@ -80,6 +84,8 @@ export const Duplicata: Story = {
         onDescriptionChange={() => {}}
         amount="39,90"
         onAmountChange={() => {}}
+        kind="expense"
+        onKindChange={() => {}}
         categoryOptions={CATEGORY_OPTIONS}
         categoryId="assinaturas"
         onCategoryIdChange={() => {}}
@@ -105,6 +111,8 @@ export const AssinaturaDetectada: Story = {
         onDescriptionChange={() => {}}
         amount="39,90"
         onAmountChange={() => {}}
+        kind="expense"
+        onKindChange={() => {}}
         categoryOptions={CATEGORY_OPTIONS}
         categoryId="assinaturas"
         onCategoryIdChange={() => {}}
@@ -122,6 +130,37 @@ export const AssinaturaDetectada: Story = {
   ),
 };
 
+export const PagamentoDeFatura: Story = {
+  render: () => (
+    <div style={{ width: "30rem" }}>
+      <StagingReviewRow
+        description="PAGAMENTO RECEBIDO"
+        onDescriptionChange={() => {}}
+        amount="500,00"
+        onAmountChange={() => {}}
+        kind="transfer"
+        onKindChange={() => {}}
+        categoryOptions={CATEGORY_OPTIONS}
+        categoryId={null}
+        onCategoryIdChange={() => {}}
+        tagNames={[]}
+        onTagNamesChange={() => {}}
+        date="2026-07-20"
+        confidence={0.9}
+        status="pending"
+        counterpartAccountOptions={[
+          { value: "acc-1", label: "Itaú · Conta corrente" },
+          { value: "acc-2", label: "Nubank · Conta" },
+        ]}
+        counterpartAccountId="acc-1"
+        onCounterpartAccountIdChange={() => {}}
+        onConfirm={() => {}}
+        onReject={() => {}}
+      />
+    </div>
+  ),
+};
+
 export const Confirmed: Story = {
   render: () => (
     <div style={{ width: "30rem" }}>
@@ -130,6 +169,8 @@ export const Confirmed: Story = {
         onDescriptionChange={() => {}}
         amount="5200,00"
         onAmountChange={() => {}}
+        kind="income"
+        onKindChange={() => {}}
         categoryOptions={CATEGORY_OPTIONS}
         categoryId={null}
         onCategoryIdChange={() => {}}
@@ -151,6 +192,8 @@ export const Rejected: Story = {
         onDescriptionChange={() => {}}
         amount="50,00"
         onAmountChange={() => {}}
+        kind="expense"
+        onKindChange={() => {}}
         categoryOptions={CATEGORY_OPTIONS}
         categoryId={null}
         onCategoryIdChange={() => {}}

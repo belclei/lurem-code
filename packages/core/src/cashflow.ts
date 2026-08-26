@@ -200,10 +200,16 @@ function currentMonthLines(
           candidate.year,
           candidate.month,
         );
-        if (invoice.valueCents !== 0) {
+        // Math.max: fatura negativa (saldo a favor) significa "nada a pagar
+        // neste mês", não "dinheiro entrando". Sem o clamp, com a soma
+        // cumulativa (invoice.ts), um crédito não consumido apareceria como
+        // entrada em CADA mês projetado em que uma fatura vence — o mesmo
+        // crédito contado várias vezes ao longo da projeção.
+        const dueCents = Math.max(invoice.valueCents, 0);
+        if (dueCents !== 0) {
           lines.push({
             label: "closed_invoice",
-            valueCents: -invoice.valueCents,
+            valueCents: -dueCents,
             kind: "closed_invoice",
             sourceRef: { type: "CreditCard", id: card.id },
             isEstimate: false,
@@ -243,10 +249,12 @@ function futureMonthLines(
           candidate.year,
           candidate.month,
         );
-        if (invoice.valueCents !== 0) {
+        // Mesmo clamp do mês corrente — ver a nota lá.
+        const dueCents = Math.max(invoice.valueCents, 0);
+        if (dueCents !== 0) {
           lines.push({
             label: "closed_invoice",
-            valueCents: -invoice.valueCents,
+            valueCents: -dueCents,
             kind: "closed_invoice",
             sourceRef: { type: "CreditCard", id: card.id },
             // Fatura ainda não fechou de fato (estamos projetando meses à

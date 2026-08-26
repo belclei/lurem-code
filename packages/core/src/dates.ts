@@ -123,3 +123,26 @@ export function todayAsDate(instant: Date): Date {
   const { year, month, day } = saoPauloYMD(instant);
   return makeDate(year, month, day);
 }
+
+/**
+ * Inversa de `faturaPeriodo`: o índice (ano, mês) da fatura cujo período
+ * `(closingDate(M−1), closingDate(M)]` contém `date`.
+ *
+ * Só dois candidatos são possíveis: como `closingDate(M)` sempre cai dentro
+ * do próprio mês calendário de M, uma data ou está em/antes do fechamento do
+ * seu mês (fatura daquele mês) ou já passou dele (fatura do mês seguinte).
+ * Mesmo padrão de "testar candidatos" de findOpenInvoiceMonth/
+ * findClosedNotDueInvoiceMonth.
+ *
+ * `date` é uma data-calendário pura (meia-noite UTC), como transactionDate —
+ * por isso lê com getUTC*, não com saoPauloYMD (que é para instantes).
+ */
+export function periodIndexForDate(
+  card: DayOfMonthCard,
+  date: Date,
+): YearMonth {
+  const base = { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 };
+  return compareDates(date, closingDate(card, base.year, base.month)) <= 0
+    ? base
+    : addMonths(base, 1);
+}

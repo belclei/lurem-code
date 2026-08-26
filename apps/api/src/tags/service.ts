@@ -9,9 +9,13 @@ export interface TagRef {
 }
 
 // Always lowercase: "Uber"/"uber"/"UBER" collapse into one tag instead of
-// fragmenting the same real-world label into near-duplicates.
+// fragmenting the same real-world label into near-duplicates. Also strips
+// any leading "#" — tags are free-form and never require the prefix
+// (issues.md: "não precisam iniciar com #"), so "#uber" and "uber" must
+// resolve to the same stored tag instead of fragmenting like the case
+// issue above.
 export function normalizeTagName(raw: string): string {
-  return raw.trim().toLowerCase();
+  return raw.trim().toLowerCase().replace(/^#+/, "");
 }
 
 // Idempotent — creates any name that doesn't exist yet for this user, reuses

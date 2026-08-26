@@ -7,6 +7,7 @@ import { useMutation } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { ApiError, apiFetchJson } from "../../auth/api-client";
 import type { AccountDto, CardDto, InstitutionDto } from "../../auth/types";
+import { wrapDayOfMonth } from "../../lib/day-of-month";
 import { fieldErrorsFrom } from "../../lib/field-errors";
 import { reaisToCentsPositive } from "../../lib/money";
 
@@ -135,16 +136,24 @@ export function NewCardDialog({
         <div className="grid grid-cols-2 gap-3">
           <Input
             type="number"
+            min={1}
+            max={31}
             label="Dia de fechamento"
             value={closingDay}
-            onChange={(event) => setClosingDay(event.target.value)}
+            onChange={(event) =>
+              setClosingDay(wrapDayOfMonth(event.target.value, closingDay))
+            }
             error={fieldErrors.closingDay}
           />
           <Input
             type="number"
+            min={1}
+            max={31}
             label="Dia de vencimento"
             value={dueDay}
-            onChange={(event) => setDueDay(event.target.value)}
+            onChange={(event) =>
+              setDueDay(wrapDayOfMonth(event.target.value, dueDay))
+            }
             error={fieldErrors.dueDay}
           />
         </div>

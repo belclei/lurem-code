@@ -103,7 +103,10 @@ async function institution() {
   });
 }
 
-async function card(userId: string) {
+async function card(
+  userId: string,
+  opts?: { autoDebitAccountId?: string | null },
+) {
   const inst = await institution();
   return server.prisma.creditCard.create({
     data: {
@@ -112,7 +115,14 @@ async function card(userId: string) {
       limitCents: 500_000,
       closingDay: 20,
       dueDay: 28,
+      autoDebitAccountId: opts?.autoDebitAccountId ?? null,
     },
+  });
+}
+
+async function createAccount(userId: string) {
+  return server.prisma.account.create({
+    data: { userId, type: "cash" },
   });
 }
 
@@ -121,7 +131,12 @@ function fakeLlmResponse(
     date?: string;
     description: string;
     amountCents: number;
-    kind?: "income" | "expense";
+    kind?: "income" | "expense" | "transfer";
+    // Only read by extractor.ts for account_statement docs — card_invoice
+    // always forces "in" server-side regardless of what's sent here (see
+    // extractor.ts's own comment), which is exactly what
+    // "pre-fills the counterpart account..." above already relies on.
+    transferDirection?: "in" | "out";
     confidence?: number;
   }[],
 ) {
@@ -243,6 +258,106 @@ describe("POST /v1/imports", () => {
     });
 
     expect(response.statusCode).toBe(400);
+  });
+
+  it("pre-fills the counterpart account from the card's autoDebitAccountId", async () => {
+    // Fatura de cartão cujo cartão tem débito automático configurado: a linha
+    // de pagamento já chega com a conta de origem sugerida, sem o usuário
+    // precisar escolher.
+    const { userId, accessToken } = await authedUser();
+    const account = await createAccount(userId);
+    const c = await card(userId, { autoDebitAccountId: account.id });
+    fakeLlmResponse([
+      {
+        date: "2026-07-10",
+        description: "PAGAMENTO RECEBIDO",
+        amountCents: 50_000,
+        kind: "transfer",
+        confidence: 1,
+      },
+    ]);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: `hash-${Math.random()}`,
+        text: "...",
+      },
+    });
+
+    const lines = response.json().lines;
+    expect(lines[0].transferDirection).toBe("in");
+    expect(lines[0].suggestedCounterpartAccountId).toBe(account.id);
+  });
+
+  it("leaves the counterpart account null when the card has no auto-debit", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId, { autoDebitAccountId: null });
+    fakeLlmResponse([
+      {
+        date: "2026-07-10",
+        description: "PAGAMENTO RECEBIDO",
+        amountCents: 50_000,
+        kind: "transfer",
+        confidence: 1,
+      },
+    ]);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: `hash-${Math.random()}`,
+        text: "...",
+      },
+    });
+
+    const lines = response.json().lines;
+    expect(lines[0].transferDirection).toBe("in");
+    expect(lines[0].suggestedCounterpartAccountId).toBeNull();
+  });
+
+  it("leaves the counterpart account null for an account_statement transfer", async () => {
+    // Só uma fatura de cartão tem o sinal natural (autoDebitAccountId) pra
+    // sugerir a contraparte. Num extrato de conta, mesmo kind=transfer, não
+    // há cartão nenhum envolvido — fica null e o usuário escolhe na revisão.
+    const { userId, accessToken } = await authedUser();
+    const account = await createAccount(userId);
+    fakeLlmResponse([
+      {
+        date: "2026-07-10",
+        description: "PIX para própria conta",
+        amountCents: 10_000,
+        kind: "transfer",
+        confidence: 1,
+      },
+    ]);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "account_statement",
+        accountId: account.id,
+        contentHash: `hash-${Math.random()}`,
+        text: "...",
+      },
+    });
+
+    const lines = response.json().lines;
+    // transferDirection segue truthy (não é o campo em teste aqui — já
+    // coberto em extractor.test.ts) só pra provar que o null abaixo vem da
+    // checagem body.type === "card_invoice", não de kind !== "transfer".
+    expect(lines[0].transferDirection).toBe("in");
+    expect(lines[0].suggestedCounterpartAccountId).toBeNull();
   });
 });
 
@@ -1473,5 +1588,253 @@ describe("confirm — recurring link and subscription creation", () => {
       where: { userId, description: "Academia XPTO" },
     });
     expect(seriesAfterRetry).toHaveLength(1);
+  });
+});
+
+// Helpers below are local to this describe block (only consumer) — kept out
+// of the shared helper section above the same way createImportWithDuplicate
+// (confirm-with-duplicate-resolution) is scoped to its own describe.
+async function uploadInvoiceWithLines(
+  accessToken: string,
+  creditCardId: string,
+  items: Parameters<typeof fakeLlmResponse>[0],
+) {
+  fakeLlmResponse(items);
+  const res = await server.inject({
+    method: "POST",
+    url: "/v1/imports",
+    headers: { authorization: `Bearer ${accessToken}` },
+    payload: {
+      type: "card_invoice",
+      creditCardId,
+      contentHash: `hash-${Math.random()}`,
+      text: "...",
+    },
+  });
+  // Untyped on purpose (matches this file's existing response.json() usage,
+  // e.g. createImportWithOneLine above) — noUncheckedIndexedAccess would
+  // otherwise make every lines[0] call site fight `| undefined` for an
+  // array whose length these tests already control by construction.
+  return res.json().lines;
+}
+
+async function uploadStatementWithLines(
+  accessToken: string,
+  accountId: string,
+  items: Parameters<typeof fakeLlmResponse>[0],
+) {
+  fakeLlmResponse(items);
+  const res = await server.inject({
+    method: "POST",
+    url: "/v1/imports",
+    headers: { authorization: `Bearer ${accessToken}` },
+    payload: {
+      type: "account_statement",
+      accountId,
+      contentHash: `hash-${Math.random()}`,
+      text: "...",
+    },
+  });
+  return res.json().lines;
+}
+
+// server.inject (light-my-request) never throws on its own — a non-2xx
+// response just comes back with that statusCode set. This wrapper throws so
+// tests can assert on error responses with `await expect(...).rejects.toMatchObject(...)`
+// the way they would against a real HTTP client.
+async function confirmLineViaApi(
+  accessToken: string,
+  line: { id: string; importedDocumentId: string },
+  body: Record<string, unknown>,
+) {
+  const res = await server.inject({
+    method: "POST",
+    url: `/v1/imports/${line.importedDocumentId}/lines/${line.id}/confirm`,
+    headers: { authorization: `Bearer ${accessToken}` },
+    payload: body,
+  });
+  if (res.statusCode >= 400) {
+    throw Object.assign(new Error(res.body), { statusCode: res.statusCode });
+  }
+  return res.json();
+}
+
+describe("confirm — transfer pairs", () => {
+  it("creates a transfer pair when confirming a card-invoice payment line", async () => {
+    const { userId, accessToken } = await authedUser();
+    const account = await createAccount(userId);
+    const c = await card(userId, { autoDebitAccountId: account.id });
+    const lines = await uploadInvoiceWithLines(accessToken, c.id, [
+      {
+        date: "2026-07-10",
+        description: "PAGAMENTO RECEBIDO",
+        amountCents: 50_000,
+        kind: "transfer",
+        confidence: 1,
+      },
+    ]);
+
+    const confirmed = await confirmLineViaApi(accessToken, lines[0], {
+      counterpartAccountId: account.id,
+    });
+
+    const pair = await server.prisma.transaction.findMany({
+      where: { userId, kind: "transfer" },
+    });
+    expect(pair).toHaveLength(2);
+
+    const outLeg = pair.find((t) => t.transferDirection === "out");
+    const inLeg = pair.find((t) => t.transferDirection === "in");
+    expect(outLeg).toBeDefined();
+    expect(inLeg).toBeDefined();
+    expect(outLeg?.transferPairId).not.toBeNull();
+    expect(outLeg?.transferPairId).toBe(inLeg?.transferPairId);
+    expect(outLeg?.accountId).toBe(account.id);
+    expect(outLeg?.creditCardId).toBeNull();
+    expect(inLeg?.creditCardId).toBe(c.id);
+    // confirmedTransactionId aponta para a perna do próprio documento (o cartão).
+    expect(confirmed.confirmedTransactionId).toBe(inLeg?.id);
+  });
+
+  it("rejects confirming a transfer line without a counterpart account", async () => {
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId, { autoDebitAccountId: null });
+    const lines = await uploadInvoiceWithLines(accessToken, c.id, [
+      {
+        date: "2026-07-10",
+        description: "PAGAMENTO RECEBIDO",
+        amountCents: 50_000,
+        kind: "transfer",
+        confidence: 1,
+      },
+    ]);
+
+    // task-13-brief.md's Step 1 snippet asserts statusCode 422 here, but the
+    // validation that actually fires is confirmLine's own
+    // `throw VALIDATION_FAILED(...)` — the brief's own Step 4 snippet — and
+    // VALIDATION_FAILED is fixed at 400 in errors.ts, the same code every
+    // other "field needs attention" error in this file already returns
+    // (e.g. "rejects a card_invoice import without creditCardId" above).
+    // Asserting 400 to match that established, already-shipped convention
+    // instead of inventing a one-off 422 path. Flagged in the task report.
+    await expect(
+      confirmLineViaApi(accessToken, lines[0], {}),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(await server.prisma.transaction.count({ where: { userId } })).toBe(
+      0,
+    );
+  });
+
+  it("creates the pair in the right direction for an outgoing self-PIX on a statement", async () => {
+    const { userId, accessToken } = await authedUser();
+    const source = await createAccount(userId);
+    const dest = await createAccount(userId);
+    const lines = await uploadStatementWithLines(accessToken, source.id, [
+      {
+        date: "2026-07-10",
+        description: "PIX ENVIADO BELCLEI FASOLO",
+        amountCents: 20_000,
+        kind: "transfer",
+        transferDirection: "out",
+        confidence: 1,
+      },
+    ]);
+
+    await confirmLineViaApi(accessToken, lines[0], {
+      counterpartAccountId: dest.id,
+    });
+
+    const pair = await server.prisma.transaction.findMany({
+      where: { userId, kind: "transfer" },
+    });
+    const outLeg = pair.find((t) => t.transferDirection === "out");
+    const inLeg = pair.find((t) => t.transferDirection === "in");
+    expect(outLeg).toBeDefined();
+    expect(inLeg).toBeDefined();
+    expect(outLeg?.accountId).toBe(source.id);
+    expect(inLeg?.accountId).toBe(dest.id);
+  });
+
+  it("still creates a single Transaction for a non-transfer line", async () => {
+    // Regressão: income/expense não passam por createTransferPair.
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId, { autoDebitAccountId: null });
+    const lines = await uploadInvoiceWithLines(accessToken, c.id, [
+      {
+        date: "2026-07-10",
+        description: "ESTORNO COMPRA XPTO",
+        amountCents: 1_000,
+        kind: "income",
+        confidence: 1,
+      },
+    ]);
+
+    await confirmLineViaApi(accessToken, lines[0], {});
+
+    const created = await server.prisma.transaction.findMany({
+      where: { userId },
+    });
+    expect(created).toHaveLength(1);
+    expect(created[0]?.transferPairId).toBeNull();
+    expect(created[0]?.creditCardId).toBe(c.id);
+  });
+
+  it("confirm-high-confidence skips transfer lines instead of failing the whole batch", async () => {
+    // Extra coverage beyond the brief's Step 1 list, added for Step 5's
+    // confirm-high-confidence filter: without it, a high-confidence transfer
+    // line has no counterpartAccountId to supply (no per-line UI in the bulk
+    // path) so confirmLine's validation throws — and since the loop has no
+    // try/catch, that would fail the ENTIRE batch, including the unrelated
+    // high-confidence expense line alongside it.
+    const { userId, accessToken } = await authedUser();
+    const c = await card(userId, { autoDebitAccountId: null });
+    fakeLlmResponse([
+      {
+        date: "2026-07-10",
+        description: "PAGAMENTO RECEBIDO",
+        amountCents: 50_000,
+        kind: "transfer",
+        confidence: 0.95,
+      },
+      {
+        date: "2026-07-11",
+        description: "Loja A",
+        amountCents: 3000,
+        kind: "expense",
+        confidence: 0.95,
+      },
+    ]);
+    const created = await server.inject({
+      method: "POST",
+      url: "/v1/imports",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        type: "card_invoice",
+        creditCardId: c.id,
+        contentHash: `hash-${Math.random()}`,
+        text: "...",
+      },
+    });
+    const documentId = created.json().document.id;
+    const transferLine = created
+      .json()
+      .lines.find((l: { kind: string }) => l.kind === "transfer");
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/v1/imports/${documentId}/confirm-high-confidence`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().confirmedCount).toBe(1);
+    const txCount = await server.prisma.transaction.count({
+      where: { userId },
+    });
+    expect(txCount).toBe(1);
+    const stillPending = await server.prisma.extractedTransaction.findUnique({
+      where: { id: transferLine.id },
+    });
+    expect(stillPending?.status).toBe("pending");
   });
 });

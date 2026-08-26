@@ -79,7 +79,11 @@ export function cardInvoiceStatus(
       openMonth.month,
     );
     return {
-      usedCents: closed.valueCents + open.valueCents,
+      // Math.max: com a soma cumulativa (packages/core/src/invoice.ts), um
+      // crédito em `closed` já está embutido em `open` — somar os dois crus
+      // contaria o mesmo crédito duas vezes. Quando `closed` é dívida normal
+      // (>= 0) o max é identidade e nada muda.
+      usedCents: Math.max(closed.valueCents, 0) + open.valueCents,
       invoiceStatus: "closed_awaiting_payment",
     };
   }
@@ -96,7 +100,8 @@ export function cardInvoiceStatus(
   );
 
   return {
-    usedCents: closed.valueCents + open.valueCents,
+    // Mesmo Math.max do branch acima — ver a nota lá.
+    usedCents: Math.max(closed.valueCents, 0) + open.valueCents,
     invoiceStatus: closedMonth ? "closed_awaiting_payment" : "open",
   };
 }

@@ -19,6 +19,27 @@ function account(overrides: Partial<AccountLike> = {}): AccountLike {
   };
 }
 
+function card(overrides: Partial<CreditCardLike> = {}): CreditCardLike {
+  return {
+    id: "card-1",
+    closingDay: 5,
+    dueDay: 20,
+    isActive: true,
+    ...overrides,
+  };
+}
+
+function tx(overrides: Partial<TransactionLike> = {}): TransactionLike {
+  return {
+    id: "t1",
+    kind: "expense",
+    amountBRLCents: 0,
+    isScheduled: false,
+    transactionDate: ASOF,
+    ...overrides,
+  };
+}
+
 describe("patrimonioTotal", () => {
   it("sums liquid account balances", () => {
     const result = patrimonioTotal(
@@ -181,19 +202,12 @@ describe("patrimonioTotal", () => {
   });
 
   it("always has a breakdown that sums to valueCents", () => {
-    const card: CreditCardLike = {
-      id: "card-1",
-      closingDay: 5,
-      dueDay: 20,
-      isActive: true,
-    };
-    const tx: TransactionLike = {
-      id: "t1",
+    const testCard = card();
+    const testTx = tx({
       kind: "expense",
       amountBRLCents: 1_500,
-      isScheduled: false,
       transactionDate: new Date("2026-06-10T00:00:00.000Z"),
-    };
+    });
     const result = patrimonioTotal(
       {
         accounts: [
@@ -206,12 +220,41 @@ describe("patrimonioTotal", () => {
             transactions: [],
           },
         ],
-        cards: [{ card, transactions: [tx] }],
+        cards: [{ card: testCard, transactions: [testTx] }],
       },
       ASOF,
     );
     expect(result.breakdown.reduce((s, l) => s + l.valueCents, 0)).toBe(
       result.valueCents,
     );
+  });
+
+  it("counts a card credit balance as an asset, not as zero", () => {
+    // Diferente de disponivelHoje/cashflow, patrimônio NÃO trava fatura
+    // negativa em zero: um crédito no cartão é um ativo real (você vai pagar
+    // menos depois). patrimonioTotal calcula a dívida do cartão por conta
+    // própria e já trata isso certo — este teste existe para que a "regra da
+    // fatura negativa" não seja aplicada aqui por engano.
+    const asOf = new Date("2026-07-15T12:00:00.000Z");
+    const result = patrimonioTotal(
+      {
+        accounts: [],
+        cards: [
+          {
+            card: card(),
+            transactions: [
+              tx({
+                id: "t1",
+                kind: "income",
+                amountBRLCents: 1_000,
+                transactionDate: new Date("2026-07-01T00:00:00.000Z"),
+              }),
+            ],
+          },
+        ],
+      },
+      asOf,
+    );
+    expect(result.valueCents).toBe(1_000);
   });
 });

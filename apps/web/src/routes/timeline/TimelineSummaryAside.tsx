@@ -50,7 +50,7 @@ export function TimelineSummaryAside({
           HeroCard, instead of trailing below Saldo líquido at a smaller
           size inside a visually recessed `sunken` card. */}
       <Card className="mb-4">
-        <div className="flex items-end justify-between gap-2">
+        <div className="flex flex-col items-start gap-2">
           <div>
             {/* No text-[...] override here on purpose: .lr-label's own
                 11px default is the app's legibility floor — this used to

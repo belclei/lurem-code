@@ -21,10 +21,12 @@ import type {
   TransactionLike,
 } from "@lurem/domain";
 import {
+  addMonths,
   closingDate,
   compareDates,
   dueDate,
   faturaPeriodo,
+  periodIndexForDate,
   todayAsDate,
 } from "./dates.js";
 
@@ -82,30 +84,144 @@ function delta(
   return -tx.amountBRLCents;
 }
 
-/** Soma as transações do cartão dentro do período de fatura (year, month), sem nenhum outro filtro de data. */
+/** Ordinal comparável de um (ano, mês) — só para ordenar/contar períodos. */
+function periodOrdinal({
+  year,
+  month,
+}: { year: number; month: number }): number {
+  return year * 12 + (month - 1);
+}
+
+/** Soma só as transações que caem dentro do período (year, month), sem herdar nada. */
+function periodOwnTotal(
+  card: CreditCardLike,
+  transactions: TransactionLike[],
+  year: number,
+  month: number,
+): BreakdownLine[] {
+  const period = faturaPeriodo(card, year, month);
+  return transactions
+    .filter((tx) => isWithinPeriod(tx.transactionDate, period))
+    .filter(countsTowardInvoice)
+    .map((tx) => ({
+      label:
+        tx.kind === "transfer"
+          ? "closed_invoice_payment"
+          : "closed_invoice_transaction",
+      valueCents: delta(tx),
+      kind: "closed_invoice" as const,
+      sourceRef: { type: "Transaction", id: tx.id },
+      isEstimate: false,
+    }));
+}
+
+/**
+ * Total da fatura (year, month) do cartão, **cumulativo**: herda o saldo a
+ * favor (resto negativo) das faturas anteriores, iterando do período do
+ * lançamento mais antigo do cartão até o período pedido.
+ *
+ * Só crédito genuinamente novo carrega — e "genuinamente novo" exclui a
+ * perna de pagamento (transfer-in). Quando dueDay > closingDay (o caso
+ * comum), o vencimento cai DEPOIS do fechamento, então um pagamento datado
+ * do vencimento cai na fatura SEGUINTE: fatura de julho fecha 10/jul, vence
+ * 20/jul, e um pagamento em 20/jul cai no período de agosto. Esse pagamento
+ * quita uma dívida que já foi contabilizada na fatura de julho — carregá-lo
+ * como "crédito" descontaria a mesma dívida de novo, indefinidamente, na
+ * fatura seguinte. Mesma lógica de "resto positivo não carrega" (ele
+ * "continua sendo cobrado como a sua própria fatura fechada" — comentário
+ * abaixo), só que aplicada à quitação dessa cobrança, não à cobrança em si.
+ * Um estorno (income) não tem essa contrapartida: é crédito novo de fato, e
+ * esse continua carregando.
+ *
+ * Por isso o carry usa uma "base" separada do valor retornado: o valor
+ * devolvido por um período (`own`, via `total`) sempre inclui a perna de
+ * pagamento — o dinheiro realmente se moveu naquele período. Só o que
+ * ALIMENTA o carry da fatura seguinte (`carryBasis`) exclui as linhas
+ * `closed_invoice_payment`.
+ *
+ * Um resto positivo (fatura fechada não paga) também NÃO é somado à fatura
+ * seguinte — ele continua sendo cobrado como a sua própria fatura fechada,
+ * que é o comportamento que o app sempre teve (o schema não rastreia
+ * pagamento; ver a nota no topo deste arquivo). Carregar dívida adiante
+ * inflaria a próxima fatura com algo que já está sendo cobrado.
+ *
+ * O crédito herdado entra no breakdown como uma linha `carried_credit`
+ * própria, para o invariante de ouro (§3.0: valueCents === Σ breakdown)
+ * continuar valendo e para a decomposição na UI mostrar de onde veio o
+ * abatimento.
+ */
 export function sumCardTransactionsForInvoiceMonth(
   card: CreditCardLike,
   transactions: TransactionLike[],
   year: number,
   month: number,
 ): Money {
-  const period = faturaPeriodo(card, year, month);
-  const inPeriod = transactions
-    .filter((tx) => isWithinPeriod(tx.transactionDate, period))
-    .filter(countsTowardInvoice);
+  if (transactions.length === 0) {
+    return { valueCents: 0, breakdown: [] };
+  }
 
-  const breakdown: BreakdownLine[] = inPeriod.map((tx) => ({
-    label:
-      tx.kind === "transfer"
-        ? "closed_invoice_payment"
-        : "closed_invoice_transaction",
-    valueCents: delta(tx),
-    kind: "closed_invoice",
-    sourceRef: { type: "Transaction", id: tx.id },
-    isEstimate: false,
-  }));
+  const targetOrdinal = periodOrdinal({ year, month });
 
-  const valueCents = breakdown.reduce((sum, line) => sum + line.valueCents, 0);
+  // .reduce() sem seed devolve T (não T | undefined) mesmo com
+  // noUncheckedIndexedAccess — ao contrário de indexar transactions[0], que
+  // o TS não consegue provar não-vazio só a partir do `if` de length acima.
+  const earliest = transactions
+    .map((tx) => periodIndexForDate(card, tx.transactionDate))
+    .reduce((min, candidate) =>
+      periodOrdinal(candidate) < periodOrdinal(min) ? candidate : min,
+    );
+  const earliestOrdinal = periodOrdinal(earliest);
+
+  // Fatura anterior ao primeiro lançamento do cartão: nada aconteceu ainda.
+  if (targetOrdinal < earliestOrdinal) {
+    return { valueCents: 0, breakdown: [] };
+  }
+
+  // Quantos períodos ANTES do pedido precisam ser percorridos só para
+  // acumular o carry — um limite fixo, calculado uma única vez antes do
+  // loop, em vez de um `for (;;)` que só para quando um contador de período
+  // bate no alvo por igualdade. Isso torna a terminação estrutural: mesmo
+  // que `earliest` viesse de uma data inválida (NaN), `i < NaN` nunca é
+  // verdadeiro e o loop simplesmente não roda, em vez de girar para sempre.
+  const periodsBeforeTarget = targetOrdinal - earliestOrdinal;
+
+  let carry = 0;
+  let current = earliest;
+  for (let i = 0; i < periodsBeforeTarget; i++) {
+    const lines = periodOwnTotal(
+      card,
+      transactions,
+      current.year,
+      current.month,
+    );
+    // Só as linhas de income/expense entram na base do carry — a perna de
+    // pagamento (closed_invoice_payment) fica de fora (ver doc da função).
+    const carryBasis =
+      lines
+        .filter((line) => line.label === "closed_invoice_transaction")
+        .reduce((sum, line) => sum + line.valueCents, 0) + carry;
+    carry = Math.min(0, carryBasis);
+    current = addMonths(current, 1);
+  }
+
+  // `current` chegou exatamente no período pedido depois de `periodsBeforeTarget`
+  // passos a partir de `earliest` — mas usar (year, month) direto, os
+  // parâmetros originais da função, não depende dessa invariante do loop.
+  const lines = periodOwnTotal(card, transactions, year, month);
+  const own = lines.reduce((sum, line) => sum + line.valueCents, 0);
+  const valueCents = own + carry;
+  const breakdown =
+    carry === 0
+      ? lines
+      : [
+          {
+            label: "carried_credit",
+            valueCents: carry,
+            kind: "closed_invoice" as const,
+            isEstimate: false,
+          },
+          ...lines,
+        ];
   return { valueCents, breakdown };
 }
 
@@ -149,4 +265,16 @@ export function faturaFechadaNaoVencida({
     invoiceMonth.year,
     invoiceMonth.month,
   );
+}
+
+/**
+ * Extrai o valor de uma fatura, clamped ao mínimo de 0. Um saldo a favor
+ * (fatura negativa) não é caixa disponível — ele só se realiza como compras
+ * futuras naquele cartão, não como dinheiro sacável.
+ *
+ * Usado por disponivelHoje e fluxoDeCaixaFuturo para evitar que créditos
+ * acumulados inflassem o saldo de caixa livres de obrigações (§3.2/§3.3).
+ */
+export function invoiceAmountDueCents(invoice: Money): number {
+  return Math.max(invoice.valueCents, 0);
 }
