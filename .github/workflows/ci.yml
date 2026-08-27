@@ -58,17 +58,17 @@ jobs:
   deploy:
     needs: quality
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
-    runs-on: [self-hosted, lurem-vps]
+    runs-on: ubuntu-latest
     steps:
-      - name: Deploy
-        run: |
-          set -e
-          DEPLOY_DIR="${{ secrets.DEPLOY_PATH }}"
-          cd "$(dirname "$DEPLOY_DIR")"
-          chattr -R -i "$(basename "$DEPLOY_DIR")" 2>/dev/null || true
-          find "$(basename "$DEPLOY_DIR")" -type f -exec rm -f {} + 2>/dev/null || true
-          rm -rf "$(basename "$DEPLOY_DIR")" || true
-          git clone --branch master https://github.com/belclei/lurem-code.git "$(basename "$DEPLOY_DIR")"
-          cd "$DEPLOY_DIR"
-          docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
-          docker image prune -f
+      - uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_PATH }}
+            git fetch origin master
+            git reset --hard origin/master
+            docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+            docker image prune -f
