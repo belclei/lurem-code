@@ -75,9 +75,9 @@ jobs:
               git fetch origin master
               git reset --hard origin/master
             else
-              mkdir -p "$DEPLOY_PATH"
+              rm -rf "$DEPLOY_PATH"
+              git clone --depth 1 --branch master ${{ github.server_url }}/${{ github.repository }}.git "$DEPLOY_PATH"
               cd "$DEPLOY_PATH"
-              git clone --depth 1 --branch master ${{ github.server_url }}/${{ github.repository }}.git .
             fi
 
             docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
