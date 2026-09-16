@@ -14,9 +14,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: lurem
     volumes:
-      - harmon_postgres_data:/var/lib/postgresql/data
+      - lurem_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U harmon"]
+      test: ["CMD-SHELL", "pg_isready -U lurem"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -25,7 +25,7 @@ services:
   redis:
     image: redis:7-alpine
     volumes:
-      - harmon_redis_data:/data
+      - lurem_redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -123,5 +123,5 @@ services:
       - "traefik.http.services.lurem-web.loadbalancer.server.port=8080"
 
 volumes:
-  harmon_postgres_data:
-  harmon_redis_data:
+  lurem_postgres_data:
+  lurem_redis_data:
