@@ -83,8 +83,8 @@ jobs:
             git fetch origin master
             git reset --hard origin/master
 
-            # -p harmon: live volumes are harmon_harmon_{postgres,redis}_data.
-            # Without it Compose derives the project from the directory name
-            # and starts against empty volumes without failing.
-            docker compose -p harmon -f docker-compose.prod.yml --env-file .env.prod up -d --build
+            # -p lurem pins the project name. Compose would otherwise derive it
+            # from the directory, and a directory rename would silently start the
+            # stack against empty volumes instead of failing.
+            docker compose -p lurem -f docker-compose.prod.yml --env-file .env.prod up -d --build
             docker image prune -f
