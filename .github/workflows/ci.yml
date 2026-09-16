@@ -69,16 +69,22 @@ jobs:
             set -e
             DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
 
-            # Clone or update repository
-            if [ -d "$DEPLOY_PATH/.git" ]; then
-              cd "$DEPLOY_PATH"
-              git fetch origin master
-              git reset --hard origin/master
-            else
+            # Bootstrap in place, never by deleting: .env.prod lives here
+            # untracked and cannot be restored from git.
+            if [ ! -d "$DEPLOY_PATH/.git" ]; then
               mkdir -p "$DEPLOY_PATH"
               cd "$DEPLOY_PATH"
-              git clone --depth 1 --branch master ${{ github.server_url }}/${{ github.repository }}.git .
+              git init -q
+              git symbolic-ref HEAD refs/heads/master
+              git remote add origin ${{ github.server_url }}/${{ github.repository }}.git
             fi
 
-            docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+            cd "$DEPLOY_PATH"
+            git fetch origin master
+            git reset --hard origin/master
+
+            # -p harmon: live volumes are harmon_harmon_{postgres,redis}_data.
+            # Without it Compose derives the project from the directory name
+            # and starts against empty volumes without failing.
+            docker compose -p harmon -f docker-compose.prod.yml --env-file .env.prod up -d --build
             docker image prune -f
